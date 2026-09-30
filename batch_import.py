@@ -8,6 +8,7 @@ import posixpath
 import re
 import xml.etree.ElementTree as ET
 import zipfile
+from i18n import t
 from input_helpers import infer_prompt
 from wan_core import TaskError, estimate_cost, payload
 
@@ -18,7 +19,7 @@ REL = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id'
 def read_xlsx(path):
     with zipfile.ZipFile(path) as z:
         if sum(i.file_size for i in z.infolist()) > 128 * 1024 * 1024:
-            raise ValueError('表格过大，请拆分为较小的批次。')
+            raise ValueError(t('xlsx_too_large'))
         def xml(name):
             return ET.fromstring(z.read(name))
         strings = []
@@ -70,28 +71,60 @@ def read_tables(path):
         except UnicodeDecodeError:
             text = raw.decode('gb18030')
         return [(path.stem, list(enumerate(csv.reader(io.StringIO(text)), 1)))]
-    raise ValueError('请选择 .xlsx 或 .csv 文件（不支持旧版 .xls）。')
+    raise ValueError(t('file_type'))
 
 
 def normalize_header(value):
     return re.sub(r'[\s_()（）-]', '', str(value)).lower()
 
 
+# Accepted headers after normalize_header (spaces, _, -, brackets removed; lower case).
+DURATION_HEADERS = ('时长', '时长秒', '视频时长', '视频时长秒', 'duration', 'durations', 'seconds',
+                    'durationsec', 'durationsecs', 'durationseconds', 'length', 'lengths', 'lengthsec',
+                    'lengthseconds', 'videolength', 'cliplength', 'sec', 'secs', 'runtime')
+RESOLUTION_HEADERS = ('分辨率', 'resolution', 'size', 'res', 'videoresolution')
+RATIO_HEADERS = ('比例', '画面比例', 'ratio', 'aspectratio', 'aspect')
+PROMPT_HEADERS = ('提示词', '完整提示词', '视频提示词', 'prompt', 'prompts', 'fullprompt', 'videoprompt', 'prompttext',
+                  'videodescription')
+TITLE_HEADERS = ('名称', '标题', '视频标题', 'title', 'name', 'episode', 'episodetitle', 'cliptitle', 'clipname',
+                 'videotitle', 'videoname', 'scene')
+ID_HEADERS = ('编号', '序号', 'id', 'no', 'no.', '#', 'number', 'index')
+
+
 def header_kind(value):
     value = normalize_header(value)
-    if value == 'prompt' or ('prompt' in value and ('完整' in value or 'wan' in value)) or value in ('提示词', '完整提示词', '视频提示词'):
+    if value in PROMPT_HEADERS or ('prompt' in value and ('完整' in value or 'wan' in value)):
         return 'prompt'
-    if value in ('时长', '时长秒', '视频时长', '视频时长秒', 'duration', 'durations', 'seconds'):
+    if value in DURATION_HEADERS:
         return 'duration'
-    if value in ('分辨率', 'resolution', 'size'):
+    if value in RESOLUTION_HEADERS:
         return 'resolution'
-    if value in ('比例', '画面比例', 'ratio', 'aspectratio'):
+    if value in RATIO_HEADERS:
         return 'ratio'
-    if value in ('名称', '标题', '视频标题', 'title', 'name'):
+    if value in TITLE_HEADERS:
         return 'title'
-    if value in ('编号', '序号', 'id'):
+    if value in ID_HEADERS:
         return 'id'
     return None
+
+
+CJK = re.compile('[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]')
+PROMPT_WRAPPER_ZH = '【全剧固定人物设定】\n%s\n\n【本集剧情】\n%s'
+PROMPT_WRAPPER_EN = '[Series characters]\n%s\n\n[This episode]\n%s'
+
+
+def wrap_prompt(character_setting, source_prompt):
+    """Chinese labels as in v1.10; English labels only when neither text contains Chinese."""
+    english = not CJK.search(character_setting) and not CJK.search(source_prompt)
+    return (PROMPT_WRAPPER_EN if english else PROMPT_WRAPPER_ZH) % (character_setting, source_prompt)
+
+
+def identity_prompt(prompt):
+    """The prompt in its v1.10 form, so the wrapper language never changes a batch's identity."""
+    if prompt.startswith('[Series characters]\n') and '\n\n[This episode]\n' in prompt:
+        setting, episode = prompt[len('[Series characters]\n'):].split('\n\n[This episode]\n', 1)
+        return PROMPT_WRAPPER_ZH % (setting, episode)
+    return prompt
 
 
 def build_job(sheet, row_number, columns, cells, character_setting=''):
@@ -100,24 +133,23 @@ def build_job(sheet, row_number, columns, cells, character_setting=''):
         return str(cells[index]).strip() if index is not None and index < len(cells) else ''
     source_prompt = get('prompt')
     character_setting = character_setting.strip()
-    prompt = ('【全剧固定人物设定】\n%s\n\n【本集剧情】\n%s' %
-              (character_setting, source_prompt)) if character_setting and source_prompt else source_prompt
-    title = get('title') or get('id') or '%s_第%d行' % (sheet, row_number)
+    prompt = wrap_prompt(character_setting, source_prompt) if character_setting and source_prompt else source_prompt
+    title = get('title') or get('id') or t('row_title', sheet, row_number)
     job = dict(id=hashlib.sha256(('%s:%s' % (sheet, row_number)).encode()).hexdigest()[:16],
                sheet=sheet, row=row_number, title=title, prompt=prompt, character_setting=character_setting,
                state='queued', note='', record=None)
     try:
         if not prompt:
-            raise ValueError('缺少 prompt')
+            raise ValueError(t('missing_prompt'))
         if any(get(k).startswith('=') for k in columns):
-            raise ValueError('生成参数不支持公式，请先在 Excel 中粘贴为值。')
+            raise ValueError(t('no_formulas'))
         detected = infer_prompt(source_prompt)
         duration_text = get('duration')
         if duration_text:
-            raw = re.sub(r'\s*(秒|s|seconds?)\s*$', '', duration_text, flags=re.I)
+            raw = re.sub(r'\s*(秒钟?|s|secs?\.?|seconds?)\s*$', '', duration_text, flags=re.I)
             numeric = float(raw)
             if not numeric.is_integer():
-                raise ValueError('时长必须是整数秒')
+                raise ValueError(t('duration_whole'))
             duration = int(numeric)
         else:
             if 'duration' in detected['field_warnings']:
@@ -132,14 +164,14 @@ def build_job(sheet, row_number, columns, cells, character_setting=''):
         if not resolution:
             matches = set(re.findall(r'(?<!\d)(720p|1080p)(?![a-z0-9])', source_prompt.lower()))
             if len(matches) > 1:
-                raise ValueError('prompt 中分辨率不明确，请填写分辨率列')
+                raise ValueError(t('resolution_ambiguous'))
             resolution = next(iter(matches), '720p')
         if resolution in ('720', '1080'):
             resolution += 'p'
         job['payload'] = payload(prompt, duration, resolution, ratio)
         job['cost'] = estimate_cost(duration, resolution)
         notes = [] if duration_text else detected.get('notes', [])
-        job['note'] = '；'.join(['表格参数优先；缺省值：5秒 / 720p / 16:9'] + notes)
+        job['note'] = t('warning_sep').join([t('import_defaults')] + notes)
     except (ValueError, TaskError, OverflowError) as exc:
         job.update(state='invalid', note=str(exc), payload=None, cost=0)
     return job
@@ -162,12 +194,17 @@ def import_jobs(path, character_setting=''):
                 continue
             jobs.append(build_job(sheet, row_number, columns, cells, character_setting))
     if not jobs:
-        raise ValueError('未找到任务。需要包含“完整 Wan 3.0 Prompt”或“提示词/Prompt”表头。')
+        raise ValueError(t('no_jobs'))
     if len(jobs) > 2000:
-        raise ValueError('每批最多 2000 行，请拆分文件。')
+        raise ValueError(t('too_many_rows'))
     return jobs, skipped
 
 
 def batch_identity(jobs):
-    stable = [(j['sheet'], j['row'], j['prompt'], j['payload']) for j in jobs]
+    stable = []
+    for j in jobs:
+        request = j['payload']
+        if request and 'prompt' in request:
+            request = dict(request, prompt=identity_prompt(request['prompt']))
+        stable.append((j['sheet'], j['row'], identity_prompt(j['prompt']), request))
     return hashlib.sha256(json.dumps(stable, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:24]

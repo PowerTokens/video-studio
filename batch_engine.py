@@ -7,11 +7,29 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+from collections.abc import Mapping
 from batch_import import batch_identity
+from i18n import t
 from wan_core import Client, DATA_DIR, TaskError, atomic_json, fingerprint
 
-LABELS = {'queued': '待提交', 'running': '进行中', 'completed': '已完成', 'deferred_403': '403 待批次末重试', 'paused': '待继续查询',
-          'uncertain': '提交结果未知', 'failed': '已停止 / 失败', 'invalid': '参数有误', 'no_key': '缺少原 Key'}
+STATES = ('queued', 'running', 'completed', 'deferred_403', 'paused', 'uncertain', 'failed', 'invalid', 'no_key')
+
+
+class StateLabels(Mapping):
+    """Row state -> label in the current UI language (read at lookup time)."""
+    def __getitem__(self, state):
+        if state not in STATES:
+            raise KeyError(state)
+        return t('state_' + state)
+
+    def __iter__(self):
+        return iter(STATES)
+
+    def __len__(self):
+        return len(STATES)
+
+
+LABELS = StateLabels()
 
 
 def safe_name(value):
@@ -41,7 +59,7 @@ class BatchLease:
                 fcntl.flock(self.file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             self.file.close()
-            raise ValueError('这个批次已在另一个窗口中运行，请回到原窗口。')
+            raise ValueError(t('batch_locked'))
         return self
 
     def __exit__(self, *args):
@@ -68,7 +86,7 @@ class BatchStore:
             if self.reused:
                 self.data = json.loads(self.path.read_text(encoding='utf-8'))
                 if self.data.get('id') != self.id or len(self.data.get('jobs', [])) != len(jobs):
-                    raise ValueError('批次记录损坏，请保留记录并联系维护者，不要直接重新提交。')
+                    raise ValueError(t('batch_corrupt'))
                 self.recover()
             else:
                 self.data = dict(id=self.id, source=str(source), created=time.strftime('%Y-%m-%d %H:%M:%S'), jobs=copy.deepcopy(jobs))
@@ -96,10 +114,10 @@ class BatchStore:
                 job['record'] = record
                 if record and record.get('task_id'):
                     job['state'] = 'paused'
-                    job['note'] = '已恢复原任务 ID，仅继续查询，不重新生成。'
+                    job['note'] = t('note_recovered_id')
                 else:
                     job['state'] = 'uncertain'
-                    job['note'] = '上次提交中断且无任务 ID，请先查仪表盘；禁止自动重提。'
+                    job['note'] = t('note_interrupted')
         self.persist()
 
     def snapshot(self):
@@ -117,11 +135,11 @@ class BatchStore:
 class BatchRunner:
     def __init__(self, store, keys, concurrency=3, stop=None, notify=lambda job: None, client_factory=Client, download_limit=2):
         if not 1 <= int(concurrency) <= 8:
-            raise ValueError('并发数应为 1–8')
+            raise ValueError(t('concurrency_range'))
         if not 1 <= int(download_limit) <= 4:
-            raise ValueError('同时下载数应为 1–4')
+            raise ValueError(t('download_range'))
         if not keys:
-            raise ValueError('请先添加 API Key')
+            raise ValueError(t('add_api_key'))
         self.store, self.keys = store, list(keys)
         self.concurrency = int(concurrency)
         self.stop = stop or threading.Event()
@@ -146,10 +164,10 @@ class BatchRunner:
         if task_id:
             key = next((k for k in self.keys if fingerprint(k) == record.get('key_hash')), None)
             if not key:
-                self.update(job['id'], state='no_key', note='请添加原任务 Key：' + record.get('key_hint', ''))
+                self.update(job['id'], state='no_key', note=t('note_need_key') + record.get('key_hint', ''))
                 return
         # Persist intent BEFORE any chargeable POST. A crash cannot silently requeue it.
-        self.update(job['id'], state='running', note='继续查询原任务' if task_id else '准备提交', started=time.strftime('%Y-%m-%d %H:%M:%S'))
+        self.update(job['id'], state='running', note=t('note_resuming') if task_id else t('note_preparing'), started=time.strftime('%Y-%m-%d %H:%M:%S'))
         client = None
         try:
             def checkpoint(row):
@@ -165,13 +183,12 @@ class BatchRunner:
                 offset = index % len(self.keys)
                 pool = self.keys[offset:] + self.keys[:offset]
                 result = client.submit(pool, job['payload'], job['output'])
-            self.update(job['id'], state='completed', record=result, note='已保存：' + job['output'], elapsed=round(time.monotonic() - start, 1))
+            self.update(job['id'], state='completed', record=result, note=t('saved_to') + job['output'], elapsed=round(time.monotonic() - start, 1))
         except TaskError as exc:
             latest = getattr(client, 'record', None) or record
             if exc.kind == 'QUERY_FORBIDDEN' and (latest or {}).get('task_id'):
                 state = 'paused' if retry_deferred else 'deferred_403'
-                note = ('原 Key 再次返回 HTTP 403；已停止本轮查询，可稍后继续原任务。'
-                        if retry_deferred else str(exc))
+                note = t('note_403_again') if retry_deferred else str(exc)
                 self.update(job['id'], state=state, record=latest, error_kind=exc.kind,
                             note=note, elapsed=round(time.monotonic() - start, 1))
                 return
@@ -188,7 +205,7 @@ class BatchRunner:
             latest = getattr(client, 'record', None) or record
             state = 'paused' if (latest or {}).get('task_id') else 'uncertain'
             self.update(job['id'], state=state, record=latest,
-                        note='处理异常。请检查网络 / 文件夹权限；有任务 ID 可继续查询，无 ID 请先查仪表盘。')
+                        note=t('note_exception'))
 
     def run(self, selected=None):
         with BatchLease(self.store.path.with_suffix('.lock')):

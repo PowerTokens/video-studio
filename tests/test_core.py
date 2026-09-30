@@ -1,3 +1,6 @@
+import i18n
+i18n.set_language('zh')  # Existing tests check the original Chinese wording.
+
 import io
 import json
 import os

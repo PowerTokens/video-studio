@@ -12,7 +12,8 @@ from tkinter import ttk, filedialog, messagebox
 import uuid
 import webbrowser
 
-from studio_ui import (APP_NAME, VERSION, SUBTITLE, promotion_text, FONT, WHITE, INK, LINE, ACCENT, LOGO_FILE,
+from i18n import LANGUAGES, LANGUAGE_NAMES, get_language, is_zh, save_language, set_language, t
+from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE, INK, LINE, ACCENT, LOGO_FILE,
                        apply_theme, label, heading, card, Columns, Flow, ScrollPage, text_area,
                        load_image, header_logo_file)
 from input_helpers import parse_keys, infer_prompt
@@ -21,12 +22,17 @@ from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices,
                       TaskError, atomic_json, estimate_cost, fingerprint, payload)
 
 OFFICIAL_KEY_URL = 'https://powertokens.ai/zh-Hans/api-keys?' + UTM
+OFFICIAL_KEY_URL_EN = 'https://powertokens.ai/api-keys?' + UTM
+
+
+def official_key_url():
+    return OFFICIAL_KEY_URL if is_zh() else OFFICIAL_KEY_URL_EN
 
 
 def protect(raw, decrypt=False):
     """Windows DPAPI: saved secrets are bound to the current Windows account."""
     if os.name != 'nt':
-        raise RuntimeError('记住 Key 功能仅支持 Windows；其他系统可临时使用 Key。')
+        raise RuntimeError(t('remember_windows_only'))
     class Blob(ctypes.Structure):
         _fields_ = [('size', wintypes.DWORD), ('data', ctypes.POINTER(ctypes.c_ubyte))]
     buf = ctypes.create_string_buffer(raw)
@@ -55,6 +61,7 @@ class App:
         self.events = queue.Queue()
         self.stop = threading.Event()
         self.busy = False
+        self.prompt_timer = None
         self.scale = apply_theme(root)
         root.title('%s · v%s' % (APP_NAME, VERSION))
         # Keep image references on the instance; a missing logo must never stop the app.
@@ -69,7 +76,16 @@ class App:
         height = min(int(920 * self.scale), root.winfo_screenheight() - 90)
         root.geometry('%dx%d' % (width, height))
         root.minsize(min(860, width), min(620, height))
-        shell = ttk.Frame(root, style='Page.TFrame')
+        self.build_ui()
+        self.load_keys()
+        self.refresh_history()
+        root.after(150, self.drain)
+        root.protocol('WM_DELETE_WINDOW', self.close)
+
+    def build_ui(self):
+        """Build every widget in the current language; rebuilt in place by switch_language()."""
+        root = self.root
+        shell = self.shell = ttk.Frame(root, style='Page.TFrame')
         shell.pack(fill='both', expand=True)
         header = ttk.Frame(shell, padding=(28, 20, 28, 20))
         header.pack(fill='x')
@@ -80,52 +96,122 @@ class App:
             self.logo_label = ttk.Label(brand, image=self.logo_image)
             self.logo_label.pack(side='left', padx=(0, 12))
         ttk.Label(brand, text=APP_NAME, style='Brand.TLabel').pack(side='left')
+        # 中文 / English switch, top right. Applies immediately (the window is rebuilt in place).
+        switch = ttk.Frame(brand)
+        switch.pack(side='right')
+        self.lang_buttons = {}
+        for code in LANGUAGES:
+            button = ttk.Button(switch, text=LANGUAGE_NAMES[code], takefocus=0,
+                                style='LangActive.TButton' if code == get_language() else 'Lang.TButton',
+                                command=lambda code=code: self.switch_language(code))
+            button.pack(side='left')
+            self.lang_buttons[code] = button
         header_row = ttk.Frame(header)
         header_row.pack(fill='x', pady=(8, 0))
-        ttk.Label(header_row, text=SUBTITLE, style='Muted.TLabel').pack(side='left')
-        self.key_badge = tk.StringVar(value='尚未添加 API Key')
-        ttk.Button(header_row, text='获取 API Key ↗', style='Link.TButton',
+        ttk.Label(header_row, text=subtitle(), style='Muted.TLabel').pack(side='left')
+        self.key_badge = tk.StringVar(value=t('badge_no_key'))
+        ttk.Button(header_row, text=t('header_get_key'), style='Link.TButton',
                    command=self.open_official_keys).pack(side='right')
         ttk.Label(header_row, textvariable=self.key_badge, style='Badge.TLabel').pack(side='right', padx=12)
         tabs = ttk.Notebook(shell)
         tabs.pack(fill='both', expand=True)
         pages = [ScrollPage(tabs) for _ in range(4)]
-        for page, name in zip(pages, ('生成视频', '批量导入', '任务记录 / 恢复', 'API Key')):
-            tabs.add(page, text=name)
+        for page, name in zip(pages, ('tab_generate', 'tab_batch', 'tab_history', 'tab_keys')):
+            tabs.add(page, text=t(name))
         self.tabs, self.pages = tabs, pages
         self.build_create(pages[0].body)
         self.batch = BatchTab(self, pages[1].body)
         self.build_history(pages[2].body)
         self.build_keys(pages[3].body)
-        self.status = tk.StringVar(value='就绪 · 请先在「API Key」页添加 Key')
+        self.status = tk.StringVar(value=t('status_ready'))
         label(shell, variable=self.status, style='Page.TLabel').pack(fill='x', padx=28, pady=(8, 12))
-        self.load_keys()
+
+    def switch_language(self, lang):
+        """Switch the UI language now and remember it in settings.json."""
+        if lang == get_language():
+            return
+        if self.busy:
+            # Widgets are in use by a running task: remember the choice for the next start.
+            try:
+                save_language(lang)
+            except OSError:
+                pass
+            messagebox.showinfo(t('lang_saved_title'), t('lang_saved_busy'))
+            return
+        state = self.capture_state()
+        try:
+            set_language(lang, persist=True)
+        except OSError:
+            set_language(lang)  # Still switch for this session if the settings file is not writable.
+        if self.prompt_timer:
+            self.root.after_cancel(self.prompt_timer)
+            self.prompt_timer = None
+        self.shell.destroy()
+        for name in ('promo_label', 'cost'):  # Rebuilt below; update_cost() must not touch the old ones.
+            self.__dict__.pop(name, None)
+        self.build_ui()
+        self.restore_state(state)
+
+    def capture_state(self):
+        return dict(
+            tab=self.tabs.index('current'), prompt=self.prompt.get('1.0', 'end-1c'),
+            auto=self.auto_prompt.get(), duration=self.duration.get(), resolution=self.resolution.get(),
+            ratio=self.ratio.get(), output=self.output.get(), seed=self.seed.get(),
+            media={kind: var.get() for kind, var in self.media.items()}, log=self.log.get('1.0', 'end-1c'),
+            key_input=self.key_input.get(), show_key=self.show_key.get(), remember=self.remember.get(),
+            key_selection=self.key_list.curselection(), task_id=self.task_id.get(),
+            video_link=self.video_link.get(), batch=self.batch.export_state())
+
+    def restore_state(self, state):
+        self.auto_prompt.set(state['auto'])
+        self.prompt.insert('1.0', state['prompt'])
+        self.prompt.edit_modified(False)
+        for name in ('duration', 'resolution', 'ratio', 'output', 'seed', 'key_input', 'task_id', 'video_link'):
+            getattr(self, name).set(state[name])
+        for kind, value in state['media'].items():
+            self.media[kind].set(value)
+        self.show_key.set(state['show_key'])
+        self.key_entry.configure(show='' if state['show_key'] else '•')
+        self.remember.set(state['remember'])
+        if state['log']:
+            self.log.configure(state='normal')
+            self.log.insert('end', state['log'])
+            self.log.configure(state='disabled')
+        self.sync_keys()
+        if state['key_selection'] and state['key_selection'][0] < len(self.keys):
+            self.key_list.selection_clear(0, 'end')
+            self.key_list.selection_set(state['key_selection'][0])
+        if state['auto'] and state['prompt'].strip():
+            self.apply_prompt()
+        elif not state['auto']:
+            self.prompt_hint.set(t('hint_off'))
+        self.batch.restore_state(state['batch'])
+        self.update_cost()
         self.refresh_history()
-        root.after(150, self.drain)
-        root.protocol('WM_DELETE_WINDOW', self.close)
+        self.status.set(t('status_idle') if self.keys else t('status_ready'))
+        self.tabs.select(state['tab'])
 
     def build_create(self, frame):
-        heading(frame, '生成视频', '输入创意，调整参数，生成带原生音效的视频。')
+        heading(frame, t('gen_title'), t('gen_desc'))
         columns = Columns(frame, self.scale)
         columns.pack(fill='x')
-        prompt_box = card(columns.left, '视频描述', '用自然语言描述画面、镜头、动作与声音。')
+        prompt_box = card(columns.left, t('prompt_card'), t('prompt_card_desc'))
         self.prompt = text_area(prompt_box, height=6, undo=True)
         self.prompt.pack(fill='x', pady=(0, 12))
         self.auto_prompt = tk.BooleanVar(value=True)
-        self.prompt_hint = tk.StringVar(value='可写：20 秒、9:16 竖屏。未识别到的参数使用下方选择。')
-        ttk.Checkbutton(prompt_box, text='从提示词自动识别时长和比例', variable=self.auto_prompt,
+        self.prompt_hint = tk.StringVar(value=t('prompt_hint_default'))
+        ttk.Checkbutton(prompt_box, text=t('auto_detect'), variable=self.auto_prompt,
                         command=self.apply_prompt).pack(anchor='w')
         label(prompt_box, variable=self.prompt_hint).pack(fill='x', pady=(4, 0))
-        self.prompt_timer = None
         self.prompt.bind('<<Modified>>', self.prompt_changed)
         self.prompt.edit_modified(False)
-        params = card(columns.left, '生成参数', '自动识别优先；取消勾选后可手动修改时长与比例。')
+        params = card(columns.left, t('params_card'), t('params_card_desc'))
         row = ttk.Frame(params)
         row.pack(fill='x')
         self.duration, self.resolution, self.ratio = tk.StringVar(value='5'), tk.StringVar(value='720p'), tk.StringVar(value='16:9')
         for index, (name, var, values) in enumerate([
-                ('时长（秒）', self.duration, None), ('分辨率', self.resolution, ('720p', '1080p')),
-                ('画面比例', self.ratio, ('16:9', '9:16', '1:1'))]):
+                (t('param_duration'), self.duration, None), (t('param_resolution'), self.resolution, ('720p', '1080p')),
+                (t('param_ratio'), self.ratio, ('16:9', '9:16', '1:1'))]):
             row.columnconfigure(index, weight=1, uniform='params')
             field = ttk.Frame(row)
             field.grid(row=0, column=index, sticky='ew', padx=(0, 12 if index < 2 else 0))
@@ -136,49 +222,48 @@ class App:
         self.cost = tk.StringVar()
         label(params, variable=self.cost).pack(fill='x', pady=(12, 0))
         self.update_cost()
-        save_box = card(columns.left, '保存与生成')
-        ttk.Label(save_box, text='保存文件夹', style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
+        save_box = card(columns.left, t('save_card'))
+        ttk.Label(save_box, text=t('output_folder'), style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
         row = ttk.Frame(save_box)
         row.pack(fill='x')
         self.output = tk.StringVar(value=str(Path.home() / 'Videos' / 'PowerTokensVideoStudio'))
         ttk.Entry(row, textvariable=self.output, width=12).pack(side='left', fill='x', expand=True)
-        ttk.Button(row, text='选择…', command=self.choose_folder).pack(side='left', padx=(10, 0))
+        ttk.Button(row, text=t('browse'), command=self.choose_folder).pack(side='left', padx=(10, 0))
         actions = Flow(save_box)
         actions.pack(fill='x', pady=(12, 0))
-        self.generate_btn = ttk.Button(actions, text='生成视频', style='Accent.TButton', command=self.generate)
-        self.stop_btn = ttk.Button(actions, text='停止等待', command=self.stop_wait, state='disabled')
+        self.generate_btn = ttk.Button(actions, text=t('generate_btn'), style='Accent.TButton', command=self.generate)
+        self.stop_btn = ttk.Button(actions, text=t('stop_btn'), command=self.stop_wait, state='disabled')
         actions.schedule()
-        label(save_box, '任务仍在云端继续，可在任务记录里找回').pack(fill='x', pady=(6, 12))
+        label(save_box, t('cloud_note')).pack(fill='x', pady=(6, 12))
         self.bar = ttk.Progressbar(save_box, mode='indeterminate')
         self.bar.pack(fill='x')
-        advanced = card(columns.right, '可选素材', '填写网络可访问的图片 / 视频 / 音频链接，暂不支持本地上传；不需要可留空')
+        advanced = card(columns.right, t('media_card'), t('media_card_desc'))
         self.media = {}
-        for name, kind in [('首帧图片', 'first_frame'), ('尾帧图片', 'last_frame'),
-                           ('参考图片', 'reference_image'), ('参考视频', 'reference_video'), ('参考音频', 'reference_audio')]:
-            ttk.Label(advanced, text=name, style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
+        for kind in ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio'):
+            ttk.Label(advanced, text=t('media_' + kind), style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
             var = tk.StringVar()
             ttk.Entry(advanced, textvariable=var, width=12).pack(fill='x', pady=(0, 12))
             self.media[kind] = var
-        ttk.Label(advanced, text='随机种子（留空则随机）', style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
+        ttk.Label(advanced, text=t('seed_label'), style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
         self.seed = tk.StringVar()
         ttk.Entry(advanced, textvariable=self.seed, width=12).pack(fill='x')
-        current = card(columns.right, '当前配置')
-        label(current, 'wan3.0-video · 原生音频开启', style='Badge.TLabel').pack(fill='x')
-        label(current, '下载完成后自动保存到本地。').pack(fill='x', pady=(10, 0))
-        logs = card(frame, '任务进度')
+        current = card(columns.right, t('current_card'))
+        label(current, t('current_model'), style='Badge.TLabel').pack(fill='x')
+        label(current, t('current_saved')).pack(fill='x', pady=(10, 0))
+        logs = card(frame, t('progress_card'))
         self.log = text_area(logs, height=5, state='disabled')
         self.log.pack(fill='x')
 
     def build_history(self, frame):
-        heading(frame, '任务记录 / 恢复', '继续查询原任务并下载，不会提交新生成任务。')
-        table_card = card(frame, '任务记录', '可用 Ctrl / Shift 多选；按 Ctrl+C 复制任务 ID。')
+        heading(frame, t('history_title'), t('history_desc'))
+        table_card = card(frame, t('history_card'), t('history_card_desc'))
         table = ttk.Frame(table_card)
         table.pack(fill='both', expand=True)
         table.rowconfigure(0, weight=1)
         table.columnconfigure(0, weight=1)
         self.tree = ttk.Treeview(table, columns=('time', 'task', 'state', 'key'), show='headings', selectmode='extended', height=8)
-        for column, name, width in [('time', '创建时间', 155), ('task', '任务 ID', 350), ('state', '状态', 230), ('key', 'Key', 90)]:
-            self.tree.heading(column, text=name)
+        for column, name, width in [('time', 'col_created', 155), ('task', 'col_task', 350), ('state', 'col_state', 230), ('key', 'col_key', 90)]:
+            self.tree.heading(column, text=t(name))
             self.tree.column(column, width=width, minwidth=60)
         self.tree.grid(row=0, column=0, sticky='nsew')
         sy = ttk.Scrollbar(table, command=self.tree.yview)
@@ -190,46 +275,46 @@ class App:
         self.tree.bind('<Control-a>', self.select_all_task_rows)
         row = Flow(table_card)
         row.pack(fill='x', pady=(10, 0))
-        self.resume_btn = ttk.Button(row, text='继续查询选中任务', style='Accent.TButton', command=self.resume_selected)
-        ttk.Button(row, text='刷新', command=self.refresh_history)
-        ttk.Button(row, text='复制选中 ID', command=self.copy_selected_task_ids)
-        ttk.Button(row, text='复制全部 ID', command=self.copy_all_task_ids)
-        ttk.Button(row, text='打开视频文件夹', command=self.open_folder)
+        self.resume_btn = ttk.Button(row, text=t('resume_selected'), style='Accent.TButton', command=self.resume_selected)
+        ttk.Button(row, text=t('refresh'), command=self.refresh_history)
+        ttk.Button(row, text=t('copy_selected_ids'), command=self.copy_selected_task_ids)
+        ttk.Button(row, text=t('copy_all_ids'), command=self.copy_all_task_ids)
+        ttk.Button(row, text=t('open_folder'), command=self.open_folder)
         row.schedule()
-        box = card(frame, '恢复其他任务', '手动恢复使用 API Key 页选中的 Key，需为提交该任务的原 Key。')
+        box = card(frame, t('manual_card'), t('manual_card_desc'))
         row = ttk.Frame(box)
         row.pack(fill='x')
         self.task_id = tk.StringVar()
         ttk.Entry(row, textvariable=self.task_id, width=12).pack(side='left', fill='x', expand=True)
-        self.manual_btn = ttk.Button(row, text='查询 / 下载', command=self.resume_manual)
+        self.manual_btn = ttk.Button(row, text=t('manual_btn'), command=self.resume_manual)
         self.manual_btn.pack(side='left', padx=(10, 0))
-        link_box = card(frame, '用视频链接恢复选中任务', '先选中任务，再粘贴该视频的有效下载链接。')
+        link_box = card(frame, t('link_card'), t('link_card_desc'))
         row = ttk.Frame(link_box)
         row.pack(fill='x')
         self.video_link = tk.StringVar()
         ttk.Entry(row, textvariable=self.video_link, width=12).pack(side='left', fill='x', expand=True)
-        self.link_btn = ttk.Button(row, text='从链接续传', command=self.resume_from_link)
+        self.link_btn = ttk.Button(row, text=t('link_btn'), command=self.resume_from_link)
         self.link_btn.pack(side='left', padx=(10, 0))
-        label(frame, '停止等待或关闭窗口不会取消任务；任务仍在云端继续并可能产生费用，可在任务记录里找回。', style='Page.TLabel').pack(fill='x')
+        label(frame, t('history_footer'), style='Page.TLabel').pack(fill='x')
 
     def build_keys(self, frame):
-        heading(frame, 'API Key 管理', '添加多个 Key 供视频任务使用；Key 池仅以掩码显示。')
+        heading(frame, t('keys_title'), t('keys_desc'))
         columns = Columns(frame, self.scale)
         columns.pack(fill='x')
-        add = card(columns.left, '添加 API Key', '一次可粘贴多个 Key，用空格、逗号或分号分隔。')
+        add = card(columns.left, t('add_card'), t('add_card_desc'))
         self.key_input = tk.StringVar()
         key_row = ttk.Frame(add)
         key_row.pack(fill='x', pady=(0, 10))
         self.key_entry = ttk.Entry(key_row, textvariable=self.key_input, show='•', width=12)
         self.key_entry.pack(side='left', fill='x', expand=True)
         self.show_key = tk.BooleanVar(value=False)
-        ttk.Checkbutton(key_row, text='显示', variable=self.show_key,
+        ttk.Checkbutton(key_row, text=t('show_key'), variable=self.show_key,
                         command=lambda: self.key_entry.configure(show='' if self.show_key.get() else '•')).pack(side='left', padx=(10, 0))
         self.key_entry.bind('<Return>', lambda event: self.add_keys())
-        label(add, '直接粘贴从 PowerTokens 官网复制的 Key 即可').pack(fill='x', pady=(0, 12))
-        ttk.Button(add, text='添加到 Key 池', style='Accent.TButton', command=self.add_keys).pack(anchor='w')
-        pool = card(columns.left, 'Key 池', '生成按顺序使用 Key；只有提交被明确拒绝时才换下一个。')
-        self.key_count = tk.StringVar(value='共 0 个 Key')
+        label(add, t('paste_hint')).pack(fill='x', pady=(0, 12))
+        ttk.Button(add, text=t('add_btn'), style='Accent.TButton', command=self.add_keys).pack(anchor='w')
+        pool = card(columns.left, t('pool_card'), t('pool_card_desc'))
+        self.key_count = tk.StringVar(value=t('key_count', 0, count=0))
         label(pool, variable=self.key_count, style='Badge.TLabel').pack(anchor='w', pady=(0, 12))
         list_row = ttk.Frame(pool)
         list_row.pack(fill='x')
@@ -241,21 +326,21 @@ class App:
         scroll = ttk.Scrollbar(list_row, command=self.key_list.yview)
         scroll.pack(side='right', fill='y')
         self.key_list.configure(yscrollcommand=scroll.set)
-        ttk.Button(pool, text='移除选中 Key', command=self.remove_key).pack(anchor='w', pady=(12, 0))
-        label(pool, '不会因状态接口的 403 或网络故障自动删除 Key。').pack(fill='x', pady=(10, 0))
-        get = card(columns.right, '获取 Key', '还没有 Key？去 PowerTokens 注册即可使用。本工具目前仅支持 Wan 3.0 视频模型。')
+        ttk.Button(pool, text=t('remove_key'), command=self.remove_key).pack(anchor='w', pady=(12, 0))
+        label(pool, t('pool_note')).pack(fill='x', pady=(10, 0))
+        get = card(columns.right, t('get_card'), t('get_card_desc'))
         self.promo_label = label(get, promotion_text(), style='Badge.TLabel')
-        self.get_key_btn = ttk.Button(get, text='注册 / 获取 API Key ↗', style='Accent.TButton', command=self.open_official_keys)
+        self.get_key_btn = ttk.Button(get, text=t('get_btn'), style='Accent.TButton', command=self.open_official_keys)
         self.get_key_btn.pack(fill='x')
         self.refresh_promo()
-        label(get, '打开 PowerTokens 官网 API Key 页面').pack(fill='x', pady=(12, 0))
-        save = card(columns.right, '本机保存')
+        label(get, t('get_note')).pack(fill='x', pady=(12, 0))
+        save = card(columns.right, t('local_card'))
         self.remember = tk.BooleanVar(value=False)
-        ttk.Checkbutton(save, text='在这台电脑记住 Key', variable=self.remember, command=self.save_keys).pack(anchor='w')
-        label(save, 'Windows 账户加密', style='Badge.TLabel').pack(anchor='w', pady=(10, 14))
-        label(save, '默认只在本次运行中保留 Key。勾选后使用 Windows DPAPI 加密保存。').pack(fill='x')
+        ttk.Checkbutton(save, text=t('remember'), variable=self.remember, command=self.save_keys).pack(anchor='w')
+        label(save, t('dpapi_badge'), style='Badge.TLabel').pack(anchor='w', pady=(10, 14))
+        label(save, t('remember_note')).pack(fill='x')
         ttk.Separator(save).pack(fill='x', pady=16)
-        label(save, '任务已提交、网络超时或提交结果不明确时，不会自动重复生成。').pack(fill='x')
+        label(save, t('no_repeat_note')).pack(fill='x')
 
     def prompt_changed(self, event=None):
         if not self.prompt.edit_modified():
@@ -268,23 +353,24 @@ class App:
     def apply_prompt(self):
         self.prompt_timer = None
         if not self.auto_prompt.get():
-            self.prompt_hint.set('自动识别已关闭，使用下方手动选择的时长和比例。')
+            self.prompt_hint.set(t('hint_off'))
             return {'warnings': []}
         result = infer_prompt(self.prompt.get('1.0', 'end'))
         hints = []
         if result['duration'] is not None:
             self.duration.set(str(result['duration']))
-            hints.append('%s 秒' % result['duration'])
+            hints.append(t('hint_seconds', result['duration']))
         if result['ratio'] is not None:
             self.ratio.set(result['ratio'])
             hints.append(result['ratio'])
         if result['warnings']:
-            self.prompt_hint.set('；'.join(result['warnings']))
+            self.prompt_hint.set(t('warning_sep').join(result['warnings']))
         elif hints:
             # e.g. "已识别：16 秒 · 16:9" plus "时长根据分镜时间轴推断…" when inferred from shot ranges.
-            self.prompt_hint.set('已识别：' + ' · '.join(hints) + ''.join('。' + n for n in result.get('notes', [])))
+            self.prompt_hint.set(t('hint_detected') + ' · '.join(hints) +
+                                 ''.join(t('hint_note_sep') + n for n in result.get('notes', [])))
         else:
-            self.prompt_hint.set('未识别到明确时长或比例，使用下方当前选择。')
+            self.prompt_hint.set(t('hint_none'))
         return result
 
     def refresh_promo(self):
@@ -306,20 +392,20 @@ class App:
         try:
             resolution = self.resolution.get()
             value = estimate_cost(self.duration.get(), resolution)
-            text = '按 PT %s 价格估算：约 $%.2f（$%.2f/秒' % (PRICE_CHECKED_DATE, value, current_prices()[resolution])
+            text = t('cost_estimate', PRICE_CHECKED_DATE, value, current_prices()[resolution])
             regular = list_prices()
             if resolution in regular:
-                text += '，原价 $%.2f/秒' % regular[resolution]
-            self.cost.set(text + '）；实际扣费以平台账单为准。')
+                text += t('cost_regular', regular[resolution])
+            self.cost.set(text + t('cost_tail'))
         except ValueError:
-            self.cost.set('请填写整数时长（2–30 秒）')
+            self.cost.set(t('cost_invalid'))
 
     def open_official_keys(self):
         try:
-            if not webbrowser.open(OFFICIAL_KEY_URL):
-                messagebox.showinfo('PT 官网', OFFICIAL_KEY_URL)
+            if not webbrowser.open(official_key_url()):
+                messagebox.showinfo(t('official_site'), official_key_url())
         except OSError:
-            messagebox.showinfo('PT 官网', OFFICIAL_KEY_URL)
+            messagebox.showinfo(t('official_site'), official_key_url())
 
     def choose_folder(self):
         folder = filedialog.askdirectory()
@@ -330,8 +416,8 @@ class App:
         self.key_list.delete(0, 'end')
         for i, key in enumerate(self.keys):
             self.key_list.insert('end', '%d. ****%s' % (i + 1, key[-4:]))
-        self.key_count.set('共 %d 个 Key' % len(self.keys))
-        self.key_badge.set('已添加 %d 个 Key' % len(self.keys) if self.keys else '尚未添加 API Key')
+        self.key_count.set(t('key_count', len(self.keys), count=len(self.keys)))
+        self.key_badge.set(t('badge_keys', len(self.keys), count=len(self.keys)) if self.keys else t('badge_no_key'))
         if self.keys:
             self.key_list.selection_set(0)
 
@@ -339,11 +425,11 @@ class App:
         try:
             keys = parse_keys(self.key_input.get())
         except ValueError as exc:
-            messagebox.showerror('Key 格式', str(exc))
+            messagebox.showerror(t('key_format_title'), str(exc))
             return
         self.keys = list(dict.fromkeys(self.keys + keys))
         self.key_input.set('')
-        self.status.set('已添加 Key，当前池中共 %d 个；可前往生成视频。' % len(self.keys))
+        self.status.set(t('keys_added_status', len(self.keys), count=len(self.keys)))
         self.sync_keys()
         self.save_keys()
 
@@ -364,7 +450,7 @@ class App:
                 path.unlink(missing_ok=True)
         except Exception:
             self.remember.set(False)
-            messagebox.showerror('保存失败', '无法保存或清除 Key 文件。当前 Key 仍可在本次运行使用；请检查数据目录权限。')
+            messagebox.showerror(t('save_failed_title'), t('save_failed_body'))
 
     def load_keys(self):
         path = DATA_DIR / 'keys.json'
@@ -374,12 +460,12 @@ class App:
                 self.keys = json.loads(protect(encrypted, decrypt=True))
                 self.remember.set(True)
             except Exception:
-                messagebox.showwarning('无法读取已保存 Key', '请在 API Key 页重新添加。加密 Key 只能由原 Windows 账户读取。')
+                messagebox.showwarning(t('load_failed_title'), t('load_failed_body'))
         self.sync_keys()
 
     def selected_key(self):
         if not self.keys:
-            raise TaskError('请先在 API Key 页添加 Key')
+            raise TaskError(t('need_key'))
         selected = self.key_list.curselection()
         return self.keys[selected[0] if selected else 0]
 
@@ -397,15 +483,15 @@ class App:
             return
         try:
             if not self.keys:
-                raise TaskError('请先在 API Key 页添加 Key')
+                raise TaskError(t('need_key'))
             recognized = self.apply_prompt()
             if recognized['warnings']:
-                raise TaskError('；'.join(recognized['warnings']))
+                raise TaskError(t('warning_sep').join(recognized['warnings']))
             request = payload(self.prompt.get('1.0', 'end'), self.duration.get(), self.resolution.get(),
                 self.ratio.get(), [{'type': k, 'url': v.get().strip()} for k, v in self.media.items() if v.get().strip()], self.seed.get())
             output = self.new_output()
         except Exception as exc:
-            messagebox.showerror('请检查输入', str(exc))
+            messagebox.showerror(t('check_input'), str(exc))
             return
         keys = list(self.keys)
         self.launch(lambda client: client.submit(keys, request, output))
@@ -415,21 +501,21 @@ class App:
             return
         selected = self.tree.selection()
         if not selected:
-            messagebox.showinfo('选择任务', '请先选中一个任务。')
+            messagebox.showinfo(t('select_task_title'), t('select_task_body'))
             return
         record = self.records[selected[0]]
         try:
             if not record.get('task_id'):
-                raise TaskError('该记录未获得任务 ID，请先查平台仪表盘；取得 ID 后可手动恢复。')
+                raise TaskError(t('record_no_id'))
             key = next((k for k in self.keys if fingerprint(k) == record.get('key_hash')), None)
             if not key:
-                raise TaskError('请先添加原任务使用的 Key：' + record.get('key_hint', ''))
+                raise TaskError(t('need_original_key') + record.get('key_hint', ''))
             output = record['output']
             if Path(output).exists():
                 output = self.new_output()
             self.launch(lambda client: client.resume(key, record['task_id'], output, record))
         except Exception as exc:
-            messagebox.showerror('无法继续', str(exc))
+            messagebox.showerror(t('cannot_resume'), str(exc))
 
     def resume_manual(self):
         if self.busy:
@@ -441,29 +527,29 @@ class App:
             key, output = self.selected_key(), self.new_output()
             self.launch(lambda client: client.resume(key, task, output))
         except Exception as exc:
-            messagebox.showerror('请检查输入', str(exc))
+            messagebox.showerror(t('check_input'), str(exc))
 
     def resume_from_link(self):
         if self.busy:
             return
         selected = self.tree.selection()
         if not selected:
-            messagebox.showinfo('选择任务', '请先选中需要下载的视频任务。')
+            messagebox.showinfo(t('select_task_title'), t('select_download_body'))
             return
         try:
             record = self.records[selected[0]]
             key = next((k for k in self.keys if fingerprint(k) == record.get('key_hash')), None)
             if not key:
-                raise TaskError('请先添加原任务使用的 Key：' + record.get('key_hint', ''))
+                raise TaskError(t('need_original_key') + record.get('key_hint', ''))
             link = self.video_link.get().strip()
             if not link:
-                raise TaskError('请粘贴视频的完整 HTTPS 下载链接。')
+                raise TaskError(t('need_link'))
             output = record['output']
             if Path(output).exists():
                 output = self.new_output()
             self.launch(lambda client: client.resume_download_url(key, record['task_id'], output, link, record))
         except Exception as exc:
-            messagebox.showerror('无法从链接下载', str(exc))
+            messagebox.showerror(t('link_failed_title'), str(exc))
 
     def launch(self, operation):
         self.busy = True
@@ -474,21 +560,21 @@ class App:
         self.batch.set_busy(True)
         self.bar.start(12)
         self.tabs.select(0)
-        self.status.set('任务处理中…')
+        self.status.set(t('working'))
         def worker():
             client = Client(report=lambda text: self.events.put(('log', text)), stop=self.stop)
             try:
                 operation(client)
-                self.events.put(('done', '视频已下载完成'))
+                self.events.put(('done', t('downloaded')))
             except TaskError as exc:
                 self.events.put(('done', str(exc)))
             except Exception:
-                self.events.put(('done', '处理未完成，请检查网络和文件夹权限。已提交的任务请从记录继续查询，勿直接重复生成。'))
+                self.events.put(('done', t('unfinished')))
         threading.Thread(target=worker, daemon=True).start()
 
     def stop_wait(self):
         self.stop.set()
-        self.status.set('正在停止等待，当前网络请求结束后生效；任务仍在云端继续，可在任务记录里找回。')
+        self.status.set(t('stopping_status'))
 
     def drain(self):
         try:
@@ -523,7 +609,7 @@ class App:
             try:
                 row = json.loads(path.read_text(encoding='utf-8'))
                 self.records[path.stem] = row
-                self.tree.insert('', 'end', iid=path.stem, values=(row['created'], row.get('task_id') or '未获得 ID', row['state'], row.get('key_hint', '')))
+                self.tree.insert('', 'end', iid=path.stem, values=(row['created'], row.get('task_id') or t('no_task_id'), row['state'], row.get('key_hint', '')))
             except (OSError, ValueError, KeyError):
                 continue
         retained = [item for item in selection if item in self.records]
@@ -551,12 +637,12 @@ class App:
     def copy_task_ids_to_clipboard(self, task_ids):
         task_ids = list(dict.fromkeys(task_ids))
         if not task_ids:
-            self.status.set('没有可复制的任务 ID；请先选中表格行。')
+            self.status.set(t('nothing_to_copy'))
             return
         self.root.clipboard_clear()
         self.root.clipboard_append('\n'.join(task_ids))
         self.root.update_idletasks()
-        self.status.set('已复制 %d 个任务 ID。' % len(task_ids))
+        self.status.set(t('copied_ids', len(task_ids), count=len(task_ids)))
 
     def open_folder(self):
         selected = self.tree.selection()
@@ -565,12 +651,12 @@ class App:
         if os.name == 'nt':
             os.startfile(str(folder))
         else:
-            messagebox.showinfo('保存位置', str(folder))
+            messagebox.showinfo(t('save_location'), str(folder))
 
     def close(self):
         if self.busy:
             self.stop_wait()
-            messagebox.showinfo('正在停止', '请等待当前请求结束后再关闭。任务 ID 会保存在任务记录中；服务端任务仍可能继续。')
+            messagebox.showinfo(t('closing_title'), t('closing_body'))
             return
         self.root.destroy()
 

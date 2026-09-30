@@ -2,6 +2,17 @@
 
 All notable changes to PowerTokens Video Studio. Versions before 1.10 were released as "PowerTokens Wan".
 
+## 1.11
+
+- **English interface.** The whole app (all tabs, dialogs, status messages, batch states, the CLI and the MCP tool descriptions) is now available in English as well as Chinese. Switch with the **中文 / English** toggle in the top-right corner; it applies immediately (your prompt, keys and imported batch are kept) and is remembered in `%LOCALAPPDATA%\PowerTokensWan\settings.json`. On first launch the app uses Chinese when the Windows display language is Chinese, English otherwise. The Chinese wording is unchanged.
+- English subtitle "Wan 3.0 batch video generation"; the discount badge reads "Wan 3.0 limited-time discount until Oct 7" and still hides itself after 2026-10-07.
+- **English duration detection**: "10s", "10 sec", "10 seconds", "a ten-second clip", "total length 15s", "15 seconds total", "make a 12s video", and shot timelines such as "0-3s", "0s-3s" or "00:00-00:03". The same priority applies as before (stated total > duration at the start > other standalone duration > end of the shot timeline; clamped to 2–30 s). Timecode timelines ("00:00-00:03 …") and "0秒-3秒" style ranges now also work in Chinese prompts. Decades such as "1980s" or "the 80s" are not mistaken for durations.
+- **English spreadsheets**: batch import accepts English column headers (`Wan 3.0 Prompt` / `Prompt`, `Duration (s)` / `Duration` / `Length`, `Resolution`, `Aspect ratio` / `Ratio`, `Title` / `Name`, `ID`) and duration cells such as "8 sec". New English sample `short-drama-batch-template.xlsx`; **Save sample template…** on the Batch import tab saves the sample in the current interface language (both samples are bundled in the EXE).
+- A shared character setting written in English is added as "[Series characters] … [This episode] …"; anything containing Chinese keeps the original 【全剧固定人物设定】 labels. The batch identity is computed the same way for both, so re-importing an existing batch never resubmits finished rows.
+- Batch table columns widen to fit their headings.
+- CI: a **UI screenshots** job launches the app in both languages on the Windows runner (dummy key, throw-away data folder), captures every tab and reports any clipped button or label (`tools/capture_screenshots.py`). The build job checks that both sample spreadsheets are bundled.
+- English screenshots in README.md; the Chinese screenshots in README.zh-CN.md are refreshed for 1.11 (showing the language toggle).
+
 ## 1.10
 
 Fixes after the first 1.10 build:

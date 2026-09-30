@@ -2,17 +2,26 @@
 import csv
 import json
 from pathlib import Path
+import shutil
 import threading
 import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
+import tkinter.font as tkfont
 import uuid
-from studio_ui import heading, card, label, Columns, Flow, text_area
+from i18n import is_zh, t
+from studio_ui import heading, card, label, Columns, Flow, text_area, resource_path
 from batch_import import import_jobs
 from batch_engine import BatchStore, BatchRunner, BatchLease, LABELS
 from wan_core import DATA_DIR, PRICE_CHECKED_DATE, atomic_json, fingerprint, task_url
 
 CHARACTER_SETTING_PATH = DATA_DIR / 'batch-character-setting.json'
+# Sample spreadsheets shipped next to app.py (and bundled into the EXE); offered in the UI language.
+TEMPLATE_FILES = {'zh': '短剧批量示例模板.xlsx', 'en': 'short-drama-batch-template.xlsx'}
+
+
+def template_file():
+    return TEMPLATE_FILES['zh' if is_zh() else 'en']
 # Row text colors by job state: completed green, running blue, failed red, everything pending gray.
 STATE_COLORS = {'completed': '#1e8a4c', 'running': '#2563eb', 'failed': '#c62828', 'invalid': '#c62828',
                 'uncertain': '#c62828', 'queued': '#6b7785', 'paused': '#6b7785', 'deferred_403': '#6b7785',
@@ -34,12 +43,13 @@ class BatchTab:
         self.imported_character_setting = ''
         self.last_applied_character_setting = ''
         self.character_presets = {}
-        self.summary = tk.StringVar(value='导入 Excel 后先预览，点击开始才会提交付费生成任务。')
-        self.source = tk.StringVar(value='支持的表头：时长(秒)、分辨率、完整 Wan 3.0 Prompt；可选名称、比例。')
-        heading(frame, '批量导入视频任务', '用 Excel / CSV 一次整理分集剧情、人物设定和生成参数。')
+        self.import_info = None  # (file name, rows, character setting, reused, skipped) of the last import.
+        self.summary = tk.StringVar(value=t('batch_summary_default'))
+        self.source = tk.StringVar(value=t('batch_source_default'))
+        heading(frame, t('batch_title'), t('batch_desc'))
         columns = Columns(frame, app.scale, weights=(1, 2))
         columns.pack(fill='x')
-        setting_box = card(columns.left, '全剧人物设定', '选填，应用到每条导入的 Prompt。')
+        setting_box = card(columns.left, t('character_card'), t('character_card_desc'))
         self.character_setting = text_area(setting_box, height=5, undo=True)
         self.character_setting.pack(fill='x')
         try:
@@ -51,30 +61,36 @@ class BatchTab:
                                               if isinstance(k, str) and isinstance(v, str)}
         except (OSError, ValueError):
             pass
-        label(setting_box, '设定按表格文件记住。导入后可核对最终 Prompt；改设定需重新导入，已提交任务不会自动复用。').pack(fill='x', pady=(10, 0))
-        import_box = card(columns.left, '导入文件')
-        self.import_btn = ttk.Button(import_box, text='导入 Excel / CSV', style='Accent.TButton', command=self.import_file)
+        label(setting_box, t('character_note')).pack(fill='x', pady=(10, 0))
+        import_box = card(columns.left, t('import_card'))
+        self.import_btn = ttk.Button(import_box, text=t('import_btn'), style='Accent.TButton', command=self.import_file)
         self.import_btn.pack(fill='x')
         label(import_box, variable=self.source).pack(fill='x', pady=(12, 0))
-        output_box = card(columns.left, '保存文件夹')
+        self.template_btn = ttk.Button(import_box, text=t('template_btn'), command=self.save_template)
+        self.template_btn.pack(anchor='w', pady=(10, 0))
+        output_box = card(columns.left, t('batch_output_card'))
         ttk.Entry(output_box, textvariable=self.output, width=12).pack(fill='x')
-        ttk.Button(output_box, text='选择…', command=self.choose_folder).pack(anchor='w', pady=(10, 0))
-        task_box = card(columns.right, '任务预览', '表格列优先；比例从 prompt 识别。每条任务默认开启原生音频。')
+        ttk.Button(output_box, text=t('browse'), command=self.choose_folder).pack(anchor='w', pady=(10, 0))
+        task_box = card(columns.right, t('preview_card'), t('preview_card_desc'))
         row = Flow(task_box)
         row.pack(fill='x', pady=(0, 10))
-        for title, variable, limit in [('同时生成', self.concurrency, 8), ('同时下载', self.download_concurrency, 4)]:
+        for title, variable, limit in [(t('concurrency'), self.concurrency, 8), (t('download_concurrency'), self.download_concurrency, 4)]:
             group = ttk.Frame(row)
             ttk.Label(group, text=title, style='Muted.TLabel').pack(side='left', padx=(0, 6))
             ttk.Spinbox(group, from_=1, to=limit, width=3, textvariable=variable).pack(side='left')
         row.schedule()
-        label(task_box, 'Key 轮流分配 · 生成与下载并发独立控制').pack(fill='x', pady=(0, 12))
+        label(task_box, t('rotation_note')).pack(fill='x', pady=(0, 12))
         table = ttk.Frame(task_box)
         table.pack(fill='both', expand=True)
         table.rowconfigure(0, weight=1)
         table.columnconfigure(0, weight=1)
         self.tree = ttk.Treeview(table, columns=('row', 'duration', 'resolution', 'ratio', 'state', 'time', 'task'), show='headings', selectmode='extended', height=8)
-        for key, title, width in [('row', 'Excel 行', 70), ('duration', '秒', 50), ('resolution', '分辨率', 80), ('ratio', '比例', 65), ('state', '状态', 145), ('time', '本轮耗时', 90), ('task', '任务 ID', 300)]:
+        heading_font = tkfont.Font(font=ttk.Style(frame).lookup('Treeview.Heading', 'font') or 'TkDefaultFont')
+        for key, width in [('row', 70), ('duration', 50), ('resolution', 80), ('ratio', 65), ('state', 145), ('time', 90), ('task', 300)]:
+            title = t('bcol_' + key)
             self.tree.heading(key, text=title)
+            # Never narrower than the heading text (English headings are longer).
+            width = max(width, heading_font.measure(title) + 28)
             self.tree.column(key, width=width, minwidth=45, stretch=key in ('state', 'task'))
         self.tree.grid(row=0, column=0, sticky='nsew')
         sy = ttk.Scrollbar(table, command=self.tree.yview)
@@ -89,25 +105,65 @@ class BatchTab:
         self.tree.bind('<Control-a>', self.select_all_task_rows)
         actions = Flow(task_box)
         actions.pack(fill='x', pady=(10, 0))
-        self.start_btn = ttk.Button(actions, text='开始 / 继续全部（付费生成）', style='Accent.TButton', command=self.start_all)
-        self.selected_btn = ttk.Button(actions, text='仅开始 / 继续选中行', command=self.start_selected)
-        self.stop_btn = ttk.Button(actions, text='暂停批次', command=app.stop_wait, state='disabled')
+        self.start_btn = ttk.Button(actions, text=t('start_all'), style='Accent.TButton', command=self.start_all)
+        self.selected_btn = ttk.Button(actions, text=t('start_selected'), command=self.start_selected)
+        self.stop_btn = ttk.Button(actions, text=t('pause_batch'), command=app.stop_wait, state='disabled')
         actions.schedule()
         more = Flow(task_box)
         more.pack(fill='x', pady=(4, 10))
-        self.attach_btn = ttk.Button(more, text='关联已有任务 ID', command=self.attach_task)
-        self.retry_btn = ttk.Button(more, text='恢复选中失败行', command=self.recover_selected)
-        ttk.Button(more, text='复制选中任务 ID', command=self.copy_selected_task_ids)
-        ttk.Button(more, text='复制全部任务 ID', command=self.copy_all_task_ids)
-        ttk.Button(more, text='导出任务结果 CSV', command=self.export_csv)
+        self.attach_btn = ttk.Button(more, text=t('attach_btn'), command=self.attach_task)
+        self.retry_btn = ttk.Button(more, text=t('recover_btn'), command=self.recover_selected)
+        ttk.Button(more, text=t('copy_selected_task_ids'), command=self.copy_selected_task_ids)
+        ttk.Button(more, text=t('copy_all_task_ids'), command=self.copy_all_task_ids)
+        ttk.Button(more, text=t('export_csv'), command=self.export_csv)
         more.schedule()
         self.progress = ttk.Progressbar(task_box, maximum=1)
         self.progress.pack(fill='x', pady=8)
         label(task_box, variable=self.summary).pack(fill='x')
-        label(task_box, '暂停只停止等待，任务仍在云端继续并可能计费。并发不保证单条生成更快。').pack(fill='x', pady=(8, 0))
-        details = card(columns.right, '最终 Prompt 与任务详情')
+        label(task_box, t('pause_note')).pack(fill='x', pady=(8, 0))
+        details = card(columns.right, t('detail_card'))
         self.detail = text_area(details, height=6, state='disabled')
         self.detail.pack(fill='x')
+
+    def export_state(self):
+        """Everything the user entered or imported, so a language switch can rebuild the tab."""
+        return dict(store=self.store, jobs=self.jobs, import_info=self.import_info,
+                    imported=self.imported_character_setting, last_applied=self.last_applied_character_setting,
+                    presets=self.character_presets, setting=self.character_setting.get('1.0', 'end-1c'),
+                    output=self.output.get(), concurrency=self.concurrency.get(),
+                    download_concurrency=self.download_concurrency.get(), selection=self.tree.selection())
+
+    def restore_state(self, state):
+        self.store, self.import_info = state['store'], state['import_info']
+        self.imported_character_setting = state['imported']
+        self.last_applied_character_setting = state['last_applied']
+        self.character_presets = state['presets']
+        self.character_setting.insert('1.0', state['setting'])
+        for name in ('output', 'concurrency', 'download_concurrency'):
+            getattr(self, name).set(state[name])
+        self.jobs = {}
+        for job in state['jobs'].values():
+            self.update_job(job, summarize=False)
+        if self.import_info:
+            self.show_source()
+        if self.jobs:
+            self.summarize()
+        selection = [item for item in state['selection'] if self.tree.exists(item)]
+        if selection:
+            self.tree.selection_set(*selection)
+
+    def save_template(self):
+        name = template_file()
+        path = filedialog.asksaveasfilename(defaultextension='.xlsx', initialfile=name,
+                                            filetypes=[('Excel', '*.xlsx')])
+        if not path:
+            return
+        try:
+            shutil.copyfile(resource_path(name), path)
+        except OSError as exc:
+            messagebox.showerror(t('save_failed_title'), str(exc))
+            return
+        self.app.status.set(t('template_saved', path))
 
     def choose_folder(self):
         folder = filedialog.askdirectory()
@@ -133,7 +189,7 @@ class BatchTab:
             jobs, skipped = import_jobs(path, setting)
             store = BatchStore(jobs, self.output.get(), source=path)
         except Exception as exc:
-            messagebox.showerror('导入失败', str(exc))
+            messagebox.showerror(t('import_failed'), str(exc))
             return
         self.store = store
         self.imported_character_setting = setting
@@ -151,11 +207,16 @@ class BatchTab:
         self.tree.delete(*self.tree.get_children())
         for job in self.jobs.values():
             self.update_job(job, summarize=False)
-        suffix = ' · 已恢复本地记录，不会重提已完成任务' if store.reused else ''
-        self.source.set('%s · %d 行%s%s%s' % (Path(path).name, len(jobs),
-                        (' · 人物设定已加入每条 Prompt' if setting else ''), suffix,
-                        (' · 已跳过：' + '、'.join(skipped)) if skipped else ''))
+        self.import_info = (Path(path).name, len(jobs), bool(setting), store.reused, list(skipped))
+        self.show_source()
         self.summarize()
+
+    def show_source(self):
+        name, rows, setting, reused, skipped = self.import_info
+        suffix = t('import_reused') if reused else ''
+        self.source.set(t('import_summary', name, rows,
+                          (t('import_character') if setting else ''), suffix,
+                          (t('import_skipped') + t('list_sep').join(skipped)) if skipped else '', count=rows))
 
     def update_job(self, job, summarize=True):
         self.jobs[job['id']] = job
@@ -178,15 +239,14 @@ class BatchTab:
         amount = sum(j.get('cost', 0) for j in jobs if j['state'] == 'queued')
         self.progress.configure(maximum=max(1, len(jobs)), value=counts['completed'])
         self.summary.set(' / '.join('%s %d' % (LABELS[s], n) for s, n in counts.items() if n) +
-                         ' · 待提交任务估算 $%.2f（PT %s 公示价；实际以账单为准）' %
-                         (amount, PRICE_CHECKED_DATE))
+                         t('batch_estimate', amount, PRICE_CHECKED_DATE))
 
     def show_detail(self):
         selection = self.tree.selection()
         if not selection:
             return
         job = self.jobs[selection[0]]
-        text = '%s · 行 %s\n%s\n输出：%s\n\n%s' % (job['sheet'], job['row'], job['note'], job['output'], job['prompt'])
+        text = t('job_detail', job['sheet'], job['row'], job['note'], job['output'], job['prompt'])
         self.detail.configure(state='normal')
         self.detail.delete('1.0', 'end')
         self.detail.insert('end', text)
@@ -216,7 +276,7 @@ class BatchTab:
     def start_selected(self):
         selected = self.tree.selection()
         if not selected:
-            messagebox.showinfo('选择任务', '请在表格中选中需要处理的行；可按 Ctrl / Shift 多选。')
+            messagebox.showinfo(t('select_task_title'), t('select_rows_body'))
             return
         self.start(selected)
 
@@ -224,7 +284,7 @@ class BatchTab:
         if self.app.busy or self.store is None:
             return
         if self.character_setting.get('1.0', 'end-1c').strip() != self.imported_character_setting:
-            messagebox.showerror('人物设定已更改', '请重新导入表格，核对每行最终 Prompt 后再开始。')
+            messagebox.showerror(t('character_changed_title'), t('character_changed_body'))
             return
         try:
             runner = BatchRunner(self.store, list(self.app.keys), int(self.concurrency.get()), stop=self.app.stop,
@@ -239,7 +299,7 @@ class BatchTab:
                         self.update_job(changed)
             eligible = [j for j in self.store.snapshot() if runner.eligible(j) and (selected is None or j['id'] in selected)]
             if not eligible:
-                raise ValueError('没有可处理的任务。参数错误请修改源表；提交结果未知的任务请先查仪表盘并关联原任务 ID。')
+                raise ValueError(t('nothing_eligible'))
             # Preflight the actual saved output directories, including restored batches.
             for folder in {str(Path(j['output']).parent) for j in eligible}:
                 path = Path(folder)
@@ -248,7 +308,7 @@ class BatchTab:
                 probe.touch()
                 probe.unlink()
         except Exception as exc:
-            messagebox.showerror('无法开始', str(exc))
+            messagebox.showerror(t('cannot_start'), str(exc))
             return
         self.app.stop.clear()
         self.app.busy = True
@@ -256,13 +316,13 @@ class BatchTab:
             button.configure(state='disabled')
         self.app.stop_btn.configure(state='normal')
         self.set_busy(True)
-        self.app.status.set('批量任务处理中；可在当前页查看每行状态。')
+        self.app.status.set(t('batch_running'))
         def worker():
             try:
                 runner.run(selected)
-                text = '批次已暂停，可继续原任务。' if self.app.stop.is_set() else '本轮批量处理结束，请查看各行状态。'
+                text = t('batch_paused') if self.app.stop.is_set() else t('batch_finished')
             except Exception as exc:
-                text = '批次停止：%s。请保留任务记录并检查存储权限。' % type(exc).__name__
+                text = t('batch_crashed', type(exc).__name__)
             self.app.events.put(('done', text))
         threading.Thread(target=worker, daemon=True).start()
 
@@ -280,52 +340,52 @@ class BatchTab:
                     if job['id'] not in selected or job['state'] not in ('failed', 'no_key', 'paused'):
                         continue
                     if (job.get('record') or {}).get('task_id'):
-                        updated = self.store.update(job['id'], state='paused', note='已准备继续查询原任务，不重新提交。')
+                        updated = self.store.update(job['id'], state='paused', note=t('note_resume_ready'))
                     elif job.get('error_kind') in ('REJECTED', 'PARAM', 'AUTH'):
-                        updated = self.store.update(job['id'], state='queued', note='之前提交被明确拒绝，已重新排队；点击开始后提交新请求。')
+                        updated = self.store.update(job['id'], state='queued', note=t('note_requeued'))
                     else:
                         continue
                     self.update_job(updated)
                     count += 1
-            messagebox.showinfo('恢复结果', '已准备 %d 行。未知提交结果不会自动重排，请先查仪表盘并关联任务 ID。' % count)
+            messagebox.showinfo(t('recover_title'), t('recover_body', count, count=count))
         except Exception as exc:
-            messagebox.showerror('无法恢复', str(exc))
+            messagebox.showerror(t('cannot_recover'), str(exc))
 
     def attach_task(self):
         if self.app.busy or self.store is None:
             return
         selected = self.tree.selection()
         if len(selected) != 1:
-            messagebox.showinfo('选择任务', '请选中一行，再关联它在平台上的任务 ID。')
+            messagebox.showinfo(t('select_task_title'), t('attach_select_body'))
             return
         job = self.jobs[selected[0]]
         if job['state'] == 'completed':
-            messagebox.showinfo('任务已完成', '该行已完成。')
+            messagebox.showinfo(t('already_done_title'), t('already_done_body'))
             return
         try:
             key = self.app.selected_key()
-            task = simpledialog.askstring('关联原任务', '填写此行已有的任务 ID。将使用 API Key 页选中的原 Key，仅查询，不重新生成。')
+            task = simpledialog.askstring(t('attach_title'), t('attach_prompt'))
             if not task:
                 return
             task = task.strip()
             task_url(task)
             record = dict(local_id=uuid.uuid4().hex, task_id=task, created=time.strftime('%Y-%m-%d %H:%M:%S'),
-                          output=job['output'], state='继续查询', key_hash=fingerprint(key), key_hint='****' + key[-4:],
+                          output=job['output'], state=t('state_resuming'), key_hash=fingerprint(key), key_hint='****' + key[-4:],
                           batch_id=self.store.id, batch_job_id=job['id'])
             with BatchLease(self.store.path.with_suffix('.lock')):
                 self.store.data = json.loads(self.store.path.read_text(encoding='utf-8'))
                 current = next(j for j in self.store.snapshot() if j['id'] == job['id'])
                 if current['state'] == 'completed':
-                    raise ValueError('这个任务已经完成，请重新导入表格以刷新状态。')
-                updated = self.store.update(job['id'], record=record, state='paused', note='已关联原任务，可继续查询。')
+                    raise ValueError(t('attach_completed'))
+                updated = self.store.update(job['id'], record=record, state='paused', note=t('note_attached'))
             self.update_job(updated)
         except Exception as exc:
-            messagebox.showerror('无法关联', str(exc))
+            messagebox.showerror(t('cannot_attach'), str(exc))
 
     def export_csv(self):
         if not self.store:
             return
-        path = filedialog.asksaveasfilename(defaultextension='.csv', initialfile='批量视频结果.csv', filetypes=[('CSV', '*.csv')])
+        path = filedialog.asksaveasfilename(defaultextension='.csv', initialfile=t('export_filename'), filetypes=[('CSV', '*.csv')])
         if not path:
             return
         def safe(value):
@@ -334,9 +394,9 @@ class BatchTab:
         try:
             with open(path, 'w', encoding='utf-8-sig', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(['工作表', 'Excel行', '状态', '任务ID', '文件位置', '说明'])
+                writer.writerow(list(t('export_headers')))
                 for j in self.store.snapshot():
                     writer.writerow([safe(v) for v in [j['sheet'], j['row'], LABELS[j['state']],
                         (j.get('record') or {}).get('task_id', ''), j['output'], j['note']]])
         except OSError as exc:
-            messagebox.showerror('导出失败', str(exc))
+            messagebox.showerror(t('export_failed'), str(exc))

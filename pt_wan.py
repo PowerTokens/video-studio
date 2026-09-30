@@ -5,9 +5,10 @@ import json
 import os
 from pathlib import Path
 import sys
+from i18n import is_zh, t
 from input_helpers import parse_keys
 from wan_core import (API_BASE, Client, DATA_DIR, LIST_PRICE_USD_PER_SECOND, MODEL, PROMO_END_DATE, PRICE_CHECKED_DATE,
-                      PRICE_SOURCE_URL, promo_active,
+                      PRICE_SOURCE_URL, PRICE_SOURCE_URL_EN, promo_active,
                       TaskError, api, atomic_json, category, estimate_cost, payload)
 
 MODEL_ID = MODEL
@@ -50,7 +51,7 @@ def main():
     subs = parser.add_subparsers(dest='command', required=True)
     subs.add_parser('check')
     verify = subs.add_parser('verify')
-    verify.add_argument('--full', action='store_true', help='兼容旧参数；网络故障仍不判定 Key 失效')
+    verify.add_argument('--full', action='store_true', help=t('cli_full_help'))
     subs.add_parser('prune')
     config = subs.add_parser('config')
     config.add_argument('--add-key')
@@ -73,7 +74,7 @@ def main():
     resume = subs.add_parser('resume')
     resume.add_argument('task_id')
     resume.add_argument('-o', '--output', required=True)
-    resume.add_argument('--key-index', type=int, default=1, help='原任务 Key 在池中的序号，从 1 开始')
+    resume.add_argument('--key-index', type=int, default=1, help=t('cli_key_index_help'))
     args = parser.parse_args()
     if args.command == 'config':
         cfg = load_config()
@@ -87,7 +88,7 @@ def main():
         if args.remove_key:
             matches = [k for k in pool if k == args.remove_key or (len(args.remove_key) == 4 and k.endswith(args.remove_key))]
             if len(matches) > 1:
-                raise TaskError('多个 Key 尾号相同，请使用完整 Key 删除', 'PARAM')
+                raise TaskError(t('cli_same_suffix'), 'PARAM')
             pool = [k for k in pool if k not in matches]
         if args.add_key or args.remove_key:
             cfg['api_keys'] = pool
@@ -96,23 +97,24 @@ def main():
         return 0
     if args.command == 'estimate':
         if not 2 <= args.duration <= 30:
-            raise TaskError('时长须为 2–30 秒', 'PARAM')
+            raise TaskError(t('cli_duration_range'), 'PARAM')
         result = {'model': MODEL, 'est_cost_usd': estimate_cost(args.duration, args.resolution),
-                  'price_checked_date': PRICE_CHECKED_DATE, 'price_source': PRICE_SOURCE_URL}
+                  'price_checked_date': PRICE_CHECKED_DATE,
+                  'price_source': PRICE_SOURCE_URL if is_zh() else PRICE_SOURCE_URL_EN}
         if promo_active():
             result['list_cost_usd'] = estimate_cost(args.duration, args.resolution, LIST_PRICE_USD_PER_SECOND)
             result['promo_end_date'] = PROMO_END_DATE.isoformat()
-        result['note'] = '按 PT 当前公示单价估算；实际扣费以平台账单为准'
+        result['note'] = t('cli_estimate_note')
         emit(result)
         return 0
     if args.command == 'generate' and args.model != MODEL:
-        raise TaskError('模型仅支持 ' + MODEL, 'PARAM')
+        raise TaskError(t('cli_model_only') + MODEL, 'PARAM')
     keys = resolve_keys()
     if args.command == 'check':
         emit({'key_pool_size': len(keys), 'keys_masked': [mask_key(k) for k in keys], 'model_locked': MODEL, 'ready': bool(keys)})
         return 0 if keys else 2
     if not keys:
-        emit({'error': '请配置 API Key', 'error_type': 'AUTH'})
+        emit({'error': t('cli_need_key'), 'error_type': 'AUTH'})
         return 2
     if args.command in ('verify', 'prune'):
         results, invalid = [], []
@@ -121,19 +123,19 @@ def main():
             kind = category(code, body)
             confirmed_invalid = code == 401 and kind == 'AUTH'
             alive = True if code == 200 else (False if confirmed_invalid else None)
-            results.append({'key': mask_key(key), 'alive': alive, 'reason': 'ok' if alive else ('AUTH' if confirmed_invalid else '未能确认；保留 Key')})
+            results.append({'key': mask_key(key), 'alive': alive, 'reason': 'ok' if alive else ('AUTH' if confirmed_invalid else t('cli_unconfirmed'))})
             if confirmed_invalid:
                 invalid.append(key)
         if args.command == 'prune':
             cfg = load_config()
             cfg['api_keys'] = [k for k in cfg.get('api_keys', []) if k not in invalid]
             save_config(cfg)
-        emit({'results': results, 'note': '只移除已确认 401 失效的本地配置 Key；环境变量不会修改'})
+        emit({'results': results, 'note': t('cli_prune_note')})
         return 5 if any(r['alive'] is not True for r in results) else 0
     client = Client(report=lambda message: print(message, file=sys.stderr, flush=True))
     if args.command == 'resume':
         if not 1 <= args.key_index <= len(keys):
-            raise TaskError('Key 序号不在池中', 'PARAM')
+            raise TaskError(t('cli_key_index'), 'PARAM')
         result = client.resume(keys[args.key_index - 1], args.task_id, args.output)
     else:
         media = [{'type': name, 'url': getattr(args, name)} for name in ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio') if getattr(args, name)]
@@ -158,5 +160,5 @@ if __name__ == '__main__':
         emit({'error': str(exc), 'error_type': exc.kind, 'task_id': exc.task_id})
         sys.exit(3 if exc.kind == 'PARAM' else 4)
     except (OSError, ValueError):
-        emit({'error': '本地配置或文件读写失败。已提交的任务请从任务记录恢复。'})
+        emit({'error': t('cli_io_error')})
         sys.exit(4)

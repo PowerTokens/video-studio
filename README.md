@@ -16,8 +16,9 @@ PowerTokens Video Studio calls the Wan 3.0 video model (`wan3.0-video`) through 
 
 ## Features
 
-- **Single video**: prompt, duration (2–30 s), 720p / 1080p, 16:9 / 9:16 / 1:1, optional first/last frame and reference image / video / audio URLs, seed. Duration and ratio can be detected from the prompt (e.g. "16秒，16:9横屏…", or a shot timeline "0-5秒 … 10-16秒"). Native audio is on.
-- **Batch from Excel / CSV**: one row per clip, with bounded concurrency (1–8 generations, 1–4 downloads), per-row status colors and CSV export of results.
+- **English and Chinese interface**: switch any time with the **中文 / English** toggle in the top-right corner. On first launch the app follows your Windows display language.
+- **Single video**: prompt, duration (2–30 s), 720p / 1080p, 16:9 / 9:16 / 1:1, optional first/last frame and reference image / video / audio URLs, seed. Duration and ratio are detected from the prompt in English or Chinese: "16s, 16:9 landscape…", "total length 15s", or a shot timeline such as "0-3s … 8-12s" or "00:00-00:03 …". Native audio is on.
+- **Batch from Excel / CSV**: one row per clip, English or Chinese column headers, bounded concurrency (1–8 generations, 1–4 downloads), per-row status colors and CSV export of results.
 - **Shared character settings for episodic series**: one cast description is added in front of every episode prompt, so characters stay consistent across rows.
 - **Resume by Task ID**: every Task ID is saved before polling. Resuming only queries and downloads; it never resubmits.
 - **Resumable downloads**: `.part` files with HTTP Range, overlap and size checks.
@@ -28,24 +29,24 @@ PowerTokens Video Studio calls the Wan 3.0 video model (`wan3.0-video`) through 
 
 ## Screenshots
 
-| Generate | Batch | API Key |
+| Generate video | Batch import | API Key |
 |---|---|---|
-| ![Generate page](docs/images/screenshot-generate.png) | ![Batch page](docs/images/screenshot-batch.png) | ![API Key page](docs/images/screenshot-apikey.png) |
+| ![Generate video tab](docs/images/screenshot-generate-en.png) | ![Batch import tab](docs/images/screenshot-batch-en.png) | ![API Key tab](docs/images/screenshot-apikey-en.png) |
 
-The interface is in Chinese.
+Prefer Chinese? Click **中文** in the top-right corner. The switch applies instantly and is remembered.
 
 ## Quick start (no Python needed)
 
 1. Download `PowerTokensVideoStudio.exe` from the [Releases](../../releases/latest) page.
 2. Double-click it. The EXE is not code-signed, so Windows SmartScreen may show "Windows protected your PC". Click **More info → Run anyway**.
-3. Open the **API Key** tab, paste your PowerTokens key and click **添加到 Key 池** (add to key pool).
-4. Write a prompt on the **生成视频** (Generate) tab, or import a spreadsheet on the **批量导入** (Batch) tab.
+3. Open the **API Key** tab, paste your PowerTokens key and click **Add to key pool**.
+4. Write a prompt on the **Generate video** tab, or import a spreadsheet on the **Batch import** tab.
 
-A three-episode sample spreadsheet is included: `短剧批量示例模板.xlsx`.
+A three-episode sample spreadsheet is included in English (`short-drama-batch-template.xlsx`) and Chinese (`短剧批量示例模板.xlsx`). In the app, **Save sample template…** on the Batch import tab saves the one that matches your interface language. Columns: `Title`, `Duration (s)`, `Resolution`, `Aspect ratio`, `Wan 3.0 Prompt` (only the prompt column is required).
 
 ## Get an API key
 
-Sign up on [PowerTokens](https://powertokens.ai/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio) and create a key. The **Register / get API Key** button in the app opens the same page.
+Sign up on [PowerTokens](https://powertokens.ai/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio) and create a key. The **Sign up / Get an API key** button in the app opens the same page.
 
 ## Run from source
 
@@ -84,13 +85,16 @@ Local data lives in `%LOCALAPPDATA%\PowerTokensWan` (the folder name is kept fro
 The app keeps using the key that submitted the task and also tries the task's download endpoint. In a batch, the row is set aside and queried once more with the original key after the other rows finish. Keys are never deleted because of a 403. If it persists, check the task in the PowerTokens dashboard, then resume it later from the task history.
 
 **Generation timed out.**
-The app waits up to one hour per task, then tries one more download. The Task ID is kept either way. Open **任务记录 / 恢复** (Task history), select the task and click **继续查询选中任务** (resume). Do not generate again, or you may pay twice.
+The app waits up to one hour per task, then tries one more download. The Task ID is kept either way. Open **History / Resume**, select the task and click **Resume selected**. Do not generate again, or you may pay twice.
 
-**I clicked "停止等待" (stop waiting). Is the task cancelled?**
-No. Only the local wait stops; the task keeps running in the cloud and may be charged. Resume it from the task history.
+**I clicked "Stop waiting". Is the task cancelled?**
+No. Only the local wait stops; the task keeps running in the cloud and may be charged. Resume it from **History / Resume**.
 
-**A submission shows "提交结果未知" (result unknown).**
-The app could not confirm whether the task was created, so it will not resubmit. Look up the task in the PowerTokens dashboard and use **关联已有任务 ID** (attach Task ID) on that row.
+**A batch row shows "Result unknown".**
+The app could not confirm whether the task was created, so it will not resubmit. Look up the task in the PowerTokens dashboard and use **Link existing Task ID** on that row.
+
+**How do I change the language?**
+Click **中文** or **English** in the top-right corner. The window switches immediately and keeps your prompt, keys and imported batch; the choice is saved in `%LOCALAPPDATA%\PowerTokensWan\settings.json`.
 
 More details are in the Chinese user guide: [使用说明.md](使用说明.md). Release notes: [CHANGELOG.md](CHANGELOG.md).
 

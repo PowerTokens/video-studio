@@ -1,4 +1,7 @@
 """Native widget smoke tests; run on Windows, or opt in with PT_GUI_TESTS=1."""
+import i18n
+i18n.set_language('zh')  # Existing tests check the original Chinese wording.
+
 import os
 from pathlib import Path
 import tempfile
@@ -8,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 import datetime
+import re
 
 import app
 import batch_ui
@@ -176,3 +180,114 @@ class LogoWindowTests(unittest.TestCase):
         self.assertIsNone(gui.icon_image)
         self.assertFalse(hasattr(gui, 'logo_label'))
         self.assertEqual(gui.stop_btn.cget('text'), '停止等待')
+
+
+@unittest.skipUnless(os.name == 'nt' or os.environ.get('PT_GUI_TESTS') == '1',
+                     'Native Tk tests require Windows or PT_GUI_TESTS=1')
+class LanguageSwitchTests(unittest.TestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.settings = Path(folder.name) / 'settings.json'
+        patches = [patch.object(app, 'DATA_DIR', Path(folder.name)),
+                   patch.object(batch_ui, 'CHARACTER_SETTING_PATH', Path(folder.name) / 'characters.json'),
+                   patch.object(i18n, 'SETTINGS_PATH', self.settings),
+                   patch.object(wan_core, 'local_today', return_value=datetime.date(2026, 10, 1))]
+        for item in patches:
+            item.start()
+            self.addCleanup(item.stop)
+        i18n.set_language('zh')
+        self.addCleanup(i18n.set_language, 'zh')
+        self.root = tk.Tk()
+        self.addCleanup(self.root.destroy)
+        self.errors = []
+        self.root.report_callback_exception = lambda *args: self.errors.append(args)
+        self.addCleanup(lambda: [self.root.after_cancel(item) for item in self.root.tk.splitlist(self.root.tk.call('after', 'info'))])
+        self.root.geometry('1280x900')
+        self.gui = app.App(self.root)
+        self.root.update()
+
+    def widgets(self, parent):
+        for child in parent.winfo_children():
+            yield child
+            yield from self.widgets(child)
+
+    def texts(self):
+        return [str(w.cget('text')) for w in self.widgets(self.root)
+                if isinstance(w, (ttk.Label, ttk.Button, ttk.Checkbutton)) and str(w.cget('text'))]
+
+    def tab_names(self):
+        return [self.gui.tabs.tab(i, 'text') for i in range(4)]
+
+    def test_switch_to_english_and_back_keeps_everything(self):
+        self.gui.key_input.set('sk-test-only-one')
+        self.gui.add_keys()
+        self.gui.prompt.insert('1.0', 'Total length 12s, 9:16 vertical. 0-4s: hook; 4-12s: chase')
+        self.gui.apply_prompt()
+        self.gui.seed.set('42')
+        self.gui.tabs.select(3)
+        self.gui.switch_language('en')
+        self.root.update()
+        self.assertEqual(i18n.get_language(), 'en')
+        self.assertEqual(i18n.load_settings()['language'], 'en')
+        self.assertEqual(self.tab_names(), ['Generate video', 'Batch import', 'History / Resume', 'API Key'])
+        self.assertEqual(self.gui.tabs.index('current'), 3)
+        self.assertEqual(self.gui.keys, ['sk-test-only-one'])
+        self.assertEqual(self.gui.key_count.get(), '1 key')
+        self.assertEqual(self.gui.key_badge.get(), '1 key added')
+        self.assertIn('Total length 12s', self.gui.prompt.get('1.0', 'end'))
+        self.assertEqual((self.gui.duration.get(), self.gui.ratio.get(), self.gui.seed.get()), ('12', '9:16', '42'))
+        self.assertEqual(self.gui.prompt_hint.get(), 'Detected: 12 s · 9:16')
+        self.assertIn('$0.04/s, regular $0.10/s', self.gui.cost.get())
+        texts = self.texts()
+        self.assertIn('Wan 3.0 batch video generation', texts)
+        self.assertIn('Wan 3.0 limited-time discount until Oct 7', texts)
+        self.assertIn('Stop waiting', texts)
+        self.assertIn('Save sample template…', texts)
+        chinese = [text for text in texts if re.search('[\u4e00-\u9fff]', text) and text != '中文']
+        self.assertEqual(chinese, [])
+        self.gui.switch_language('zh')
+        self.root.update()
+        self.assertEqual(self.tab_names(), ['生成视频', '批量导入', '任务记录 / 恢复', 'API Key'])
+        self.assertIn('任务仍在云端继续，可在任务记录里找回', self.texts())
+        self.assertEqual(self.gui.key_count.get(), '共 1 个 Key')
+        self.assertEqual(self.gui.prompt_hint.get(), '已识别：12 秒 · 9:16')
+        self.assertEqual(i18n.load_settings()['language'], 'zh')
+        self.assertFalse(self.errors, self.errors)
+
+    def test_busy_switch_is_saved_for_next_start(self):
+        self.gui.busy = True
+        with patch.object(app.messagebox, 'showinfo') as info:
+            self.gui.switch_language('en')
+        info.assert_called_once()
+        self.assertEqual(i18n.get_language(), 'zh')
+        self.assertEqual(i18n.load_settings()['language'], 'en')
+        self.assertEqual(self.tab_names()[0], '生成视频')
+        self.gui.busy = False
+
+    def test_no_button_or_label_is_clipped(self):
+        for lang in ('en', 'zh'):
+            self.gui.switch_language(lang)
+            for width in (1280, 1000, 860):
+                self.root.geometry('%dx800' % width)
+                for index in range(4):
+                    self.gui.tabs.select(index)
+                    self.root.update()
+                    for widget in self.widgets(self.root):
+                        if not isinstance(widget, (ttk.Button, ttk.Checkbutton, ttk.Label)) or not widget.winfo_viewable():
+                            continue
+                        if isinstance(widget, ttk.Label) and str(widget.cget('wraplength')) not in ('', '0'):
+                            continue  # Wrapping labels reflow to the available width.
+                        self.assertGreaterEqual(widget.winfo_width(), widget.winfo_reqwidth(),
+                                                (lang, width, index, str(widget.cget('text'))))
+                        # Fully inside the window horizontally.
+                        self.assertLessEqual(widget.winfo_rootx() + widget.winfo_width(),
+                                             self.root.winfo_rootx() + self.root.winfo_width(),
+                                             (lang, width, index, str(widget.cget('text'))))
+            batch_tree = self.gui.batch.tree
+            import tkinter.font as tkfont
+            font = tkfont.Font(font=ttk.Style(self.root).lookup('Treeview.Heading', 'font'))
+            for column in batch_tree['columns']:
+                self.assertGreaterEqual(int(batch_tree.column(column, 'width')),
+                                        font.measure(batch_tree.heading(column, 'text')) + 20, (lang, column))
+        self.assertFalse(self.errors, self.errors)

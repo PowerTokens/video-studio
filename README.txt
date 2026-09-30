@@ -1,4 +1,5 @@
-PowerTokens Video Studio v1.10 - Windows desktop tool for Wan 3.0 video generation
+PowerTokens Video Studio v1.11 - Windows desktop tool for Wan 3.0 video generation
+English and Chinese interface (switch with 中文 / English in the top-right corner).
 
 Easiest: download PowerTokensVideoStudio.exe from the GitHub Releases page.
 

@@ -13,7 +13,9 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-APP_VERSION = '1.10'
+from i18n import t
+
+APP_VERSION = '1.11'
 USER_AGENT = 'PowerTokensVideoStudio/' + APP_VERSION
 DEFAULT_API_BASE = 'https://api.powertokens.ai'
 UTM = 'utm_source=github&utm_medium=oss&utm_campaign=video-studio'
@@ -25,7 +27,7 @@ def resolve_api_base(value=None):
     parsed = urllib.parse.urlsplit(value)
     if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
             or parsed.query or parsed.fragment):
-        raise ValueError('POWERTOKENS_API_BASE 必须是 HTTPS 地址，例如 %s' % DEFAULT_API_BASE)
+        raise ValueError(t('api_base_https', DEFAULT_API_BASE))
     return value
 
 
@@ -60,6 +62,7 @@ def list_prices(today=None):
 
 PRICE_CHECKED_DATE = '2026-09-30'
 PRICE_SOURCE_URL = 'https://powertokens.ai/zh-Hans/models/wan3.0-video?' + UTM
+PRICE_SOURCE_URL_EN = 'https://powertokens.ai/models/wan3.0-video?' + UTM
 DATA_DIR = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / '.local' / 'share'))) / 'PowerTokensWan'
 
 
@@ -86,7 +89,7 @@ def fingerprint(key):
 
 def task_url(task_id):
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,200}', task_id):
-        raise TaskError('任务 ID 格式不正确', 'PARAM')
+        raise TaskError(t('task_id_invalid'), 'PARAM')
     return API_BASE + '/v1/videos/' + task_id
 
 
@@ -105,7 +108,7 @@ def is_api_url(url):
 def estimate_cost(duration, resolution, prices=None, today=None):
     prices = current_prices(today) if prices is None else prices
     if resolution not in prices:
-        raise ValueError('不支持的分辨率')
+        raise ValueError(t('resolution_unsupported'))
     return round(int(duration) * prices[resolution], 3)
 
 
@@ -114,7 +117,7 @@ class SafeRedirect(urllib.request.HTTPRedirectHandler):
         # Never send API credentials to a CDN or allow an HTTPS downgrade.
         old, new = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(newurl)
         if new.scheme != 'https':
-            raise TaskError('下载重定向不是 HTTPS，已停止', 'DOWNLOAD')
+            raise TaskError(t('redirect_not_https'), 'DOWNLOAD')
         result = super().redirect_request(req, fp, code, msg, headers, newurl)
         if result is not None and (old.hostname, old.port) != (new.hostname, new.port):
             result.remove_header('Authorization')
@@ -160,20 +163,20 @@ def payload(prompt, duration=5, resolution='720p', ratio='16:9', media=None, see
     try:
         duration = int(duration)
     except (TypeError, ValueError):
-        raise TaskError('时长必须是整数', 'PARAM')
+        raise TaskError(t('duration_int'), 'PARAM')
     if not 2 <= duration <= 30:
-        raise TaskError('此工具的时长范围为 2–30 秒', 'PARAM')
+        raise TaskError(t('duration_range'), 'PARAM')
     if resolution not in ('720p', '1080p') or ratio not in ('16:9', '9:16', '1:1'):
-        raise TaskError('请选择有效的分辨率和画面比例', 'PARAM')
+        raise TaskError(t('choose_valid_params'), 'PARAM')
     media = media or []
     if not prompt.strip() and not media:
-        raise TaskError('请填写提示词或素材 URL', 'PARAM')
+        raise TaskError(t('need_prompt_or_media'), 'PARAM')
     for item in media:
         parsed = urllib.parse.urlsplit(item['url'])
         if parsed.scheme not in ('http', 'https') or not parsed.hostname:
-            raise TaskError('素材必须是可公开访问的 HTTP/HTTPS URL', 'PARAM')
+            raise TaskError(t('media_url_invalid'), 'PARAM')
         if item['type'] not in ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio'):
-            raise TaskError('素材类型无效', 'PARAM')
+            raise TaskError(t('media_type_invalid'), 'PARAM')
     result = dict(model=MODEL, prompt=prompt.strip(), seconds=str(duration), size=resolution.upper(), ratio=ratio,
                   generate_audio=True)
     if media:
@@ -182,7 +185,7 @@ def payload(prompt, duration=5, resolution='720p', ratio='16:9', media=None, see
         try:
             result['seed'] = int(seed)
         except (TypeError, ValueError):
-            raise TaskError('种子必须是整数或留空', 'PARAM')
+            raise TaskError(t('seed_invalid'), 'PARAM')
     return result
 
 
@@ -215,7 +218,7 @@ def download(url, out_path, key, stop=None, report=lambda text: None, timeout=18
     """Download with safe HTTP Range resume when the CDN supports it."""
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
-        raise TaskError('视频地址必须是有效的 HTTPS URL', 'DOWNLOAD')
+        raise TaskError(t('video_url_invalid'), 'DOWNLOAD')
     headers = {'User-Agent': USER_AGENT, 'Accept-Encoding': 'identity'}
     if is_api_url(url):
         headers['Authorization'] = 'Bearer ' + key
@@ -255,39 +258,38 @@ def download(url, out_path, key, stop=None, report=lambda text: None, timeout=18
             response = OPENER.open(req, timeout=timeout)
         except urllib.error.HTTPError as exc:
             if exc.code == 416 and offset:
-                raise TaskError('服务器不接受断点位置，已保留原下载进度。', 'DOWNLOAD')
-            raise TaskError('下载端返回 HTTP %d；任务仍可稍后继续查询。' % exc.code, 'DOWNLOAD')
+                raise TaskError(t('range_rejected'), 'DOWNLOAD')
+            raise TaskError(t('download_http', exc.code), 'DOWNLOAD')
         with response:
             status = response.status
             final_url = response.geturl() if hasattr(response, 'geturl') else url
             final_host = urllib.parse.urlsplit(final_url).hostname or parsed.hostname
             if offset:
-                report('续传诊断：请求从 %d 字节开始，%s 返回 HTTP %d。' % (range_start, final_host, status))
+                report(t('resume_diag', range_start, final_host, status))
             if offset and status == 200:
                 if final_url != url and not _direct_retry:
-                    report('下载接口返回整文件，改用最终视频地址继续已有进度。')
+                    report(t('whole_file_retry'))
                     response.close()
                     return download(final_url, out_path, key, stop, report, timeout, _direct_retry=True)
-                raise TaskError('%s 对 Range 请求返回 HTTP 200；已保留 %.1f MB 临时文件。可粘贴 OSS 下载链接直接续传。' %
-                                (final_host, offset / 1048576), 'NO_RESUME')
+                raise TaskError(t('range_ignored', final_host, offset / 1048576), 'NO_RESUME')
             content_type = response.headers.get('Content-Type', '').lower()
             if status not in (200, 206) or 'json' in content_type or 'html' in content_type:
-                raise TaskError('下载端尚未返回视频内容，已保留现有下载进度。', 'DOWNLOAD')
+                raise TaskError(t('no_video_yet'), 'DOWNLOAD')
             new_etag = response.headers.get('ETag')
             new_modified = response.headers.get('Last-Modified')
             if status == 206:
                 content_range = response.headers.get('Content-Range', '')
                 match = re.fullmatch(r'bytes (\d+)-(\d+)/(\d+)', content_range.strip(), re.I)
                 if not offset or not match or int(match.group(1)) != range_start:
-                    raise TaskError('服务器返回的续传范围不匹配，拒绝拼接损坏文件。', 'DOWNLOAD')
+                    raise TaskError(t('range_mismatch'), 'DOWNLOAD')
                 same_source = meta.get('source') == source
                 if same_source and meta.get('etag') and new_etag and meta['etag'] != new_etag:
-                    raise TaskError('视频文件版本已变化，拒绝拼接旧下载进度。', 'DOWNLOAD')
+                    raise TaskError(t('etag_changed'), 'DOWNLOAD')
                 if same_source and not meta.get('etag') and meta.get('last_modified') and new_modified and meta['last_modified'] != new_modified:
-                    raise TaskError('视频文件时间标识已变化，拒绝拼接旧下载进度。', 'DOWNLOAD')
+                    raise TaskError(t('modified_changed'), 'DOWNLOAD')
                 expected_total = int(match.group(3))
                 if meta.get('total') is not None and int(meta['total']) != expected_total:
-                    raise TaskError('视频总大小已变化，拒绝拼接旧下载进度。', 'DOWNLOAD')
+                    raise TaskError(t('size_changed'), 'DOWNLOAD')
                 mode = 'ab'
                 range_supported = True
             else:
@@ -302,12 +304,12 @@ def download(url, out_path, key, stop=None, report=lambda text: None, timeout=18
                     saved_tail = saved.read(overlap)
                 remote_tail = response.read(overlap)
                 if remote_tail != saved_tail:
-                    raise TaskError('续传处的视频内容与临时文件不同，已保留原进度，未拼接。', 'DOWNLOAD')
+                    raise TaskError(t('overlap_mismatch'), 'DOWNLOAD')
             first = response.read(64 * 1024)
             if offset == 0 and (len(first) < 12 or first[4:8] != b'ftyp'):
-                raise TaskError('下载响应不是有效的 MP4 视频，已保留原文件。', 'DOWNLOAD')
+                raise TaskError(t('not_mp4'), 'DOWNLOAD')
             if not first and expected_total and offset < expected_total:
-                raise TaskError('下载连接暂时没有返回数据，保留进度后稍后重试。', 'NETWORK')
+                raise TaskError(t('no_data'), 'NETWORK')
             same_source = meta.get('source') == source
             meta = {'source': source, 'etag': new_etag or (meta.get('etag') if same_source else None),
                     'last_modified': new_modified or (meta.get('last_modified') if same_source else None), 'total': expected_total,
@@ -321,7 +323,7 @@ def download(url, out_path, key, stop=None, report=lambda text: None, timeout=18
                 f.flush()
                 while True:
                     if stop and stop.is_set():
-                        raise TaskError('已停止等待；下载进度已保留，可稍后继续。', 'PAUSED')
+                        raise TaskError(t('download_paused'), 'PAUSED')
                     try:
                         chunk = response.read(1024 * 1024)
                     except http.client.IncompleteRead as exc:
@@ -329,15 +331,15 @@ def download(url, out_path, key, stop=None, report=lambda text: None, timeout=18
                             f.write(exc.partial)
                             received += len(exc.partial)
                             f.flush()
-                        raise TaskError('下载连接中断，已保留 %.1f MB；稍后会尝试断点续传。' % (received / 1048576), 'NETWORK')
+                        raise TaskError(t('download_dropped', received / 1048576), 'NETWORK')
                     if not chunk:
                         break
                     f.write(chunk)
                     received += len(chunk)
                     f.flush()
                     if time.monotonic() - reported >= 1:
-                        report('下载中：%.1f MB%s' % (received / 1048576,
-                               (' / %.1f MB' % (expected_total / 1048576)) if expected_total else ''))
+                        report(t('downloading', received / 1048576,
+                                 t('download_total', expected_total / 1048576) if expected_total else ''))
                         reported = time.monotonic()
         actual = part.stat().st_size
         if expected_total is not None and actual != expected_total:
@@ -347,11 +349,10 @@ def download(url, out_path, key, stop=None, report=lambda text: None, timeout=18
                 meta['range_supported'] = True
                 meta['range_check_version'] = range_check_version
                 atomic_json(meta_path, meta)
-            raise TaskError('下载连接中断，已保留 %.1f MB / %.1f MB；可继续断点续传。' %
-                            (actual / 1048576, expected_total / 1048576), 'NETWORK')
+            raise TaskError(t('download_short', actual / 1048576, expected_total / 1048576), 'NETWORK')
         with part.open('rb') as f:
             if f.read(12)[4:8] != b'ftyp':
-                raise TaskError('已下载文件的 MP4 文件头校验失败。', 'DOWNLOAD')
+                raise TaskError(t('mp4_header_failed'), 'DOWNLOAD')
         os.replace(part, out)
         meta_path.unlink(missing_ok=True)
         try:
@@ -363,8 +364,8 @@ def download(url, out_path, key, stop=None, report=lambda text: None, timeout=18
         raise
     except (OSError, TimeoutError, http.client.HTTPException) as exc:
         actual = part.stat().st_size if part.exists() else offset
-        raise TaskError('下载连接中断%s；稍后会尝试断点续传。' %
-                        (('，已保留 %.1f MB' % (actual / 1048576)) if actual else ''), 'NETWORK') from exc
+        raise TaskError(t('download_interrupted', t('download_kept', actual / 1048576) if actual else ''),
+                        'NETWORK') from exc
 
 
 
@@ -388,9 +389,9 @@ class Client:
 
     def submit(self, keys, request, out_path):
         if request.get('model') != MODEL:
-            raise TaskError('仅支持 wan3.0-video', 'PARAM')
+            raise TaskError(t('model_only'), 'PARAM')
         if not keys:
-            raise TaskError('请先添加 API Key', 'AUTH')
+            raise TaskError(t('add_api_key'), 'AUTH')
         output = Path(out_path)
         output.parent.mkdir(parents=True, exist_ok=True)
         probe = output.parent / ('.write-test-' + uuid.uuid4().hex)
@@ -399,59 +400,59 @@ class Client:
         finally:
             probe.unlink(missing_ok=True)
         self.record = dict(local_id=uuid.uuid4().hex, task_id='', created=time.strftime('%Y-%m-%d %H:%M:%S'),
-                           output=str(Path(out_path).absolute()), state='准备提交', key_hash='', key_hint='')
+                           output=str(Path(out_path).absolute()), state=t('state_preparing'), key_hash='', key_hint='')
         self.record.update(self.context)
         for index, key in enumerate(keys):
             if self.stop.is_set():
-                raise TaskError('已停止提交', 'PAUSED')
-            self.save(state='提交中', key_hash=fingerprint(key), key_hint='****' + key[-4:])
-            self.report('提交任务：Key %d/%d（****%s）' % (index + 1, len(keys), key[-4:]))
+                raise TaskError(t('submit_stopped'), 'PAUSED')
+            self.save(state=t('state_submitting'), key_hash=fingerprint(key), key_hint='****' + key[-4:])
+            self.report(t('submitting_key', index + 1, len(keys), key[-4:]))
             code, body = api('POST', API_BASE + '/v1/videos', key, request)
             task_id = body.get('id') or body.get('task_id')
             if isinstance(task_id, str) and task_id:
                 task_url(task_id)
                 # Persist before the first query so a restart can recover the same task.
-                self.report('任务 ID：' + task_id)
+                self.report(t('task_id_log') + task_id)
                 try:
-                    self.save(task_id=task_id, state='已提交')
+                    self.save(task_id=task_id, state=t('state_submitted'))
                 except OSError:
-                    raise TaskError('任务已提交，但记录保存失败。请保留任务 ID：' + task_id, 'STORAGE', task_id)
+                    raise TaskError(t('record_save_failed') + task_id, 'STORAGE', task_id)
                 return self.wait(key, task_id, out_path)
             kind = category(code, body)
             # Only explicit rejection before obtaining an ID can switch keys.
             if code in (400, 401, 402, 403, 429) and kind in ('AUTH', 'QUOTA', 'NOT_ALLOWED'):
-                self.save(state='提交被拒绝：' + kind)
-                self.report('该 Key 提交被拒绝：' + kind)
+                self.save(state=t('state_rejected') + kind)
+                self.report(t('key_rejected') + kind)
                 continue
-            self.save(state='提交结果未知，请查仪表盘')
-            raise TaskError('提交结果不确定（HTTP %s）。请先查仪表盘，勿直接重新生成，以免重复扣费。' % code, 'UNCERTAIN')
-        raise TaskError('所有 Key 均被拒绝，请检查余额和模型权限', 'REJECTED')
+            self.save(state=t('state_unknown'))
+            raise TaskError(t('submit_uncertain', code), 'UNCERTAIN')
+        raise TaskError(t('all_rejected'), 'REJECTED')
 
     def resume(self, key, task_id, out_path, record=None):
         task_url(task_id)
         self.record = dict(record) if record else dict(local_id=uuid.uuid4().hex,
             created=time.strftime('%Y-%m-%d %H:%M:%S'), task_id=task_id)
-        self.save(state='继续查询', output=str(Path(out_path).absolute()), key_hash=fingerprint(key), key_hint='****' + key[-4:])
+        self.save(state=t('state_resuming'), output=str(Path(out_path).absolute()), key_hash=fingerprint(key), key_hint='****' + key[-4:])
         return self.wait(key, task_id, out_path)
 
     def resume_download_url(self, key, task_id, out_path, video_url, record=None):
         task_url(task_id)
         parsed = urllib.parse.urlsplit(video_url)
         if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
-            raise TaskError('请粘贴有效的 HTTPS 视频下载链接。', 'PARAM', task_id)
+            raise TaskError(t('video_link_invalid'), 'PARAM', task_id)
         if is_api_url(video_url) and not key:
-            raise TaskError('PT API 下载地址需要原 API Key；OSS 视频链接可直接下载。', 'AUTH', task_id)
+            raise TaskError(t('api_link_needs_key'), 'AUTH', task_id)
         self.record = dict(record) if record else dict(local_id=uuid.uuid4().hex,
             created=time.strftime('%Y-%m-%d %H:%M:%S'), task_id=task_id)
-        changes = dict(state='从视频链接续传', output=str(Path(out_path).absolute()), download_url=video_url)
+        changes = dict(state=t('state_from_link'), output=str(Path(out_path).absolute()), download_url=video_url)
         if key:
             changes.update(key_hash=fingerprint(key), key_hint='****' + key[-4:])
         self.save(**changes)
         result = self.try_download(key, video_url, out_path)
         if result == 'ok':
             return self.record
-        self.save(state='下载待恢复；进度已保留')
-        raise TaskError(self.last_download_error or '视频链接暂时不可用；临时文件已保留。',
+        self.save(state=t('state_download_pending'))
+        raise TaskError(self.last_download_error or t('link_unavailable'),
                         'RANGE_UNSUPPORTED' if result == 'blocked' else 'DOWNLOAD', task_id)
 
     def try_download(self, key, url, out_path):
@@ -460,7 +461,7 @@ class Client:
         try:
             while not acquired:
                 if self.stop.is_set():
-                    raise TaskError('已停止等待；任务可稍后继续。', 'PAUSED')
+                    raise TaskError(t('wait_paused'), 'PAUSED')
                 acquired = self.download_slots.acquire(timeout=.5)
             size = download(url, out_path, key, self.stop, self.report)
         except TaskError as exc:
@@ -472,14 +473,14 @@ class Client:
                 return 'blocked'
             return 'retry' if exc.kind == 'NETWORK' else 'unavailable'
         except (OSError, ValueError, http.client.HTTPException) as exc:
-            self.last_download_error = '下载连接异常；保留已下载进度。'
-            self.report('下载连接异常；保留已下载进度。')
+            self.last_download_error = t('download_error')
+            self.report(t('download_error'))
             return 'retry'
         finally:
             if acquired:
                 self.download_slots.release()
-        self.save(state='已完成', bytes=size, download_source='', download_url='')
-        self.report('已保存：' + str(out_path))
+        self.save(state=t('state_done'), bytes=size, download_source='', download_url='')
+        self.report(t('saved_to') + str(out_path))
         return 'ok'
 
     def wait(self, key, task_id, out_path, wall_timeout=3600, interval=10):
@@ -489,13 +490,12 @@ class Client:
         cached_video_url = self.record.get('download_url', '')
         while True:
             if self.stop.is_set():
-                self.save(state='已停止等待')
-                raise TaskError('已停止等待；任务仍在云端继续并可能计费，可在任务记录里找回', 'PAUSED', task_id)
+                self.save(state=t('state_stopped'))
+                raise TaskError(t('stopped_cloud'), 'PAUSED', task_id)
             code, body = api('GET', url, key)
             if code == 403 and self.defer_on_403:
-                self.save(state='原 Key 查询返回 403；等待批次末尾重试')
-                raise TaskError('原 Key 查询返回 HTTP 403；暂缓此任务，批次末尾再用原 Key 查询。',
-                                'QUERY_FORBIDDEN', task_id)
+                self.save(state=t('state_403_deferred'))
+                raise TaskError(t('query_403_deferred'), 'QUERY_FORBIDDEN', task_id)
             status = str(body.get('status') or '').strip().lower()
             expired = time.monotonic() >= deadline
             ready = status in ('succeeded', 'completed', 'success')
@@ -503,12 +503,11 @@ class Client:
             query_failed = code != 200 or not status
             if query_failed:
                 query_errors += 1
-                self.report('查询失败：HTTP %s · %s · 连续 %d 次。' %
-                            (code, status or '未返回有效状态', query_errors))
+                self.report(t('query_failed', code, status or t('no_valid_status'), query_errors))
             else:
                 query_errors = 0
-                self.report('查询：HTTP %s · %s%s' % (code, status,
-                            (' · %s%%' % body['progress']) if body.get('progress') is not None else ''))
+                self.report(t('query_ok', code, status,
+                              (' · %s%%' % body['progress']) if body.get('progress') is not None else ''))
             retrying_download = False
             response_meta = body.get('metadata') or {}
             direct = response_meta.get('url') if isinstance(response_meta, dict) else None
@@ -528,34 +527,33 @@ class Client:
                 if saved_source:
                     candidates.sort(key=lambda item: download_source(item) != saved_source)
                 for download_url in candidates:
-                    self.report('从已下载位置继续…' if partial_download_source(out_path) else '开始下载视频…')
+                    self.report(t('resume_download') if partial_download_source(out_path) else t('start_download'))
                     outcome = self.try_download(key, download_url, out_path)
                     if outcome == 'ok':
                         return self.record
                     if outcome == 'blocked':
-                        self.save(state='服务器不支持安全续传；进度已保留', download_source=download_source(download_url))
-                        raise TaskError(self.last_download_error or '视频服务器未提供可用的断点续传条件，临时文件已保留。', 'RANGE_UNSUPPORTED', task_id)
+                        self.save(state=t('state_no_resume'), download_source=download_source(download_url))
+                        raise TaskError(self.last_download_error or t('no_resume'), 'RANGE_UNSUPPORTED', task_id)
                     if outcome == 'retry':
-                        self.save(state='下载中断，已保留进度；稍后续传', download_source=download_source(download_url))
+                        self.save(state=t('state_retry_later'), download_source=download_source(download_url))
                         retrying_download = True
                         break
                     # A definitive refusal can use the API content fallback. Do not
                     # switch endpoints after a network interruption: keep the partial.
             if terminal:
-                self.save(state='服务端返回失败；可再次查询')
-                raise TaskError('服务端报告 %s，/content 暂无视频。已保留任务 ID，未重新提交。' % status, 'FAILED', task_id)
+                self.save(state=t('state_failed_server'))
+                raise TaskError(t('server_failed', status), 'FAILED', task_id)
             if expired:
-                self.save(state='下载中断，进度已保留；可继续查询' if retrying_download else '等待超时；可继续查询')
-                raise TaskError('等待超时，已探测 /content，暂未取得视频。请继续查询原任务，勿直接重新生成。', 'TIMEOUT', task_id)
+                self.save(state=t('state_interrupted_resume') if retrying_download else t('state_timeout'))
+                raise TaskError(t('timeout'), 'TIMEOUT', task_id)
             if ready:
-                self.save(state='下载中断，进度已保留；继续尝试' if retrying_download else '生成完成，下载待重试')
+                self.save(state=t('state_interrupted_retry') if retrying_download else t('state_ready_retry'))
                 if not retrying_download:
-                    self.report('视频已生成，下载暂时不可用；稍后会重试。')
+                    self.report(t('ready_retry'))
             if query_failed and query_errors >= 6:
-                self.save(state='查询接口连续失败；可继续原任务')
-                raise TaskError('任务状态接口连续 %d 次无有效结果（最近 HTTP %s）；已停止本地轮询。请稍后继续原任务，或粘贴该任务的视频链接下载。' %
-                                (query_errors, code), 'QUERY_UNAVAILABLE', task_id)
+                self.save(state=t('state_query_down'))
+                raise TaskError(t('query_down', query_errors, code), 'QUERY_UNAVAILABLE', task_id)
             delay = min(60, interval * (2 ** min(query_errors - 1, 3))) if query_failed else interval
             if query_failed:
-                self.report('下次查询约 %d 秒后。' % delay)
+                self.report(t('next_query', delay))
             self.stop.wait(min(delay, max(0, deadline - time.monotonic())))

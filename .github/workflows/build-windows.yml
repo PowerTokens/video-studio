@@ -22,10 +22,45 @@ jobs:
       - name: Install PyInstaller
         run: python -m pip install "pyinstaller>=6,<7"
       - name: Build executable
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name PowerTokensVideoStudio --icon assets/logo.ico --add-data "assets;assets" app.py
+        # *.xlsx bundles both sample spreadsheets (Chinese and English) for "Save sample template…".
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name PowerTokensVideoStudio --icon assets/logo.ico --add-data "assets;assets" --add-data "*.xlsx;." app.py
+      - name: Check bundled files
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+        run: |
+          python -m PyInstaller.utils.cliutils.archive_viewer --list --recursive dist/PowerTokensVideoStudio.exe > bundle.txt
+          if (-not (Select-String -Path bundle.txt -Encoding utf8 -Pattern 'short-drama-batch-template.xlsx' -Quiet)) { throw 'English template missing from EXE' }
+          if ((Select-String -Path bundle.txt -Encoding utf8 -Pattern '\.xlsx').Count -lt 2) { throw 'Chinese template missing from EXE' }
+          if (-not (Select-String -Path bundle.txt -Pattern 'logo.png' -Quiet)) { throw 'Logo missing from EXE' }
+          Get-FileHash dist/PowerTokensVideoStudio.exe -Algorithm SHA256 | Format-List
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: PowerTokensVideoStudio-Windows
           path: dist/PowerTokensVideoStudio.exe
+          if-no-files-found: error
+
+  ui-screenshots:
+    # Launches the app in Chinese and English with a throw-away data folder and a dummy key,
+    # screenshots every tab and reports any clipped button / label (layout-<lang>.txt).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set display resolution
+        shell: pwsh
+        run: Set-DisplayResolution -Width 1920 -Height 1080 -Force
+      - name: Install Pillow
+        run: python -m pip install pillow
+      - name: Capture screenshots
+        run: python tools/capture_screenshots.py --out screenshots --lang en zh
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: screenshots/
           if-no-files-found: error

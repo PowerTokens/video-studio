@@ -14,7 +14,7 @@ if errorlevel 1 goto fail
 if errorlevel 1 goto fail
 .build-venv\Scripts\python.exe -m unittest discover -s tests -v
 if errorlevel 1 goto fail
-.build-venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name PowerTokensVideoStudio --icon assets\logo.ico --add-data "assets;assets" app.py
+.build-venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name PowerTokensVideoStudio --icon assets\logo.ico --add-data "assets;assets" --add-data "*.xlsx;." app.py
 if errorlevel 1 goto fail
 echo Done: dist\PowerTokensVideoStudio.exe
 pause

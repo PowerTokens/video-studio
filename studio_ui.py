@@ -4,17 +4,20 @@ import sys
 import tkinter as tk
 from tkinter import ttk
 
+from i18n import t
 from wan_core import APP_VERSION, promo_active
 
 APP_NAME = 'PowerTokens Video Studio'
 VERSION = APP_VERSION
-SUBTITLE = 'Wan 3.0 视频批量生成'
-# Campaign copy, used in one place only. Hidden automatically after wan_core.PROMO_END_DATE.
-PROMOTION_TEXT = 'Wan 3.0 限时折扣至 10 月 7 日'
+
+
+def subtitle():
+    return t('subtitle')
 
 
 def promotion_text(today=None):
-    return PROMOTION_TEXT if promo_active(today) else ''
+    """Campaign copy (i18n key 'promo'); hidden automatically after wan_core.PROMO_END_DATE."""
+    return t('promo') if promo_active(today) else ''
 
 
 LOGO_FILE = 'assets/logo.png'
@@ -56,6 +59,12 @@ def apply_theme(root):
               foreground=[('disabled', '#f6faf9'), ('!disabled', WHITE)],
               bordercolor=[('!disabled', ACCENT)])
     style.configure('Link.TButton', foreground='#328f83', borderwidth=0, padding=(8, 6))
+    # 中文 / English switch in the header: the active language is teal on light teal.
+    style.configure('Lang.TButton', foreground=MUTED, background=WHITE, bordercolor=LINE,
+                    lightcolor=WHITE, darkcolor=WHITE, padding=(10, 4))
+    style.configure('LangActive.TButton', foreground='#268b7e', background=PALE, bordercolor=PALE,
+                    lightcolor=PALE, darkcolor=PALE, padding=(10, 4))
+    style.map('LangActive.TButton', background=[('active', PALE)], bordercolor=[('!disabled', PALE)])
     style.configure('TEntry', fieldbackground=WHITE, padding=(10, 7), bordercolor=LINE,
                     lightcolor=WHITE, darkcolor=WHITE, insertcolor=INK)
     style.configure('TCombobox', fieldbackground=WHITE, background=WHITE, padding=(9, 7),
@@ -126,9 +135,12 @@ class Card(tk.Canvas):
             label(self.body, description).pack(fill='x', pady=(0, 14))
 
     def fit_height(self, event=None):
-        height = self.body.winfo_reqheight() + 2 * self.pad
-        if self.winfo_pixels(self.cget('height')) != height:
-            self.configure(height=height)
+        try:
+            height = self.body.winfo_reqheight() + 2 * self.pad
+            if self.winfo_pixels(self.cget('height')) != height:
+                self.configure(height=height)
+        except tk.TclError:  # Destroyed while a callback was pending (e.g. language switch).
+            pass
 
     def resize(self, event):
         self.itemconfigure(self.window, width=max(1, event.width - 2 * self.pad))
@@ -178,7 +190,11 @@ class Flow(ttk.Frame):
 
     def reflow(self):
         self.pending = None
-        width, used, row, col = self.winfo_width(), 0, 0, 0
+        try:
+            width = self.winfo_width()
+        except tk.TclError:  # Destroyed while a callback was pending (e.g. language switch).
+            return
+        used, row, col = 0, 0, 0
         for child in self.winfo_children():
             needed = child.winfo_reqwidth() + 8
             if used and used + needed > width:

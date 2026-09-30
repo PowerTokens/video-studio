@@ -1,4 +1,7 @@
 """Exercise UI submission wiring without opening a native window or using an API."""
+import i18n
+i18n.set_language('zh')  # Existing tests check the original Chinese wording.
+
 import unittest
 from unittest.mock import Mock, patch
 from app import App
