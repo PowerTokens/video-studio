@@ -2,6 +2,10 @@
 
 All notable changes to PowerTokens Video Studio. Versions before 1.10 were released as "PowerTokens Wan".
 
+## Unreleased
+
+- **MCP server works with MCP Python SDK 2.x.** SDK 2.x renamed `FastMCP` to `MCPServer` (`mcp.server.mcpserver`), so `mcp_server.py` failed to start with `ModuleNotFoundError: No module named 'mcp.server.fastmcp'` after a plain `pip install mcp`. It now uses `MCPServer` when available and falls back to `FastMCP` on 1.x; the four tools (`check_key`, `estimate_cost`, `generate_video`, `resume_video`) and their parameters are unchanged. The READMEs now say `pip install mcp` instead of pinning `mcp<2`. The desktop app and the EXE are unaffected.
+
 ## 1.11
 
 - **English interface.** The whole app (all tabs, dialogs, status messages, batch states, the CLI and the MCP tool descriptions) is now available in English as well as Chinese. Switch with the **中文 / English** toggle in the top-right corner; it applies immediately (your prompt, keys and imported batch are kept) and is remembered in `%LOCALAPPDATA%\PowerTokensWan\settings.json`. On first launch the app uses Chinese when the Windows display language is Chinese, English otherwise. The Chinese wording is unchanged.

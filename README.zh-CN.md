@@ -63,10 +63,10 @@ PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm
 
 工具说明和返回信息跟随工具的界面语言设置（中文或英文）。
 
-**环境要求：** 需在源码目录中用 Python 3.11+ 运行（EXE 不包含 MCP 服务），并安装 MCP Python SDK。该服务使用 SDK 1.x 的 `FastMCP` 接口，请安装 1.x 版本：
+**环境要求：** 需在源码目录中用 Python 3.11+ 运行（EXE 不包含 MCP 服务），并安装 MCP Python SDK（1.x 和 2.x 均可）：
 
 ```bash
-pip install "mcp<2"
+pip install mcp
 ```
 
 **API Key：** MCP 服务需要 PowerTokens API Key（[在此创建](https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio)）。通过环境变量 `POWERTOKENS_API_KEY` 传入；多个 Key 可用 `POWERTOKENS_API_KEYS`，以英文逗号分隔。两者都未设置时，使用 `python pt_wan.py config --add-key` 保存的 Key。桌面端保存的 Key 不会共享给 MCP 服务。

@@ -71,10 +71,10 @@ or `python app.py`.
 
 Tool descriptions and messages follow the app's language setting (English or Chinese).
 
-**Requirements.** Run it from the source folder with Python 3.11+ (the EXE does not include the MCP server) and install the MCP Python SDK. The server uses the SDK's 1.x `FastMCP` API, so install a 1.x release:
+**Requirements.** Run it from the source folder with Python 3.11+ (the EXE does not include the MCP server) and install the MCP Python SDK (1.x and 2.x both work):
 
 ```bash
-pip install "mcp<2"
+pip install mcp
 ```
 
 **API key.** The MCP server needs a PowerTokens API key ([create one here](https://powertokens.ai/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio)). Pass it through the `POWERTOKENS_API_KEY` environment variable, or `POWERTOKENS_API_KEYS` for a comma-separated key pool. If neither is set, the server uses the keys saved with `python pt_wan.py config --add-key`. Keys saved in the desktop app are not shared with the MCP server.
