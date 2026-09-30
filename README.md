@@ -97,6 +97,15 @@ pip install mcp
 
 Use the full path to `mcp_server.py` in your copy of this repository, and the full path to `python.exe` (or your virtualenv's Python) if `python` is not on PATH. On macOS or Linux, use `python3` and a path such as `/Users/you/video-studio/mcp_server.py`. Restart the assistant after editing the config. The key is stored in that config file, so keep it private.
 
+**Docker.** The repository also has a `Dockerfile` that runs only the MCP server over stdio (no desktop app):
+
+```bash
+docker build -t powertokens-video-studio-mcp .
+docker run -i --rm -e POWERTOKENS_API_KEY=your-powertokens-api-key -v "$PWD/videos:/videos" powertokens-video-studio-mcp
+```
+
+In an assistant config, use `"command": "docker"` with those `run` arguments (keep `-i`). Videos are saved in `/videos` inside the container, so mount a folder there and ask for output paths such as `/videos/scene1.mp4`. The server starts and lists its tools without a key; `check_key` then reports that no key is configured.
+
 Tips:
 
 - Ask for an absolute `output` path such as `C:\Videos\scene1.mp4`. Without one, the video is saved as `wan_<id>.mp4` in the server's working directory.

@@ -4,6 +4,7 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+- **Docker image and Glama listing for the MCP server.** New `Dockerfile` (Python 3.12 slim, `pip install mcp`, runs `mcp_server.py` over stdio as a non-root user; videos go to `/videos`) and `glama.json` (maintainer `PowerTokens`) so the server can be listed and checked on [Glama](https://glama.ai/mcp/servers). The server starts and lists its tools without an API key. The READMEs show how to build and run the image. The desktop app and the EXE are unaffected.
 - **MCP server works with MCP Python SDK 2.x.** SDK 2.x renamed `FastMCP` to `MCPServer` (`mcp.server.mcpserver`), so `mcp_server.py` failed to start with `ModuleNotFoundError: No module named 'mcp.server.fastmcp'` after a plain `pip install mcp`. It now uses `MCPServer` when available and falls back to `FastMCP` on 1.x; the four tools (`check_key`, `estimate_cost`, `generate_video`, `resume_video`) and their parameters are unchanged. The READMEs now say `pip install mcp` instead of pinning `mcp<2`. The desktop app and the EXE are unaffected.
 
 ## 1.11

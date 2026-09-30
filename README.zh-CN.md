@@ -89,6 +89,15 @@ pip install mcp
 
 请填写本仓库副本中 `mcp_server.py` 的完整路径；如果 `python` 不在 PATH 中，请填写 `python.exe`（或虚拟环境中 Python）的完整路径。macOS / Linux 上使用 `python3` 和类似 `/Users/you/video-studio/mcp_server.py` 的路径。修改配置后重启 AI 助手。Key 会保存在该配置文件中，请妥善保管。
 
+**Docker：** 仓库中的 `Dockerfile` 只运行 MCP 服务（stdio，不含桌面端）：
+
+```bash
+docker build -t powertokens-video-studio-mcp .
+docker run -i --rm -e POWERTOKENS_API_KEY=你的-powertokens-api-key -v "$PWD/videos:/videos" powertokens-video-studio-mcp
+```
+
+在 AI 助手配置中使用 `"command": "docker"`，参数与上面的 `run` 相同（保留 `-i`）。视频保存在容器内的 `/videos`，请挂载一个文件夹到此处，并使用 `/videos/scene1.mp4` 这样的输出路径。未配置 Key 时服务也能启动并列出工具，`check_key` 会显示尚未配置 Key。
+
 提示：
 
 - 建议让助手使用绝对路径作为 `output`，例如 `C:\Videos\scene1.mp4`；未指定时，视频会以 `wan_<id>.mp4` 保存在服务的工作目录中。

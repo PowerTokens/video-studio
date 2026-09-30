@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+.build-venv
+__pycache__
+*.pyc
+build
+dist
+docs
+tests
+tools
+assets
+*.mp4
+*.xlsx
