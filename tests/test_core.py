@@ -71,7 +71,7 @@ class Tests(unittest.TestCase):
 
     def test_id_saved_before_poll_and_no_resubmit_on_timeout(self):
         def wait(*args):
-            record = json.loads(next((self.dir / 'tasks').glob('*.json')).read_text())
+            record = json.loads(next((self.dir / 'tasks').glob('*.json')).read_text(encoding='utf-8'))
             self.assertEqual(record['task_id'], 'task_123')
             self.assertNotIn('secret-key', json.dumps(record))
             raise w.TaskError('timeout', 'TIMEOUT', 'task_123')
@@ -162,9 +162,9 @@ class Tests(unittest.TestCase):
     def test_api_base_env_override(self):
         import subprocess, sys
         code = 'import wan_core as w; print(w.API_BASE); print(w.task_url("task_1"))'
-        env = dict(os.environ, POWERTOKENS_API_BASE='https://gw.example.com')
+        env = dict(os.environ, POWERTOKENS_API_BASE='https://gw.example.com', PYTHONIOENCODING='utf-8')
         out = subprocess.run([sys.executable, '-c', code], cwd=str(Path(w.__file__).parent), env=env,
-                             capture_output=True, text=True, check=True).stdout.split()
+                             capture_output=True, text=True, encoding='utf-8', check=True).stdout.split()
         self.assertEqual(out, ['https://gw.example.com', 'https://gw.example.com/v1/videos/task_1'])
 
     def test_key_only_sent_to_configured_base(self):
@@ -181,7 +181,7 @@ class Tests(unittest.TestCase):
 
     def test_signed_link_kept_until_download_completes_then_cleared(self):
         link = 'https://oss.example.com/v.mp4?Signature=abc'
-        path = lambda: json.loads(next((self.dir / 'tasks').glob('*.json')).read_text())
+        path = lambda: json.loads(next((self.dir / 'tasks').glob('*.json')).read_text(encoding='utf-8'))
         with patch.object(w, 'download', side_effect=w.TaskError('drop', 'NETWORK')):
             with self.assertRaises(w.TaskError):
                 w.Client(data_dir=self.dir).resume_download_url('key', 'task_123', self.out, link)

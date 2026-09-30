@@ -231,7 +231,7 @@ class BatchTests(unittest.TestCase):
 
     def test_manifest_does_not_store_keys(self):
         BatchRunner(self.store, self.keys, 2, client_factory=self.factory).run([self.rows[0]['id']])
-        text = self.store.path.read_text()
+        text = self.store.path.read_text(encoding='utf-8')
         for key in self.keys:
             self.assertNotIn(key, text)
 
@@ -252,7 +252,7 @@ class BatchTests(unittest.TestCase):
         records = list((self.dir / 'tasks').glob('*.json'))
         self.assertEqual(len(records), 8)
         for path in records:
-            row = json.loads(path.read_text())
+            row = json.loads(path.read_text(encoding='utf-8'))
             self.assertEqual(row['batch_id'], self.store.id)
             self.assertEqual(row['state'], '已完成')
         self.assertTrue(all(j['record']['task_id'] for j in self.store.snapshot()))

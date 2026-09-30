@@ -13,7 +13,7 @@ class CliTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         self.config = Path(temp.name) / 'config.json'
-        self.config.write_text(json.dumps({'api_keys': ['sk-pt-example1234']}))
+        self.config.write_text(json.dumps({'api_keys': ['sk-pt-example1234']}), encoding='utf-8')
         for p in (patch.object(cli, 'CONFIG_PATH', self.config), patch.dict(os.environ, {'POWERTOKENS_API_KEYS': '', 'POWERTOKENS_API_KEY': ''})):
             p.start()
             self.addCleanup(p.stop)
@@ -56,12 +56,12 @@ class CliTests(unittest.TestCase):
         for code in (403, None, 502):
             with patch.object(cli, 'api', return_value=(code, {})):
                 self.run_cli(['prune'])
-            self.assertEqual(len(json.loads(self.config.read_text())['api_keys']), 1)
+            self.assertEqual(len(json.loads(self.config.read_text(encoding='utf-8'))['api_keys']), 1)
 
     def test_prune_removes_only_confirmed_401(self):
         with patch.object(cli, 'api', return_value=(401, {})):
             self.run_cli(['prune'])
-        self.assertEqual(json.loads(self.config.read_text())['api_keys'], [])
+        self.assertEqual(json.loads(self.config.read_text(encoding='utf-8'))['api_keys'], [])
 
     def test_rejects_wrong_model_without_network(self):
         with patch.object(cli, 'api') as api:
@@ -72,7 +72,7 @@ class CliTests(unittest.TestCase):
     def test_config_add_accepts_non_pt_key(self):
         code, body = self.run_cli(['config', '--add-key', 'Bearer sk-example5678'])
         self.assertEqual(code, 0)
-        self.assertIn('sk-example5678', json.loads(self.config.read_text())['api_keys'])
+        self.assertIn('sk-example5678', json.loads(self.config.read_text(encoding='utf-8'))['api_keys'])
         self.assertNotIn('sk-example5678', json.dumps(body))
 
     def test_cli_generation_requests_native_audio(self):
