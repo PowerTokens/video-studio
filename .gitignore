@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.build-venv/
+build/
+dist/
+*.spec
+*.part
+*.part.json
+keys.json
+cli-config.json
+.venv/
+*.mp4
+*.tmp
+.DS_Store
