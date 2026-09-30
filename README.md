@@ -58,6 +58,50 @@ Start.bat
 
 or `python app.py`.
 
+## Use with AI assistants (MCP)
+
+`mcp_server.py` is a small [MCP](https://modelcontextprotocol.io) server that lets AI assistants such as Claude Desktop and Cursor create Wan 3.0 videos for you. It uses the same engine as the desktop app (through `pt_wan.py`), so every Task ID is saved and interrupted jobs are resumed instead of resubmitted. The assistant gets four tools:
+
+| Tool | What it does |
+|---|---|
+| `check_key` | Shows how many API keys are configured (masked) and whether the server is ready. It does not contact the API. |
+| `estimate_cost` | Estimates the cost for `duration_s` (2–30, default 5) and `resolution` (`720p` or `1080p`, default `720p`). |
+| `generate_video` | Submits a `prompt` with optional `duration_s`, `resolution` and `output` path, waits for the result (up to an hour) and downloads the MP4. |
+| `resume_video` | Checks and downloads an existing task by `task_id` to `output` with its original key (`key_index`, 1-based, default 1). Nothing new is submitted. |
+
+Tool descriptions and messages follow the app's language setting (English or Chinese).
+
+**Requirements.** Run it from the source folder with Python 3.11+ (the EXE does not include the MCP server) and install the MCP Python SDK. The server uses the SDK's 1.x `FastMCP` API, so install a 1.x release:
+
+```bash
+pip install "mcp<2"
+```
+
+**API key.** The MCP server needs a PowerTokens API key ([create one here](https://powertokens.ai/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio)). Pass it through the `POWERTOKENS_API_KEY` environment variable, or `POWERTOKENS_API_KEYS` for a comma-separated key pool. If neither is set, the server uses the keys saved with `python pt_wan.py config --add-key`. Keys saved in the desktop app are not shared with the MCP server.
+
+**Configure your assistant.** Add the server to Claude Desktop (`claude_desktop_config.json`) or Cursor (`~/.cursor/mcp.json`, or `.cursor/mcp.json` in a project):
+
+```json
+{
+  "mcpServers": {
+    "powertokens-video-studio": {
+      "command": "python",
+      "args": ["C:\\path\\to\\video-studio\\mcp_server.py"],
+      "env": {
+        "POWERTOKENS_API_KEY": "your-powertokens-api-key"
+      }
+    }
+  }
+}
+```
+
+Use the full path to `mcp_server.py` in your copy of this repository, and the full path to `python.exe` (or your virtualenv's Python) if `python` is not on PATH. On macOS or Linux, use `python3` and a path such as `/Users/you/video-studio/mcp_server.py`. Restart the assistant after editing the config. The key is stored in that config file, so keep it private.
+
+Tips:
+
+- Ask for an absolute `output` path such as `C:\Videos\scene1.mp4`. Without one, the video is saved as `wan_<id>.mp4` in the server's working directory.
+- If a generation is interrupted or times out, ask the assistant to call `resume_video` with the Task ID instead of generating again, so the task is only charged once.
+
 ## Build the EXE
 
 On Windows, run `Build-EXE.bat`. It creates a build virtualenv, installs PyInstaller, runs the tests and writes `dist\PowerTokensVideoStudio.exe`, with the PowerTokens icon and the `assets` folder bundled.

@@ -50,6 +50,50 @@ PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm
 
 需要 Windows 和 Python 3.11+（安装时保留 Tcl/Tk，并勾选 “Add python.exe to PATH”），无需第三方库。双击 `Start.bat`，或运行 `python app.py`。
 
+## 在 AI 助手中使用（MCP）
+
+`mcp_server.py` 是一个小型 [MCP](https://modelcontextprotocol.io) 服务，可让 Claude Desktop、Cursor 等 AI 助手直接为你生成 Wan 3.0 视频。它与桌面端使用同一套引擎（通过 `pt_wan.py` 调用），每个任务 ID 都会保存，中断后恢复原任务而不是重新提交。AI 助手可使用四个工具：
+
+| 工具 | 作用 |
+|---|---|
+| `check_key` | 显示已配置的 API Key 数量（脱敏）以及服务是否就绪，不会访问接口。 |
+| `estimate_cost` | 按 `duration_s`（2–30 秒，默认 5）和 `resolution`（`720p` 或 `1080p`，默认 `720p`）估算费用。 |
+| `generate_video` | 提交 `prompt`，可选 `duration_s`、`resolution` 和 `output` 保存路径；等待结果（最长约 1 小时）并下载 MP4。 |
+| `resume_video` | 按 `task_id` 用原 Key（`key_index`，从 1 开始，默认 1）查询并下载已有任务到 `output`，不提交新生成。 |
+
+工具说明和返回信息跟随工具的界面语言设置（中文或英文）。
+
+**环境要求：** 需在源码目录中用 Python 3.11+ 运行（EXE 不包含 MCP 服务），并安装 MCP Python SDK。该服务使用 SDK 1.x 的 `FastMCP` 接口，请安装 1.x 版本：
+
+```bash
+pip install "mcp<2"
+```
+
+**API Key：** MCP 服务需要 PowerTokens API Key（[在此创建](https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio)）。通过环境变量 `POWERTOKENS_API_KEY` 传入；多个 Key 可用 `POWERTOKENS_API_KEYS`，以英文逗号分隔。两者都未设置时，使用 `python pt_wan.py config --add-key` 保存的 Key。桌面端保存的 Key 不会共享给 MCP 服务。
+
+**配置 AI 助手：** 在 Claude Desktop（`claude_desktop_config.json`）或 Cursor（`~/.cursor/mcp.json`，或项目内的 `.cursor/mcp.json`）中添加：
+
+```json
+{
+  "mcpServers": {
+    "powertokens-video-studio": {
+      "command": "python",
+      "args": ["C:\\path\\to\\video-studio\\mcp_server.py"],
+      "env": {
+        "POWERTOKENS_API_KEY": "your-powertokens-api-key"
+      }
+    }
+  }
+}
+```
+
+请填写本仓库副本中 `mcp_server.py` 的完整路径；如果 `python` 不在 PATH 中，请填写 `python.exe`（或虚拟环境中 Python）的完整路径。macOS / Linux 上使用 `python3` 和类似 `/Users/you/video-studio/mcp_server.py` 的路径。修改配置后重启 AI 助手。Key 会保存在该配置文件中，请妥善保管。
+
+提示：
+
+- 建议让助手使用绝对路径作为 `output`，例如 `C:\Videos\scene1.mp4`；未指定时，视频会以 `wan_<id>.mp4` 保存在服务的工作目录中。
+- 如果生成中断或超时，请让助手用任务 ID 调用 `resume_video`，而不是重新生成，这样同一任务只计费一次。
+
 ## 构建 EXE
 
 在 Windows 上运行 `Build-EXE.bat`：创建构建环境、安装 PyInstaller、运行测试，生成带 PowerTokens 图标、已打包 `assets` 目录的 `dist\PowerTokensVideoStudio.exe`。
