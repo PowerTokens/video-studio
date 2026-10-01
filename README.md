@@ -35,6 +35,88 @@ PowerTokens Video Studio calls the Wan 3.0 video model (`wan3.0-video`) through 
 
 Prefer Chinese? Click **中文** in the top-right corner. The switch applies instantly and is remembered.
 
+## Showcase
+
+All clips below were generated with Wan 3.0 through this tool, unedited except for cropping and conversion to GIF. Expand a prompt to see exactly what was submitted.
+
+<table>
+<tr>
+<td align="center" valign="top"><img src="docs/images/showcase-seal.gif" width="220" alt="Seal crashes a seaside wedding"><br><sub><b>Seal crashes a seaside wedding</b></sub></td>
+<td align="center" valign="top"><img src="docs/images/showcase-shopping.gif" width="220" alt="Golden retriever puppy grocery run"><br><sub><b>Golden retriever puppy grocery run</b></sub></td>
+<td align="center" valign="top"><img src="docs/images/showcase-canyon.gif" width="220" alt="A backyard inside a canyon"><br><sub><b>A backyard inside a canyon</b></sub></td>
+</tr>
+<tr>
+<td colspan="3" align="center" valign="top"><img src="docs/images/showcase-locker.gif" width="480" alt="Locker-room corridor dialogue (English lines, lip-sync)"><br><sub><b>Locker-room corridor dialogue (English lines, lip-sync)</b></sub></td>
+</tr>
+</table>
+
+<details>
+<summary>Prompt: Seal crashes a seaside wedding</summary>
+
+```text
+生成一段10秒、9:16竖屏、1080P、24fps的超写实短视频。整体必须像真实手机或现场设备拍到的偶发事件，不要广告片感，不要3D动画感，不要卡通质感。使用自然光、真实材质、自然运动模糊、轻微手持抖动、自动曝光变化、偶尔对焦搜索和真实环境噪音。画面模拟1990年代末到2000年代初家庭DV/VHS：低分辨率、CCD噪点、轻微隔行扫描、过曝高光、自动白平衡漂移、明显手抖。节奏：0-2秒必须立刻出现最反常画面形成钩子；2-7秒让核心行为持续升级；7-10秒完成反转或围观者反应，结尾不要淡出。 主体与事件：低清海边婚礼录像，一只海豹爬到第一排。结尾爆点：新人亲吻时它用鳍连续拍打像在鼓掌。人物和动物动作必须符合真实物理规律，比例、阴影、接触关系、重力、毛发/皮肤/衣物运动都要可信。避免字幕、避免水印、避免品牌Logo。
+```
+
+</details>
+
+<details>
+<summary>Prompt: Golden retriever puppy grocery run</summary>
+
+```text
+Subject: fluffy 6 month golden retriever puppy, tiny plain blue work apron, mini plastic kids shopping cart
+Action: walking steadily pushing cart, suddenly freeze, sniff hard repeatedly, press wet nose on frosted glass, clear drool drip slowly down chin, flatten ears back, paw reach quietly for freezer handle
+Environment: bright wide american warehouse supermarket aisle, stacked solid yellow cheese blocks inside glass freezer, blurred grocery shelves in background
+Camera: eye level with puppy, vertical frame, close tracking shot
+Motion: smooth follow movement, slow to complete stop when puppy freezes, hold static close up on drooling face for 3 seconds
+Lighting: soft even overhead supermarket fluorescent, warm gentle highlight on cheese blocks
+Texture: fluffy thick dog fur, frosted cold freezer glass, matte plastic cart, glossy drool
+Emotion: serious dutiful at first, then overwhelmed hungry craving, silly adorable embarrassment
+Style: cinematic warm realistic tiktok style, natural lighting, soft focus background
+Avoid: no text, no watermark, no logos, no brand names, no UI screenshots, no human faces
+Story: 系迷你员工围裙的小金毛正经推着儿童购物车沿货架巡走 → 路过冷柜时突然急刹停住，鼻头疯狂抽动嗅空气 → 扒住冷柜玻璃盯着码齐的芝士块，透明口水顺着下巴慢慢拉长滴落 → 耳朵唰地贴平脑袋，肉垫爪子偷偷伸向冷柜门把手
+Audio: 温柔憋笑的青年女声，前半段压着平稳语气，看见口水时破功发出轻轻噗嗤笑，背景混超市滚轮声、隐约广播白噪音，配轻快软萌钢琴小旋律
+```
+
+</details>
+
+<details>
+<summary>Prompt: Locker-room corridor dialogue (English lines, lip-sync)</summary>
+
+```text
+Cinematic 16:9 photorealistic American youth-drama scene, approximately 16 seconds long.
+
+SETTING
+Public athletic center corridor outside the locker rooms: cool fluorescent lights, painted concrete walls, metal lockers in soft background blur, wooden bench, scuffed floor, distant gym echo. Dry air, no steam, no shower. Daytime interior.
+
+CHARACTERS
+@male_lead: early 20s, handsome, damp hair freshly towel-dried, dark hoodie, sweatpants, towel over one shoulder, natural skin texture, photoreal face.
+@female_lead: early 20s, casual jacket, fitted top, full-length pants, natural skin and hair, still faintly self-conscious but composed.
+
+0-4 SECONDS
+@female_lead waits by the lockers, arms loosely crossed. Footsteps approach. @male_lead enters frame from the locker-room door, stopping a polite distance away. Eye-level medium two-shot.
+@female_lead (English, lip-synced, controlled): "Who's in the bet. Names."
+@male_lead hesitates, jaw tight, eyes flicking away then back.
+
+4-9 SECONDS
+Preserve screen direction. Subtle handheld. Shallow depth of field.
+@male_lead: "Kade. Miles. Jace. And… Tyler."
+At "Tyler," @female_lead's eyes harden; she blinks once, absorbing the insult of being wagered on.
+Background stays hallway lockers—no bathroom fixtures.
+
+9-13 SECONDS
+@female_lead (flat, quiet resolve): "Saturday. Midnight. They don't get a kiss."
+@male_lead: "What do they get."
+@female_lead's mouth almost curves—not a smile of joy, a plan: "A story. The one where their bet dies in public."
+
+13-16 SECONDS
+She walks past him down the corridor. Camera tracks her briefly, then pans to @male_lead turning after her, concerned, following at a half-step. No kiss. No shower. No intimate framing.
+
+AUDIO & STYLE
+Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue lip-synced. No music—only hallway ambience, distant gym thud, footsteps. Photoreal youth drama. No text, no watermark, no logos, no beauty filter, no CGI look.
+```
+
+</details>
+
 ## Quick start (no Python needed)
 
 1. Download `PowerTokensVideoStudio.exe` from the [Releases](../../releases/latest) page.
