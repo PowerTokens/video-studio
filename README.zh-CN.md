@@ -78,6 +78,15 @@ Audio: 温柔憋笑的青年女声，前半段压着平稳语气，看见口水�
 </details>
 
 <details>
+<summary>提示词：峡谷里的后院</summary>
+
+```text
+10-second vertical photorealistic cinematic construction timelapse. A narrow canyon surrounded by towering red rock walls is transformed into a hidden backyard retreat. Real builders carry timber through the canyon, construct a raised deck, pergola, small plunge pool, stone fire pit and outdoor seating between the cliffs. Water fills the pool as sunset illuminates the canyon walls. Final shot: the builder sits beside the pool while warm light reflects off the red rocks. Sound design: timber impacts, drilling, stone placement, water pouring, fire crackling and canyon wind. No narration, no music. Final text: "Would you build a backyard inside a canyon?"
+```
+
+</details>
+
+<details>
 <summary>提示词：更衣室走廊对白（英文台词、口型同步）</summary>
 
 ```text
