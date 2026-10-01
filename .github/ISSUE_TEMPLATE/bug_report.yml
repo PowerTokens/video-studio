@@ -1,0 +1,64 @@
+name: Bug report
+description: Something in Video Studio doesn't work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+
+        **Please blur or remove your API key and any Task IDs** in text, screenshots and logs before posting. We will never ask for your full key.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in the window title, e.g. v1.11.
+      placeholder: v1.11
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How do you run it?
+      options:
+        - EXE (PowerTokensVideoStudio.exe)
+        - From source (Start.bat / python app.py)
+        - CLI (pt_wan.py)
+        - MCP server (mcp_server.py)
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Windows and Python version
+      description: Python version only when running from source (`python --version`).
+      placeholder: Windows 11 23H2, Python 3.12.4
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected and what happened instead. Include the exact error text if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the Generate video tab
+        2. Enter a prompt and choose 10 s, 720p, 16:9
+        3. Click Generate
+        4. See error
+  - type: textarea
+    id: details
+    attributes:
+      label: Prompt, settings, screenshots or logs
+      description: For generation problems, add the prompt and settings. Remember to blur API keys and Task IDs.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I removed or blurred all API keys and Task IDs.
+          required: true
+        - label: I'm using the latest release, or I mentioned my version above.

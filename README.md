@@ -255,3 +255,5 @@ Tests use mocked responses and never call the real API. GUI tests run on Windows
 MIT, see [LICENSE](LICENSE).
 
 Questions and feedback: [Discord](https://discord.gg/JtgtRdhJVS) or [Issues](../../issues).
+
+Contributing: see [CONTRIBUTING.md](CONTRIBUTING.md).

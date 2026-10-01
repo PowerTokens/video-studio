@@ -4,10 +4,13 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+- **Community files.** Added `CONTRIBUTING.md` (bug reports, running from source on Windows, tests, pull requests), `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `SECURITY.md` (private reporting, keeping API keys out of public posts), issue forms for bugs and feature requests with links to Discord and the docs, and a pull request template.
+- **README showcase.** A gallery of sample clips with the prompts that produced them.
+- **README: using the MCP server with AI assistants.** Setup for Claude Desktop and Cursor, the four tools, and how API keys are passed.
 - **Docker image and Glama listing for the MCP server.** New `Dockerfile` (Python 3.12 slim, `pip install mcp`, runs `mcp_server.py` over stdio as a non-root user; videos go to `/videos`) and `glama.json` (maintainer `PowerTokens`) so the server can be listed and checked on [Glama](https://glama.ai/mcp/servers). The server starts and lists its tools without an API key. The READMEs show how to build and run the image. The desktop app and the EXE are unaffected.
 - **MCP server works with MCP Python SDK 2.x.** SDK 2.x renamed `FastMCP` to `MCPServer` (`mcp.server.mcpserver`), so `mcp_server.py` failed to start with `ModuleNotFoundError: No module named 'mcp.server.fastmcp'` after a plain `pip install mcp`. It now uses `MCPServer` when available and falls back to `FastMCP` on 1.x; the four tools (`check_key`, `estimate_cost`, `generate_video`, `resume_video`) and their parameters are unchanged. The READMEs now say `pip install mcp` instead of pinning `mcp<2`. The desktop app and the EXE are unaffected.
 
-## 1.11
+## [1.11](https://github.com/PowerTokens/video-studio/releases/tag/v1.11) - 2026-09-30
 
 - **English interface.** The whole app (all tabs, dialogs, status messages, batch states, the CLI and the MCP tool descriptions) is now available in English as well as Chinese. Switch with the **中文 / English** toggle in the top-right corner; it applies immediately (your prompt, keys and imported batch are kept) and is remembered in `%LOCALAPPDATA%\PowerTokensWan\settings.json`. On first launch the app uses Chinese when the Windows display language is Chinese, English otherwise. The Chinese wording is unchanged.
 - English subtitle "Wan 3.0 batch video generation"; the discount badge reads "Wan 3.0 limited-time discount until Oct 7" and still hides itself after 2026-10-07.
@@ -18,7 +21,7 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 - CI: a **UI screenshots** job launches the app in both languages on the Windows runner (dummy key, throw-away data folder), captures every tab and reports any clipped button or label (`tools/capture_screenshots.py`). The build job checks that both sample spreadsheets are bundled.
 - English screenshots in README.md; the Chinese screenshots in README.zh-CN.md are refreshed for 1.11 (showing the language toggle).
 
-## 1.10
+## [1.10](https://github.com/PowerTokens/video-studio/releases/tag/v1.10) - 2026-09-30
 
 Fixes after the first 1.10 build:
 
@@ -37,6 +40,7 @@ Fixes after the first 1.10 build:
 - Default output folder for new videos is `Videos\PowerTokensVideoStudio`. The data folder `%LOCALAPPDATA%\PowerTokensWan` is unchanged, so existing task records and saved keys keep working.
 - Wording: "停止等待" replaces "停止本地等待"; the media note mentions image / video / audio links.
 - Added MIT license, English and Chinese READMEs, and a rewritten user guide.
+- Tests read and write files as UTF-8, so the suite passes on Windows.
 
 ## 1.9
 

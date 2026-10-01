@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest an idea or improvement for Video Studio.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! Please don't include API keys or Task IDs in your request.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: Describe your use case or the problem this would solve.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How you imagine it working in the app, CLI or MCP server.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: Anything you've tried or considered.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, example prompts or links.

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question on Discord
+    url: https://discord.gg/JtgtRdhJVS
+    about: Usage questions, prompt tips and quick help from the community.
+  - name: PowerTokens documentation
+    url: https://docs.powertokens.ai
+    about: API keys, models, pricing and account questions.
+  - name: Report a security issue privately
+    url: https://github.com/PowerTokens/video-studio/blob/main/SECURITY.md
+    about: Please email security issues instead of opening a public issue.
