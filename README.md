@@ -257,3 +257,5 @@ MIT, see [LICENSE](LICENSE).
 Questions and feedback: [Discord](https://discord.gg/JtgtRdhJVS) or [Issues](../../issues).
 
 Contributing: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Created by [@uselesssoso](https://github.com/uselesssoso) for [PowerTokens](https://powertokens.ai).
