@@ -223,7 +223,7 @@ Costs are charged by PowerTokens per second of video and depend on resolution. T
 
 Local data lives in `%LOCALAPPDATA%\PowerTokensWan` (the folder name is kept from earlier versions so existing records keep working).
 
-## FAQ
+## Troubleshooting
 
 **The status query returns HTTP 403.**
 The app keeps using the key that submitted the task and also tries the task's download endpoint. In a batch, the row is set aside and queried once more with the original key after the other rows finish. Keys are never deleted because of a 403. If it persists, check the task in the PowerTokens dashboard, then resume it later from the task history.
@@ -241,6 +241,36 @@ The app could not confirm whether the task was created, so it will not resubmit.
 Click **中文** or **English** in the top-right corner. The window switches immediately and keeps your prompt, keys and imported batch; the choice is saved in `%LOCALAPPDATA%\PowerTokensWan\settings.json`.
 
 More details are in the Chinese user guide: [使用说明.md](使用说明.md). Release notes: [CHANGELOG.md](CHANGELOG.md).
+
+## FAQ
+
+### What is PowerTokens Video Studio?
+
+PowerTokens Video Studio is a free, open-source (MIT) Windows desktop app for generating many AI videos at once with Alibaba's Wan 3.0 model (`wan3.0-video`) through the PowerTokens API. It adds batch import from Excel / CSV, resume by Task ID and protection against double charges. It currently supports the Wan 3.0 video model only.
+
+### Can I batch-generate Wan videos from a spreadsheet?
+
+Yes. On the **Batch import** tab, load an Excel or CSV file with one row per clip; only the `Wan 3.0 Prompt` column is required, and English or Chinese headers both work. Rows run with 1–8 concurrent generations, and you can export the results to CSV.
+
+### How do I keep characters consistent across episodes of an AI short drama?
+
+Fill in the shared character settings: one cast description is added in front of every episode prompt, so the same characters appear in every row. The included three-episode sample spreadsheet shows the format.
+
+### If a Wan 3.0 generation is interrupted, will I be charged twice?
+
+No, as long as you resume instead of generating again. Every Task ID is saved before polling, and resuming only queries and downloads the existing task. A new key is tried only when a submission is explicitly rejected before any Task ID exists; timeouts and 5xx errors are never retried automatically.
+
+### Can Claude Desktop, Cursor or other AI assistants generate Wan 3.0 videos with it?
+
+Yes. `mcp_server.py` is an MCP server, also [listed on Glama](https://glama.ai/mcp/servers/PowerTokens/video-studio), that gives MCP-compatible assistants such as Claude Desktop and Cursor four tools: `check_key`, `estimate_cost`, `generate_video` and `resume_video`. Run it from source with Python 3.11+ and `pip install mcp`, or with the included `Dockerfile` (see [Use with AI assistants (MCP)](#use-with-ai-assistants-mcp)).
+
+### Does it run on macOS or Linux?
+
+The desktop app and the EXE are Windows only. The MCP server also runs on macOS and Linux with Python 3.11+, or in Docker on any system.
+
+### How do I get a PowerTokens API key, and how is Wan 3.0 billed?
+
+Sign up on [PowerTokens](https://powertokens.ai/api-keys?utm_source=github&utm_medium=readme&utm_campaign=faq) and create a key; one key works for every model on the platform, and you can pay by credit card or PayPal ([quickstart](https://docs.powertokens.ai/en/guides/powertokens-quickstart?utm_source=github&utm_medium=readme&utm_campaign=faq)). Wan 3.0 is charged per second of video, depending on resolution; the [Wan 3.0 API reference](https://docs.powertokens.ai/en/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=readme&utm_campaign=faq) documents the underlying API.
 
 ## Development
 

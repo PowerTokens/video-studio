@@ -215,7 +215,7 @@ PowerTokens 按视频秒数计费，价格与分辨率有关。工具按界面�
 
 本机数据位于 `%LOCALAPPDATA%\PowerTokensWan`（沿用旧版目录名，已有记录可继续使用）。
 
-## 常见问题
+## 故障排查
 
 **状态查询返回 HTTP 403？**
 工具会继续用提交该任务的原 Key 查询，并尝试任务的下载地址。批量时该行先暂缓，其余行处理完后再用原 Key 查询一次。工具不会因 403 删除 Key。若持续出现，请在 PowerTokens 控制台查看该任务，稍后从任务记录继续。
@@ -230,6 +230,36 @@ PowerTokens 按视频秒数计费，价格与分辨率有关。工具按界面�
 工具无法确认任务是否已创建，因此不会自动重新提交。请在 PowerTokens 控制台找到该任务 ID，选中该行后点击「关联已有任务 ID」。
 
 完整说明见 [使用说明.md](使用说明.md)，版本历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 常见问题
+
+### PowerTokens Video Studio 是什么？
+
+PowerTokens Video Studio 是一款免费开源（MIT）的 Windows 桌面工具，通过 PowerTokens API 调用阿里巴巴 Wan 3.0 视频模型（`wan3.0-video`）批量生成 AI 视频，支持 Excel / CSV 批量导入、按任务 ID 恢复，并避免重复扣费。目前仅支持 Wan 3.0 视频模型。
+
+### 可以用 Excel 表格批量生成 Wan 视频吗？
+
+可以。在「批量导入」页导入 Excel 或 CSV 文件，一行对应一条视频；只有 `Wan 3.0 Prompt` 提示词列是必填的，中英文表头均可识别。生成并发可设为 1–8，结果可导出为 CSV。
+
+### 做 AI 短剧时，如何让多集的人物保持一致？
+
+填写全剧人物设定：同一段人物设定会自动加在每集提示词前面，让每一行都使用相同的角色。附带的三集示例表格可以直接参考格式。
+
+### Wan 3.0 生成中断了，会重复扣费吗？
+
+只要选择恢复而不是重新生成，就不会。轮询前会先保存任务 ID，恢复时只查询和下载原任务；只有在尚未获得任务 ID 且提交被明确拒绝时才会换 Key，超时和 5xx 错误都不会自动重试。
+
+### 能在 Claude Desktop、Cursor 等 AI 助手里生成 Wan 3.0 视频吗？
+
+可以。`mcp_server.py` 是一个 MCP 服务（已[收录于 Glama](https://glama.ai/mcp/servers/PowerTokens/video-studio)），为 Claude Desktop、Cursor 等支持 MCP 的助手提供 `check_key`、`estimate_cost`、`generate_video` 和 `resume_video` 四个工具。可在源码目录用 Python 3.11+ 并执行 `pip install mcp` 后运行，也可使用仓库中的 `Dockerfile`（详见[在 AI 助手中使用（MCP）](#在-ai-助手中使用mcp)）。
+
+### 支持 macOS 或 Linux 吗？
+
+桌面端和 EXE 仅支持 Windows。MCP 服务可在 macOS、Linux 上用 Python 3.11+ 运行，也可在任意系统上通过 Docker 运行。
+
+### 如何获取 PowerTokens API Key？Wan 3.0 怎么计费？
+
+在 [PowerTokens](https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=readme&utm_campaign=faq) 注册并创建 Key 即可，一个 Key 可调用平台上的所有模型，支持信用卡或 PayPal 付款（见[快速入门](https://docs.powertokens.ai/zh-Hans/guides/powertokens-quickstart?utm_source=github&utm_medium=readme&utm_campaign=faq)）。Wan 3.0 按视频秒数计费，价格与分辨率有关；接口说明见 [Wan 3.0 API 文档](https://docs.powertokens.ai/zh-Hans/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=readme&utm_campaign=faq)。
 
 ## 开发
 
