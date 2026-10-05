@@ -215,6 +215,27 @@ ZH = {
     'storyboard_ok': '已生成 %d 条，可在预览表中编辑后开始。',
     'storyboard_http_error': '文本模型请求失败（%s）。',
     'cli_storyboard_help': '把剧本拆成批量提示词表格',
+    'chain_enable': '接上一段',
+    'chain_enable_desc': '开启后按表格顺序依次生成，用上一段最后一帧作为下一段首帧；下载仍可并发。需要本机 ffmpeg（或可选 imageio-ffmpeg）。',
+    'chain_extracting': '正在提取上一段最后一帧…',
+    'chain_frame_ready': '已接上上一段最后一帧，准备提交',
+    'chain_prev_not_ready': '上一段尚未完成，无法接上一段。',
+    'chain_no_video': '找不到上一段视频文件。',
+    'chain_need_ffmpeg': '接上一段需要本机安装 ffmpeg（并加入 PATH），或安装可选依赖 imageio-ffmpeg。',
+    'chain_extract_failed': '无法从视频提取最后一帧。',
+    'chain_frame_too_large': '提取的帧过大，请换较短视频或较低分辨率后再试。',
+    'chain_wan_data_url_note': 'Wan 文档要求公网图片 URL；当前尝试用内嵌图片提交，需用真实 Key 验证。',
+    'chain_unsupported': '该模型不支持首帧图生视频，已跳过接上一段。',
+    'onboard_title': '三步开始',
+    'onboard_step1': '① 在「API Key」页添加 PowerTokens Key',
+    'onboard_step2': '② 用自然语言写一段视频描述',
+    'onboard_step3': '③ 点击「生成视频」',
+    'onboard_get_key': '获取 API Key',
+    'onboard_goto_keys': '去添加 Key',
+    'onboard_dismiss': '知道了，不再显示',
+    'onboard_help': '使用提示',
+    'onboard_signup_url': 'https://powertokens.ai/zh-Hans/signup?utm_source=github&utm_medium=app&utm_campaign=video-studio',
+
     'template_saved': '示例模板已保存：%s',
     'batch_output_card': '保存文件夹',
     'preview_card': '任务预览',
@@ -491,7 +512,7 @@ EN = {
     'prompt_hint_default': 'Tip: try “8 seconds, product close-up, soft light”. Anything not in the prompt uses the settings below.',
     'auto_detect': 'Detect duration and aspect ratio from the prompt',
     'params_card': 'Settings',
-    'params_card_desc': 'Detected values come first. Untick detection to set duration and ratio yourself.',
+    'params_card_desc': 'Values detected from the prompt come first. Untick to set duration and ratio yourself.',
     'param_duration': 'Duration (s)',
     'param_resolution': 'Resolution',
     'param_ratio': 'Aspect ratio',
@@ -502,7 +523,7 @@ EN = {
     'stop_btn': 'Stop waiting',
     'cloud_note': 'Tasks keep running in the cloud. Pick them up anytime in History.',
     'media_card': 'Advanced',
-    'media_card_desc': 'First/last frame, reference media and seed. Public links only; leave blank if unused.',
+    'media_card_desc': 'First/last frame, references and seed. Use public URLs (or data URLs where supported); leave blank if unused.',
     'media_first_frame': 'First frame image',
     'media_last_frame': 'Last frame image',
     'media_reference_image': 'Reference image',
@@ -512,7 +533,7 @@ EN = {
     'current_card': 'Current setup',
     'current_model': 'wan3.0-video · native audio on',
     'current_model_fmt': '%s (%s)',
-    'current_saved': 'Finished videos are saved to your folder automatically.',
+    'current_saved': 'Finished videos save to your folder automatically.',
     'progress_card': 'Progress',
     'hint_off': 'Detection is off. Using the duration and ratio set below.',
     'hint_seconds': '%s s',
@@ -601,9 +622,9 @@ EN = {
     'batch_title': 'Batch video generation',
     'batch_desc': 'Generate many videos at once from a spreadsheet.',
     'character_card': 'Shared description for every row (optional)',
-    'character_card_desc': 'Optional. Prepended to every row’s prompt — useful for brand voice or a fixed character.',
+    'character_card_desc': 'Optional text prepended to every prompt — handy for brand voice or a recurring character.',
     'character_note': 'Saved per spreadsheet. Review the final prompts after import. To apply edits, import again; tasks already submitted keep their prompt.',
-    'import_card': 'Import file',
+    'import_card': 'Import',
     'import_btn': 'Import Excel / CSV',
     'template_btn': 'Save sample template…',
     'advanced_toggle': 'Advanced (frames / references / seed)',
@@ -636,6 +657,27 @@ EN = {
     'storyboard_ok': 'Generated %d rows. Edit them in the preview table, then start.',
     'storyboard_http_error': 'Text model request failed (%s).',
     'cli_storyboard_help': 'Split a script into a batch prompt spreadsheet',
+    'chain_enable': 'Continue from previous clip',
+    'chain_enable_desc': 'Each row waits for the one above, using its last frame as the next first frame. Downloads can still run in parallel. Needs ffmpeg on PATH (or optional imageio-ffmpeg).',
+    'chain_extracting': 'Extracting the previous clip’s last frame…',
+    'chain_frame_ready': 'Previous last frame attached — ready to submit',
+    'chain_prev_not_ready': 'The previous clip is not finished yet.',
+    'chain_no_video': 'Could not find the previous clip’s video file.',
+    'chain_need_ffmpeg': 'Continuing clips needs ffmpeg on PATH, or the optional imageio-ffmpeg package.',
+    'chain_extract_failed': 'Could not extract the last frame from the video.',
+    'chain_frame_too_large': 'The extracted frame is too large. Try a shorter clip or lower resolution.',
+    'chain_wan_data_url_note': 'Wan docs ask for a public image URL; trying an embedded image (verify with a live key).',
+    'chain_unsupported': 'This model does not support first-frame image-to-video; chain skipped for this row.',
+    'onboard_title': 'Get started in 3 steps',
+    'onboard_step1': '1. Add a PowerTokens API key on the API Key tab',
+    'onboard_step2': '2. Describe the video in plain language',
+    'onboard_step3': '3. Click Generate video',
+    'onboard_get_key': 'Get an API key',
+    'onboard_goto_keys': 'Add a key',
+    'onboard_dismiss': 'Got it — don’t show again',
+    'onboard_help': 'Tips',
+    'onboard_signup_url': 'https://powertokens.ai/signup?utm_source=github&utm_medium=app&utm_campaign=video-studio',
+
     'template_saved': 'Sample template saved: %s',
     'batch_output_card': 'Output folder',
     'preview_card': 'Task preview',
@@ -896,7 +938,18 @@ def saved_language():
     return value if value in LANGUAGES else None
 
 
+def save_setting(key, value):
+    """Merge one key into settings.json without dropping other fields."""
+    data = load_settings()
+    data[key] = value
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp = SETTINGS_PATH.with_name(SETTINGS_PATH.name + '.tmp')
+    temp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    os.replace(temp, SETTINGS_PATH)
+
+
 def save_language(lang):
+
     """Persist the choice in settings.json next to the task records; other settings are kept."""
     if lang not in LANGUAGES:
         raise ValueError(lang)

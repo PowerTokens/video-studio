@@ -43,6 +43,7 @@ class BatchTab:
         self.jobs = {}
         self.output = tk.StringVar(value=app.output.get())
         self.concurrency = tk.StringVar(value='3')
+        self.chain_clips = tk.BooleanVar(value=False)
         self.download_concurrency = tk.StringVar(value='2')
         self.imported_character_setting = ''
         self.last_applied_character_setting = ''
@@ -90,7 +91,10 @@ class BatchTab:
             ttk.Label(group, text=title, style='Muted.TLabel').pack(side='left', padx=(0, 6))
             ttk.Spinbox(group, from_=1, to=limit, width=3, textvariable=variable).pack(side='left')
         row.schedule()
-        label(task_box, t('rotation_note')).pack(fill='x', pady=(0, 12))
+        label(task_box, t('rotation_note')).pack(fill='x', pady=(0, 8))
+        self.chain_check = ttk.Checkbutton(task_box, text=t('chain_enable'), variable=self.chain_clips)
+        self.chain_check.pack(anchor='w')
+        label(task_box, t('chain_enable_desc')).pack(fill='x', pady=(2, 12))
         table = ttk.Frame(task_box)
         table.pack(fill='both', expand=True)
         table.rowconfigure(0, weight=1)
@@ -326,7 +330,8 @@ class BatchTab:
         try:
             runner = BatchRunner(self.store, list(self.app.keys), int(self.concurrency.get()), stop=self.app.stop,
                          notify=lambda job: self.app.events.put(('batch_update', job)),
-                         download_limit=int(self.download_concurrency.get()))
+                         download_limit=int(self.download_concurrency.get()),
+                         chain=bool(self.chain_clips.get()))
             with BatchLease(self.store.path.with_suffix('.lock')):
                 self.store.data = json.loads(self.store.path.read_text(encoding='utf-8'))
                 folder = Path(self.output.get()).absolute() / ('batch_' + self.store.id[:8])
@@ -513,6 +518,9 @@ class StoryboardDialog(tk.Toplevel):
         ttk.Label(vm, text=t('storyboard_model'), style='Muted.TLabel').pack(anchor='w')
         ttk.Combobox(vm, textvariable=self.video_label, values=labels, state='readonly').pack(fill='x')
 
+        self.chain_var = tk.BooleanVar(value=bool(self.batch.chain_clips.get()))
+        ttk.Checkbutton(body, text=t('chain_enable'), variable=self.chain_var).pack(anchor='w', pady=(8, 0))
+        label(body, t('chain_enable_desc')).pack(fill='x', pady=(2, 0))
         actions = ttk.Frame(body)
         actions.pack(fill='x', pady=(12, 0))
         ttk.Button(actions, text=t('storyboard_run'), style='Accent.TButton',
@@ -558,6 +566,7 @@ class StoryboardDialog(tk.Toplevel):
                 script, key, clip_count=clips, duration=duration, model_id=video_id,
                 text_model=text_id, ratio=self.ratio.get(), resolution=self.resolution.get(),
                 character_setting=character)
+            self.batch.chain_clips.set(bool(self.chain_var.get()))
             self.batch.load_jobs(jobs, source='storyboard', character_setting=character)
             self.app.status.set(t('storyboard_ok', len(jobs)))
             messagebox.showinfo(t('storyboard_title'), t('storyboard_ok', len(jobs)), parent=self)

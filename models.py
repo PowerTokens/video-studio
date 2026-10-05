@@ -163,10 +163,15 @@ def build_kling_request(spec, prompt, duration, resolution, ratio, media=None, s
         sound='on' if spec.generate_audio_default else 'off',
     )
     if first or last:
+        def _kling_img(value):
+            text = str(value)
+            if text.startswith('data:') and ';base64,' in text:
+                return text.split(';base64,', 1)[1]
+            return text
         if first:
-            body['image'] = first
+            body['image'] = _kling_img(first)
         if last:
-            body['image_tail'] = last
+            body['image_tail'] = _kling_img(last)
         # I2V path; aspect_ratio omitted per docs examples
         body['_submit_path'] = '/kling/v1/videos/image2video'
         body['_poll_kind'] = 'kling_i2v'
@@ -536,12 +541,17 @@ def validate_params(spec, duration, resolution, ratio, prompt='', media=None, se
     }[spec.family]
     import urllib.parse
     for item in media:
-        parsed = urllib.parse.urlsplit(item['url'])
+        url = item.get('url') or ''
+        parsed = urllib.parse.urlsplit(url)
         if parsed.scheme in ('http', 'https'):
             if not parsed.hostname:
                 raise TaskError(t('media_url_invalid'), 'PARAM')
         elif parsed.scheme == 'asset':
             if not (parsed.netloc or parsed.path.strip('/')):
+                raise TaskError(t('media_url_invalid'), 'PARAM')
+        elif parsed.scheme == 'data':
+            # Seedance/Kling (and Wan live-key) accept data:image/…;base64,…
+            if not url.lower().startswith('data:image/') or ';base64,' not in url:
                 raise TaskError(t('media_url_invalid'), 'PARAM')
         else:
             raise TaskError(t('media_url_invalid'), 'PARAM')

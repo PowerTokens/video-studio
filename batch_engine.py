@@ -133,7 +133,7 @@ class BatchStore:
 
 
 class BatchRunner:
-    def __init__(self, store, keys, concurrency=3, stop=None, notify=lambda job: None, client_factory=Client, download_limit=2):
+    def __init__(self, store, keys, concurrency=3, stop=None, notify=lambda job: None, client_factory=Client, download_limit=2, chain=False):
         if not 1 <= int(concurrency) <= 8:
             raise ValueError(t('concurrency_range'))
         if not 1 <= int(download_limit) <= 4:
@@ -148,6 +148,7 @@ class BatchRunner:
         self.download_slots = threading.BoundedSemaphore(int(download_limit))
         self.key_pool = KeyPool(self.keys)
         self.pool_exhausted = threading.Event()
+        self.chain = bool(chain)
 
     def update(self, job_id, **changes):
         job = self.store.update(job_id, **changes)
@@ -156,6 +157,52 @@ class BatchRunner:
 
     def eligible(self, job):
         return job['state'] == 'queued' or (job['state'] in ('paused', 'no_key', 'deferred_403') and bool((job.get('record') or {}).get('task_id')))
+
+    def _ordered_jobs(self):
+        return list(enumerate(self.store.snapshot()))
+
+    def _previous_job(self, job):
+        """Nearest earlier row that completed (spreadsheet order). Missing = start of chain."""
+        jobs = self.store.snapshot()
+        ids = [j['id'] for j in jobs]
+        try:
+            idx = ids.index(job['id'])
+        except ValueError:
+            return None
+        for prev in reversed(jobs[:idx]):
+            if prev.get('state') == 'completed' and prev.get('output'):
+                return prev
+        return None
+
+    def prepare_chain_frame(self, job):
+        """If chaining, wait-state assumes previous is done; inject its last frame as first_frame."""
+        if not self.chain:
+            return job
+        record = job.get('record') or {}
+        if record.get('task_id'):
+            return job  # already submitted — never rebuild / resubmit
+        if job.get('chain_skip'):
+            return job
+        prev = self._previous_job(job)
+        if not prev:
+            return job
+        video = prev.get('output') or ''
+        import frame_util
+        from models import resolve_model_id
+        model_id = resolve_model_id(job.get('model') or (job.get('payload') or {}).get('model') or 'wan3.0-video')
+        frame_dir = self.store.data_dir / 'chain_frames' / self.store.id
+        frame_path = frame_dir / ('%s.jpg' % job['id'])
+        if job.get('chain_frame') and Path(job['chain_frame']).is_file():
+            frame_path = Path(job['chain_frame'])
+        else:
+            self.update(job['id'], note=t('chain_extracting'))
+            frame_path = Path(frame_util.extract_last_frame(video, frame_path))
+            self.update(job['id'], chain_frame=str(frame_path))
+        if not frame_util.supports_embedded_first_frame(model_id):
+            self.update(job['id'], note=t('chain_wan_data_url_note'))
+        new_payload = frame_util.inject_first_frame_into_payload(model_id, job.get('payload'), frame_path)
+        return self.update(job['id'], payload=new_payload, note=t('chain_frame_ready'), chained=True)
+
 
     def run_one(self, job, index, retry_deferred=False):
         if self.stop.is_set():
@@ -186,6 +233,8 @@ class BatchRunner:
             if task_id:
                 result = client.resume(key, task_id, job['output'], record)
             else:
+                if self.chain:
+                    job = self.prepare_chain_frame(job)
                 offset = index % len(self.keys)
                 ordered = self.keys[offset:] + self.keys[:offset]
                 result = client.submit(ordered, job['payload'], job['output'])
@@ -252,6 +301,14 @@ class BatchRunner:
         return self.store.snapshot()
 
     def _execute(self, jobs, retry_deferred=False):
+        jobs = sorted(jobs, key=lambda item: item[0])
+        if self.chain:
+            # Sequential submit so N+1 can use N's last frame. Downloads still use download_slots.
+            for index, job in jobs:
+                if self.stop.is_set() or self.pool_exhausted.is_set():
+                    break
+                self.run_one(job, index, retry_deferred)
+            return
         iterator = iter(jobs)
         with ThreadPoolExecutor(max_workers=self.concurrency) as executor:
             active = set()

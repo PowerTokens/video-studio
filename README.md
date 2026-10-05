@@ -24,6 +24,7 @@ Pick a model in the desktop UI, pass `--model` on the CLI, set `model` on MCP to
 
 - **English and Chinese interface**: switch any time with the **中文 / English** toggle in the top-right corner. On first launch the app follows your Windows display language.
 - **Use cases:** short-drama batch production remains a headline use case; also product demos, talking-head clips and social posts.
+- **Continue from previous clip:** optional Batch checkbox uses the previous row’s last frame as the next first frame (needs ffmpeg on PATH; Seedance/Kling use embedded images; Wan data-URL support needs a live-key check).
 - **From script** (Batch tab only): paste a script/outline; free text model `glm-4.7-flash` (or `qwen3-max`) splits it into clip prompts for the preview table.
 - **Compare models**: send one prompt to 2–3 models (Compare tab, CLI `compare`, or MCP `compare_videos`), see side-by-side status and open the best file. Outputs land in a `compare/` subfolder as `name_model-short.mp4`.
 - **Model picker**: choose Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5 or kling v3. Duration / resolution / ratio controls update to what that model allows.

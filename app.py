@@ -12,7 +12,8 @@ from tkinter import ttk, filedialog, messagebox
 import uuid
 import webbrowser
 
-from i18n import LANGUAGES, LANGUAGE_NAMES, get_language, is_zh, save_language, set_language, t
+from i18n import (LANGUAGES, LANGUAGE_NAMES, get_language, is_zh, load_settings, save_language,
+                  save_setting, set_language, t)
 from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE, INK, LINE, ACCENT, LOGO_FILE,
                        apply_theme, label, heading, card, Columns, Flow, ScrollPage, text_area,
                        load_image, header_logo_file)
@@ -114,6 +115,9 @@ class App:
                                 command=lambda code=code: self.switch_language(code))
             button.pack(side='left')
             self.lang_buttons[code] = button
+        self.help_tips_btn = ttk.Button(switch, text=t('onboard_help'), style='Link.TButton',
+                                        command=self.show_onboarding)
+        self.help_tips_btn.pack(side='left', padx=(12, 0))
         header_row = ttk.Frame(header)
         header_row.pack(fill='x', pady=(8, 0))
         ttk.Label(header_row, text=subtitle(), style='Muted.TLabel').pack(side='left')
@@ -212,7 +216,76 @@ class App:
         self.status.set(t('status_idle') if self.keys else t('status_ready'))
         self.tabs.select(state['tab'])
 
+    def _onboarding_pending(self):
+        return not bool(load_settings().get('onboarding_dismissed'))
+
+    def _build_onboarding(self, parent, force=False):
+        if self.onboard_card is not None:
+            try:
+                self.onboard_card.destroy()
+            except tk.TclError:
+                pass
+            self.onboard_card = None
+        if not force and not self._onboarding_pending():
+            return
+        box = card(parent, t('onboard_title'))
+        self.onboard_card = box
+        for key in ('onboard_step1', 'onboard_step2', 'onboard_step3'):
+            label(box, t(key)).pack(fill='x', pady=(0, 4))
+        actions = Flow(box)
+        actions.pack(fill='x', pady=(8, 0))
+        ttk.Button(actions, text=t('onboard_goto_keys'), command=self._onboard_goto_keys)
+        ttk.Button(actions, text=t('onboard_get_key'), style='Link.TButton', command=self._onboard_open_signup)
+        ttk.Button(actions, text=t('onboard_dismiss'), command=self.dismiss_onboarding)
+        actions.schedule()
+
+    def show_onboarding(self):
+        host = getattr(self, '_create_frame', None)
+        if host is None:
+            return
+        self._build_onboarding(host, force=True)
+        card = self.onboard_card
+        if card is None:
+            return
+        try:
+            siblings = [c for c in host.winfo_children() if c is not card]
+            card.pack_forget()
+            if siblings:
+                card.pack(fill='x', pady=(0, 12), before=siblings[0])
+            else:
+                card.pack(fill='x', pady=(0, 12))
+        except tk.TclError:
+            pass
+        try:
+            self.tabs.select(0)
+        except tk.TclError:
+            pass
+
+
+    def dismiss_onboarding(self):
+        save_setting('onboarding_dismissed', True)
+        if self.onboard_card is not None:
+            try:
+                self.onboard_card.destroy()
+            except tk.TclError:
+                pass
+            self.onboard_card = None
+
+    def _onboard_goto_keys(self):
+        try:
+            self.tabs.select(4)  # API Key is last tab
+        except tk.TclError:
+            pass
+
+    def _onboard_open_signup(self):
+        import webbrowser
+        webbrowser.open(t('onboard_signup_url'))
+
+
     def build_create(self, frame):
+        self._create_frame = frame
+        self.onboard_card = None
+        self._build_onboarding(frame)
         heading(frame, t('gen_title'), t('gen_desc'))
         columns = Columns(frame, self.scale)
         columns.pack(fill='x')
