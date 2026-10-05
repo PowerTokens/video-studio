@@ -311,6 +311,8 @@ Tests use mocked responses and never call the real API. GUI tests run on Windows
 
 MIT, see [LICENSE](LICENSE).
 
+**Trademark.** The MIT license covers the code only. The PowerTokens name and logo are trademarks of PowerTokens and are not licensed for use. If you fork or redistribute this project, please use a different name and logo, and don't imply it is an official PowerTokens product.
+
 Questions and feedback: [Discord](https://discord.gg/JtgtRdhJVS) or [Issues](../../issues).
 
 Contributing: see [CONTRIBUTING.md](CONTRIBUTING.md).

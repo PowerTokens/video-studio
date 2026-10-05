@@ -300,6 +300,8 @@ python -m unittest discover -s tests -v
 
 MIT，见 [LICENSE](LICENSE)。
 
+**商标说明：** MIT 许可证仅适用于代码。PowerTokens 名称和 Logo 是 PowerTokens 的商标，不在授权范围内。如需 fork 或再发布本项目，请使用其他名称和 Logo，并且不要暗示其为 PowerTokens 官方产品。
+
 问题与反馈：[Discord](https://discord.gg/JtgtRdhJVS) 或 [Issues](../../issues)。
 
 作者：[@uselesssoso](https://github.com/uselesssoso)，由 [PowerTokens](https://powertokens.ai) 出品。
