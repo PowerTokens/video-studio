@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 from i18n import is_zh, t
 from input_helpers import parse_keys
-from models import DEFAULT_MODEL_ID, MODELS, get_model, resolve_model_id
+from models import DEFAULT_MODEL_ID, MODELS, get_model, list_models, resolve_model_id
 from wan_core import (API_BASE, Client, DATA_DIR, LIST_PRICE_USD_PER_SECOND, MODEL, PROMO_END_DATE, PRICE_CHECKED_DATE,
                       PRICE_SOURCE_URL, PRICE_SOURCE_URL_EN, promo_active, current_prices, list_prices,
                       TaskError, api, atomic_json, category, estimate_cost, payload)
@@ -47,10 +47,28 @@ def emit(value):
     print(json.dumps(value, ensure_ascii=False))
 
 
+def models_payload():
+    """JSON list of supported models with localized descriptions (no prices)."""
+    items = []
+    for spec in list_models():
+        items.append({
+            'id': spec.id,
+            'name': spec.label(),
+            'description': spec.description(),
+            'durations': [spec.durations[0], spec.durations[-1]],
+            'resolutions': list(spec.resolutions),
+            'ratios': list(spec.ratios),
+            'default': spec.id == DEFAULT_MODEL_ID,
+        })
+    return {'models': items, 'default_model': DEFAULT_MODEL_ID}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    subs = parser.add_subparsers(dest='command', required=True)
+    parser.add_argument('--list-models', action='store_true', help=t('cli_list_models_help'))
+    subs = parser.add_subparsers(dest='command', required=False)
     subs.add_parser('check')
+    subs.add_parser('list-models', help=t('cli_list_models_help'))
     verify = subs.add_parser('verify')
     verify.add_argument('--full', action='store_true', help=t('cli_full_help'))
     subs.add_parser('prune')
@@ -78,6 +96,11 @@ def main():
     resume.add_argument('-o', '--output', required=True)
     resume.add_argument('--key-index', type=int, default=1, help=t('cli_key_index_help'))
     args = parser.parse_args()
+    if args.list_models or args.command == 'list-models':
+        emit(models_payload())
+        return 0
+    if not args.command:
+        parser.error(t('cli_command_required'))
     if args.command == 'config':
         cfg = load_config()
         pool = cfg.get('api_keys', [])

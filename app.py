@@ -223,6 +223,8 @@ class App:
         ttk.Label(model_row, text=t('param_model'), style='Muted.TLabel').pack(anchor='w', pady=(0, 8))
         self.model_combo = ttk.Combobox(model_row, textvariable=self.model_label, state='readonly', width=28)
         self.model_combo.pack(fill='x')
+        self.model_desc = tk.StringVar()
+        label(model_row, variable=self.model_desc).pack(fill='x', pady=(6, 0))
         self._model_labels = {}
         self._refresh_model_combo()
         self.model_combo.bind('<<ComboboxSelected>>', lambda *_: self._on_model_picked())
@@ -430,6 +432,7 @@ class App:
         self.model_combo.configure(values=labels)
         current = get_model(self.model_id.get())
         self.model_label.set(current.label())
+        self._update_model_description()
 
     def _on_model_picked(self):
         mid = self._model_labels.get(self.model_label.get(), DEFAULT_MODEL_ID)
@@ -457,6 +460,13 @@ class App:
             if dur not in spec.durations:
                 self.duration.set(str(spec.default_duration))
         self._update_current_model_badge()
+        self._update_model_description()
+
+    def _update_model_description(self):
+        if not hasattr(self, 'model_desc'):
+            return
+        spec = get_model(self.model_id.get())
+        self.model_desc.set(spec.description())
 
     def _update_current_model_badge(self):
         if not hasattr(self, 'current_model_badge'):

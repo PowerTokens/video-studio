@@ -130,6 +130,30 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(models.family_for_record(record), 'wan')
 
 
+
+    def test_descriptions_present_bilingual(self):
+        for spec in models.list_models():
+            self.assertTrue(spec.description_en.strip(), spec.id)
+            self.assertTrue(spec.description_zh.strip(), spec.id)
+            self.assertNotIn('$', spec.description_en)
+            self.assertNotIn('$', spec.description_zh)
+            self.assertNotIn('折扣', spec.description_zh)
+            self.assertNotIn('discount', spec.description_en.lower())
+            # Bounds mentioned for marketer clarity
+            self.assertRegex(spec.description_en, r'\d+')
+            en = spec.description('en')
+            zh = spec.description('zh')
+            self.assertEqual(en, spec.description_en)
+            self.assertEqual(zh, spec.description_zh)
+
+    def test_description_follows_ui_language(self):
+        import i18n
+        i18n.set_language('en')
+        self.assertIn('seconds', models.get_model('kling-v3').description().lower())
+        i18n.set_language('zh')
+        self.assertIn('秒', models.get_model('kling-v3').description())
+
+
 class BatchModelColumnTests(unittest.TestCase):
     def test_optional_model_column(self):
         from batch_import import build_job

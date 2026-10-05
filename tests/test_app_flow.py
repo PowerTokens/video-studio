@@ -67,3 +67,18 @@ class FlowTests(unittest.TestCase):
         app, client = self.app('0-5秒：走路；5-10秒：停下；10-16秒：回头')
         app.apply_prompt()
         self.assertEqual(app.prompt_hint.value, '已识别：16 秒。时长根据分镜时间轴推断（最后一段结束于 16 秒）')
+
+    def test_model_description_updates_with_selection(self):
+        from models import get_model
+        app, _ = self.app('一只猫')
+        app.model_desc = Value('')
+        app._update_model_description = lambda: app.model_desc.set(
+            get_model(app.model_id.get()).description())
+        app.model_id.set('dreamina-seedance-2-0-fast-260128')
+        app._update_model_description()
+        self.assertIn('720p', app.model_desc.value)
+        app.model_id.set('wan3.0-video-prime')
+        app._update_model_description()
+        text = app.model_desc.value
+        self.assertTrue('更快' in text or 'faster' in text.lower())
+

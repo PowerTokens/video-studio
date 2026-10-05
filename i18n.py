@@ -348,6 +348,8 @@ ZH = {
     'cli_estimate_note': '按 PT 当前公示单价估算；实际扣费以平台账单为准',
     'cli_model_only': '模型仅支持 ',
     'cli_model_help': '模型 ID（默认 wan3.0-video）',
+    'cli_list_models_help': '列出支持的模型与说明',
+    'cli_command_required': '请指定子命令（可用 --list-models 查看模型）',
     'cli_need_key': '请配置 API Key',
     'cli_unconfirmed': '未能确认；保留 Key',
     'cli_prune_note': '只移除已确认 401 失效的本地配置 Key；环境变量不会修改',
@@ -356,7 +358,8 @@ ZH = {
     'mcp_incomplete': '执行未完成，请查本地任务记录',
     'mcp_check_key': '检查 CLI Key 池配置（不验证远程权限）。',
     'mcp_estimate': '按 PT 公示单价估算，实际以平台账单为准。',
-    'mcp_generate': '提交生成；可能需等待一小时。结果不明确时先查原任务，不可自动重新生成。',
+    'mcp_generate': '提交生成（可用 model 选择 Wan 3.0 / Prime、Seedance 2.0 Fast / 2.5、kling v3）；可能需等待一小时。结果不明确时先查原任务，不可自动重新生成。先用 list_models 查看各模型说明。',
+    'mcp_list_models': '列出支持的视频模型、时长/分辨率范围与简短说明（不含价格）。',
     'mcp_resume': '用原 Key 查询并下载已有任务，不提交新生成。',
 }
 
@@ -697,6 +700,8 @@ EN = {
     'cli_estimate_note': 'Estimated at current PowerTokens prices; your bill is final',
     'cli_model_only': 'Model must be ',
     'cli_model_help': 'Model ID (default wan3.0-video)',
+    'cli_list_models_help': 'List supported models and short descriptions',
+    'cli_command_required': 'A subcommand is required (or pass --list-models)',
     'cli_need_key': 'Configure an API key.',
     'cli_unconfirmed': 'Not confirmed; key kept',
     'cli_prune_note': 'Only keys confirmed invalid (401) are removed from the local config; environment variables are untouched',
@@ -705,7 +710,8 @@ EN = {
     'mcp_incomplete': 'Not completed; check the local task history',
     'mcp_check_key': 'Check the CLI key pool configuration (does not verify remote access).',
     'mcp_estimate': 'Estimate the cost at published PowerTokens prices; your bill is final.',
-    'mcp_generate': 'Submit a generation; it may take up to an hour. If the result is unclear, check the original task first; never regenerate automatically.',
+    'mcp_generate': 'Submit a generation (set model to Wan 3.0 / Prime, Seedance 2.0 Fast / 2.5, or kling v3); it may take up to an hour. If the result is unclear, check the original task first; never regenerate automatically. Call list_models for short descriptions.',
+    'mcp_list_models': 'List supported video models with duration/resolution limits and short descriptions (no prices).',
     'mcp_resume': 'Check and download an existing task with its original key; nothing new is submitted.',
 }
 

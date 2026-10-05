@@ -29,6 +29,11 @@ def check_key() -> str:
     return run(['check'])
 
 
+@mcp.tool(description=t('mcp_list_models'))
+def list_models() -> str:
+    return run(['list-models'])
+
+
 @mcp.tool(description=t('mcp_estimate'))
 def estimate_cost(duration_s: int = 5, resolution: str = '720p', model: str = 'wan3.0-video') -> str:
     return run(['estimate', '-d', str(duration_s), '-r', resolution, '-m', model])

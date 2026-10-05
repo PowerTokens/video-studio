@@ -84,3 +84,15 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIs(body['payload']['generate_audio'], True)
         self.assertEqual(body['payload']['model'], 'wan3.0-video')
+
+    def test_list_models_flag_and_subcommand(self):
+        for args in (['--list-models'], ['list-models']):
+            code, body = self.run_cli(args)
+            self.assertEqual(code, 0, args)
+            ids = [m['id'] for m in body['models']]
+            self.assertEqual(ids[0], 'wan3.0-video')
+            self.assertIn('kling-v3', ids)
+            self.assertTrue(body['models'][0]['description'])
+            self.assertNotIn('$', body['models'][0]['description'])
+            self.assertEqual(body['default_model'], 'wan3.0-video')
+
