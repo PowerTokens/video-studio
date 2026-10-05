@@ -255,6 +255,11 @@ GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build
 
 内部名称如 `pt_wan.py` 与数据目录 `%LOCALAPPDATA%\PowerTokensWan` 为兼容已有安装、任务记录与已保存 Key 而保留。产品名称为 PowerTokens Video Studio。
 
+
+### 可以为每个 API Key 限制花费吗？
+
+可以。在 [API Keys](https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=app&utm_campaign=video-studio) 页可为每个 Key 设置额度和到期时间。本工具的 Key 池中，某个 Key 额度用完或过期后会自动换下一个；已经拿到任务 ID 的提交不会再次扣费。
+
 ### PowerTokens Video Studio 是什么？
 
 PowerTokens Video Studio 是一款免费开源（MIT）的 Windows 桌面工具，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 Fast、Seedance 2.5 与 kling v3，以及 Excel / CSV 批量导入、按任务 ID 恢复，并避免重复扣费。

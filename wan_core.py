@@ -158,9 +158,15 @@ def api(method, url, key, payload=None, timeout=30):
 
 
 def category(code, body):
+    """Classify API errors for key rotation. QUOTA/AUTH/RATE_LIMIT exhaust a key for this run."""
     text = json.dumps(body, ensure_ascii=False).lower()
-    if code == 402 or any(x in text for x in ('quota', 'insufficient', '余额不足')):
+    if code == 429 or any(x in text for x in ('rate limit', 'rate_limit', 'too many requests', '请求过于频繁')):
+        return 'RATE_LIMIT'
+    if code == 402 or any(x in text for x in (
+            'quota', 'insufficient', '余额不足', 'usage limit', 'credit', '额度', '余额不够')):
         return 'QUOTA'
+    if any(x in text for x in ('expired', 'expire', '已过期', 'token expired', 'key expired')):
+        return 'AUTH'
     if any(x in text for x in ('无模型权限', '无权', 'not permitted', 'not authorized to model')):
         return 'NOT_ALLOWED'
     if code == 401 or 'token_invalid' in text or 'invalid token' in text:
@@ -168,6 +174,51 @@ def category(code, body):
     if code == 403:
         return 'NOT_ALLOWED'
     return 'UNKNOWN'
+
+
+# Kinds that mean "this key cannot submit right now — try the next one".
+KEY_EXHAUST_KINDS = ('AUTH', 'QUOTA', 'NOT_ALLOWED', 'RATE_LIMIT')
+
+
+class KeyPool:
+    """Shared key list with per-run exhaustion (quota / expired / rate-limit / not allowed).
+
+    Thread-safe so a batch can skip a drained key on the next job without ever
+    resubmitting a request that already returned a task ID.
+    """
+
+    def __init__(self, keys):
+        self.keys = list(keys)
+        self._lock = threading.Lock()
+        self.exhausted = {}  # fingerprint -> reason
+
+    def fingerprint_of(self, key):
+        return fingerprint(key)
+
+    def is_exhausted(self, key):
+        with self._lock:
+            return fingerprint(key) in self.exhausted
+
+    def mark_exhausted(self, key, reason):
+        with self._lock:
+            self.exhausted[fingerprint(key)] = reason
+
+    def available(self, start_offset=0):
+        """Keys still usable this run, rotated from start_offset."""
+        if not self.keys:
+            return []
+        offset = start_offset % len(self.keys)
+        ordered = self.keys[offset:] + self.keys[:offset]
+        with self._lock:
+            return [k for k in ordered if fingerprint(k) not in self.exhausted]
+
+    def all_exhausted(self):
+        with self._lock:
+            return bool(self.keys) and len(self.exhausted) >= len(self.keys)
+
+    def exhausted_count(self):
+        with self._lock:
+            return len(self.exhausted)
 
 
 def payload(prompt, duration=5, resolution='720p', ratio='16:9', media=None, seed='', model=None):
@@ -356,7 +407,7 @@ def download(url, out_path, key, stop=None, report=lambda text: None, timeout=18
 
 
 class Client:
-    def __init__(self, report=lambda text: None, stop=None, data_dir=None, on_record=None, context=None, download_slots=None, defer_on_403=False):
+    def __init__(self, report=lambda text: None, stop=None, data_dir=None, on_record=None, context=None, download_slots=None, defer_on_403=False, key_pool=None):
         self.report = report
         self.stop = stop or threading.Event()
         self.data_dir = Path(data_dir) if data_dir else DATA_DIR
@@ -366,6 +417,7 @@ class Client:
         self.download_slots = download_slots or threading.BoundedSemaphore(1)
         self.last_download_error = ''
         self.defer_on_403 = defer_on_403
+        self.key_pool = key_pool
 
     def save(self, **changes):
         self.record.update(changes)
@@ -396,24 +448,30 @@ class Client:
                            model=model_id, poll_kind=poll_kind)
         self.record.update(self.context)
         submit_endpoint = _models.submit_url(API_BASE, request)
-        for index, key in enumerate(keys):
+        pool = self.key_pool or KeyPool(keys)
+        # Prefer the caller's order, but skip keys already exhausted in this run.
+        candidates = [k for k in keys if not pool.is_exhausted(k)]
+        if not candidates:
+            raise TaskError(t('all_keys_exhausted'), 'POOL_EXHAUSTED')
+        for index, key in enumerate(candidates):
             if self.stop.is_set():
                 raise TaskError(t('submit_stopped'), 'PAUSED')
             self.save(state=t('state_submitting'), key_hash=fingerprint(key), key_hint='****' + key[-4:],
                       model=model_id, poll_kind=poll_kind)
-            self.report(t('submitting_key', index + 1, len(keys), key[-4:]))
+            self.report(t('submitting_key', index + 1, len(candidates), key[-4:]))
             code, body = api('POST', submit_endpoint, key, request)
             task_id = _models.extract_task_id(body, spec.family)
             # Kling may return HTTP 200 with code!=0
             if spec.family == 'kling' and isinstance(body.get('code'), int) and body.get('code') != 0 and not task_id:
                 kind = category(code or 400, body)
-                if kind in ('AUTH', 'QUOTA', 'NOT_ALLOWED'):
+                if kind in KEY_EXHAUST_KINDS:
+                    pool.mark_exhausted(key, kind)
                     self.save(state=t('state_rejected') + kind)
-                    self.report(t('key_rejected') + kind)
+                    self.report(t('key_exhausted_log', key[-4:], kind))
                     continue
             if isinstance(task_id, str) and task_id:
                 task_url(task_id, poll_kind)
-                # Persist before the first query so a restart can recover the same task.
+                # Persist BEFORE any further work so a restart resumes instead of resubmitting.
                 self.report(t('task_id_log') + task_id)
                 try:
                     self.save(task_id=task_id, state=t('state_submitted'), model=model_id, poll_kind=poll_kind)
@@ -421,13 +479,16 @@ class Client:
                     raise TaskError(t('record_save_failed') + task_id, 'STORAGE', task_id)
                 return self.wait(key, task_id, out_path)
             kind = category(code, body)
-            # Only explicit rejection before obtaining an ID can switch keys.
-            if code in (400, 401, 402, 403, 429) and kind in ('AUTH', 'QUOTA', 'NOT_ALLOWED'):
+            # Only explicit rejection BEFORE obtaining an ID can switch keys — never resubmit after an ID.
+            if (code in (400, 401, 402, 403, 429) or kind in KEY_EXHAUST_KINDS) and kind in KEY_EXHAUST_KINDS:
+                pool.mark_exhausted(key, kind)
                 self.save(state=t('state_rejected') + kind)
-                self.report(t('key_rejected') + kind)
+                self.report(t('key_exhausted_log', key[-4:], kind))
                 continue
             self.save(state=t('state_unknown'))
             raise TaskError(t('submit_uncertain', code), 'UNCERTAIN')
+        if pool.all_exhausted():
+            raise TaskError(t('all_keys_exhausted'), 'POOL_EXHAUSTED')
         raise TaskError(t('all_rejected'), 'REJECTED')
 
     def resume(self, key, task_id, out_path, record=None):

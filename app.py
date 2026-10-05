@@ -25,6 +25,12 @@ from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices,
 
 OFFICIAL_KEY_URL = 'https://powertokens.ai/zh-Hans/api-keys?' + UTM
 OFFICIAL_KEY_URL_EN = 'https://powertokens.ai/api-keys?' + UTM
+KEY_QUOTA_TIP_URL = 'https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=app&utm_campaign=video-studio'
+KEY_QUOTA_TIP_URL_EN = 'https://powertokens.ai/api-keys?utm_source=github&utm_medium=app&utm_campaign=video-studio'
+
+
+def key_quota_tip_url():
+    return KEY_QUOTA_TIP_URL if is_zh() else KEY_QUOTA_TIP_URL_EN
 
 
 def official_key_url():
@@ -374,6 +380,10 @@ class App:
         self.key_list.configure(yscrollcommand=scroll.set)
         ttk.Button(pool, text=t('remove_key'), command=self.remove_key).pack(anchor='w', pady=(12, 0))
         label(pool, t('pool_note')).pack(fill='x', pady=(10, 0))
+        label(pool, t('key_quota_tip'), style='Badge.TLabel').pack(fill='x', pady=(12, 0))
+        self.key_quota_btn = ttk.Button(pool, text=t('key_quota_tip_btn'), style='Link.TButton',
+                                        command=self.open_key_quota_tip)
+        self.key_quota_btn.pack(anchor='w', pady=(8, 0))
         get = card(columns.right, t('get_card'), t('get_card_desc'))
         self.promo_label = label(get, promotion_text(), style='Badge.TLabel')
         self.get_key_btn = ttk.Button(get, text=t('get_btn'), style='Accent.TButton', command=self.open_official_keys)
@@ -519,6 +529,14 @@ class App:
             self.cost.set(text + t('cost_tail'))
         except (ValueError, KeyError, TaskError):
             self.cost.set(t('cost_invalid'))
+
+    def open_key_quota_tip(self):
+        url = key_quota_tip_url()
+        try:
+            if not webbrowser.open(url):
+                messagebox.showinfo(t('official_site'), url)
+        except OSError:
+            messagebox.showinfo(t('official_site'), url)
 
     def open_official_keys(self):
         try:

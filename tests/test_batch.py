@@ -264,12 +264,45 @@ class BatchTests(unittest.TestCase):
         with patch('wan_core.api', return_value=(401, {})) as api:
             runner = BatchRunner(self.store, self.keys, 1)
             runner.run([self.rows[0]['id']])
-            runner.run([self.rows[0]['id']])
         self.assertEqual(api.call_count, 2)  # Two keys tried once, not two generations.
         first = self.store.snapshot()[0]
-        self.assertEqual(first['state'], 'failed')
-        self.assertEqual(first['error_kind'], 'REJECTED')
-        self.assertFalse(first['record'].get('task_id'))
+        self.assertEqual(first['state'], 'paused')
+        self.assertEqual(first['error_kind'], 'POOL_EXHAUSTED')
+        self.assertFalse((first.get('record') or {}).get('task_id'))
+
+    def test_quota_key_skipped_for_later_rows_and_pool_pause(self):
+        """First key quota-exhausted; second key works; if both die, remaining rows pause."""
+        calls = []
+        def api(method, url, key, request=None):
+            if method == 'POST':
+                calls.append(('POST', key))
+                if key == 'key-one':
+                    return 402, {'message': 'insufficient quota'}
+                task_id = 'task_' + str(1 + sum(1 for c in calls if c[0] == 'POST' and c[1] == 'key-two'))
+                return 201, {'id': task_id}
+            calls.append(('GET', key))
+            return 200, {'status': 'completed'}
+        selected = [row['id'] for row in self.rows[:2]]
+        with patch('wan_core.api', side_effect=api), patch('wan_core.download', return_value=128):
+            BatchRunner(self.store, self.keys, 1).run(selected)
+        # Row0: key-one 402 then key-two OK; row1: key-one skipped (exhausted), key-two OK
+        posts = [c for c in calls if c[0] == 'POST']
+        self.assertEqual(posts[0], ('POST', 'key-one'))
+        self.assertEqual(posts[1], ('POST', 'key-two'))
+        self.assertTrue(all(c[1] == 'key-two' for c in posts[1:]))
+        self.assertTrue(all(row['state'] == 'completed' for row in self.store.snapshot()[:2]))
+
+    def test_all_keys_exhausted_pauses_remaining_batch(self):
+        with patch('wan_core.api', return_value=(402, {'message': 'insufficient quota'})) as api:
+            runner = BatchRunner(self.store, self.keys, 1)
+            runner.run()
+        snap = runner.store.snapshot()
+        self.assertTrue(any(j['error_kind'] == 'POOL_EXHAUSTED' for j in snap))
+        self.assertTrue(all(j['state'] in ('paused', 'failed') for j in snap if j['state'] != 'invalid'))
+        # No row should have a task_id from a double charge
+        self.assertFalse(any((j.get('record') or {}).get('task_id') for j in snap))
+        # Should not keep POSTing forever — at most keys * a few jobs before pause
+        self.assertLessEqual(api.call_count, len(self.keys) * 3)
 
     def test_403_is_retried_with_original_key_after_other_rows(self):
         calls = []

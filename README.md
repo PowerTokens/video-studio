@@ -266,6 +266,11 @@ More details are in the Chinese user guide: [使用说明.md](使用说明.md). 
 
 Internal names such as `pt_wan.py` and the data folder `%LOCALAPPDATA%\PowerTokensWan` are kept for compatibility with existing installs, task records and saved keys. The product name is PowerTokens Video Studio.
 
+
+### Can I limit how much each API key spends?
+
+Yes. On the [API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_medium=app&utm_campaign=video-studio) page you can set a usage limit and an expiry on each key. In this app, when one key in the pool hits its limit or expires, the next key is tried automatically. A submit that already returned a Task ID is never charged again.
+
 ### What is PowerTokens Video Studio?
 
 PowerTokens Video Studio is a free, open-source (MIT) Windows desktop app for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5 and kling v3, with batch import from Excel / CSV, resume by Task ID and protection against double charges.

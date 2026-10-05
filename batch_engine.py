@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from collections.abc import Mapping
 from batch_import import batch_identity
 from i18n import t
-from wan_core import Client, DATA_DIR, TaskError, atomic_json, fingerprint
+from wan_core import Client, DATA_DIR, KeyPool, TaskError, atomic_json, fingerprint
 
 STATES = ('queued', 'running', 'completed', 'deferred_403', 'paused', 'uncertain', 'failed', 'invalid', 'no_key')
 
@@ -146,6 +146,8 @@ class BatchRunner:
         self.notify = notify
         self.client_factory = client_factory
         self.download_slots = threading.BoundedSemaphore(int(download_limit))
+        self.key_pool = KeyPool(self.keys)
+        self.pool_exhausted = threading.Event()
 
     def update(self, job_id, **changes):
         job = self.store.update(job_id, **changes)
@@ -174,15 +176,19 @@ class BatchRunner:
                 self.update(job['id'], record=row)
             def report(message):
                 self.update(job['id'], note=message, elapsed=round(time.monotonic() - start, 1))
+            if self.pool_exhausted.is_set() and not task_id:
+                self.update(job['id'], state='paused', error_kind='POOL_EXHAUSTED',
+                            note=t('batch_keys_exhausted'), elapsed=round(time.monotonic() - start, 1))
+                return
             client = self.client_factory(report=report, stop=self.stop, data_dir=self.store.data_dir,
                         on_record=checkpoint, context={'batch_id': self.store.id, 'batch_job_id': job['id']},
-                        download_slots=self.download_slots, defer_on_403=True)
+                        download_slots=self.download_slots, defer_on_403=True, key_pool=self.key_pool)
             if task_id:
                 result = client.resume(key, task_id, job['output'], record)
             else:
                 offset = index % len(self.keys)
-                pool = self.keys[offset:] + self.keys[:offset]
-                result = client.submit(pool, job['payload'], job['output'])
+                ordered = self.keys[offset:] + self.keys[:offset]
+                result = client.submit(ordered, job['payload'], job['output'])
             self.update(job['id'], state='completed', record=result, note=t('saved_to') + job['output'], elapsed=round(time.monotonic() - start, 1))
         except TaskError as exc:
             latest = getattr(client, 'record', None) or record
@@ -191,6 +197,12 @@ class BatchRunner:
                 note = t('note_403_again') if retry_deferred else str(exc)
                 self.update(job['id'], state=state, record=latest, error_kind=exc.kind,
                             note=note, elapsed=round(time.monotonic() - start, 1))
+                return
+            if exc.kind == 'POOL_EXHAUSTED':
+                self.pool_exhausted.set()
+                self.update(job['id'], state='paused', record=latest, error_kind=exc.kind,
+                            note=t('batch_keys_exhausted'), elapsed=round(time.monotonic() - start, 1))
+                self._pause_queued_for_exhausted_pool()
                 return
             if (latest or {}).get('task_id'):
                 state = 'paused' if exc.kind in ('PAUSED', 'TIMEOUT', 'STORAGE', 'QUERY_UNAVAILABLE') else 'failed'
@@ -207,7 +219,16 @@ class BatchRunner:
             self.update(job['id'], state=state, record=latest,
                         note=t('note_exception'))
 
+    def _pause_queued_for_exhausted_pool(self):
+        """Leave remaining queued rows paused with a clear note; do not POST more."""
+        for job in self.store.snapshot():
+            if job['state'] == 'queued':
+                self.update(job['id'], state='paused', error_kind='POOL_EXHAUSTED',
+                            note=t('batch_keys_exhausted'))
+
     def run(self, selected=None):
+        self.key_pool = KeyPool(self.keys)
+        self.pool_exhausted.clear()
         with BatchLease(self.store.path.with_suffix('.lock')):
             # Another process may have completed rows since this window imported the file.
             with self.store.lock:
@@ -236,7 +257,8 @@ class BatchRunner:
             active = set()
             exhausted = False
             while active or not exhausted:
-                while not exhausted and not self.stop.is_set() and len(active) < self.concurrency:
+                while (not exhausted and not self.stop.is_set() and not self.pool_exhausted.is_set()
+                       and len(active) < self.concurrency):
                     try:
                         index, job = next(iterator)
                     except StopIteration:

@@ -13,6 +13,7 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 ## [1.12](https://github.com/PowerTokens/video-studio/releases/tag/v1.12) - 2026-10-05
 
 - **Multi-model generation.** Choose Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5 or kling v3 in the desktop app, CLI (`--model`) and MCP (`model` on `generate_video` / `estimate_cost`). A short bilingual description under the model picker explains best use and limits.
+- **Key pool exhaustion.** Keys that return quota / expired / rate-limit errors (HTTP 402 / 429 and related messages) are marked exhausted for the run; the next key is tried. A Task ID already returned is never resubmitted. If every key is exhausted, the batch pauses with a clear message. The API Key tab tip links to PowerTokens key limits.
 - **Compare models.** New Compare tab / `pt_wan.py compare --models a,b,c` / MCP `compare_videos`: one prompt to 2–3 models, per-model auto-snap notices, combined cost estimate, side-by-side results, outputs as `name_model-short.mp4` under a `compare/` folder, and a shared `compare_id` in History.
 - **Auto-adjust on model switch.** Duration, resolution and aspect ratio snap to the nearest values the new model supports, with a short notice. Batch import rows with unsupported params stay unsubmitted and show a clear per-row warning with suggested values (legacy templates keep working).
 - **`list_models`.** CLI `--list-models` / `list-models` subcommand and an MCP `list_models` tool return IDs, display names and descriptions.
