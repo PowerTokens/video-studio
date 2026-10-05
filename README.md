@@ -25,7 +25,7 @@ Pick a model in the desktop UI, pass `--model` on the CLI, set `model` on MCP to
 - **English and Chinese interface**: switch any time with the **中文 / English** toggle in the top-right corner. On first launch the app follows your Windows display language.
 - **Model picker**: choose Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5 or kling v3. Duration / resolution / ratio controls update to what that model allows.
 - **Single video**: prompt, duration, resolution and ratio (limits depend on the model), optional first/last frame and reference image / video / audio URLs, seed (where supported). Duration and ratio are detected from the prompt in English or Chinese. Native audio is on when the model supports it.
-- **Batch from Excel / CSV**: one row per clip, English or Chinese column headers, optional `Model` column (blank = Wan 3.0). Old templates with only a `Wan 3.0 Prompt` / `Prompt` column keep working. Bounded concurrency (1–8 generations, 1–4 downloads), per-row status colors and CSV export of results.
+- **Batch from Excel / CSV**: one row per clip, English or Chinese column headers, optional `Model` column (blank = Wan 3.0). Old templates with only a `Prompt` or legacy `Wan 3.0 Prompt` column keep working. Bounded concurrency (1–8 generations, 1–4 downloads), per-row status colors and CSV export of results.
 - **Shared character settings for episodic series**: one cast description is added in front of every episode prompt, so characters stay consistent across rows.
 - **Resume by Task ID**: every Task ID is saved before polling. Resuming only queries and downloads; it never resubmits.
 - **Resumable downloads**: `.part` files with HTTP Range, overlap and size checks.
@@ -140,7 +140,7 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 3. Open the **API Key** tab, paste your PowerTokens key and click **Add to key pool**.
 4. Write a prompt on the **Generate video** tab, or import a spreadsheet on the **Batch import** tab.
 
-A three-episode sample spreadsheet is included in English (`short-drama-batch-template.xlsx`) and Chinese (`短剧批量示例模板.xlsx`). In the app, **Save sample template…** on the Batch import tab saves the one that matches your interface language. Columns: `Title`, `Duration (s)`, `Resolution`, `Aspect ratio`, `Wan 3.0 Prompt` / `Prompt` (only the prompt column is required). An optional `Model` column accepts a model ID or display name.
+A three-episode sample spreadsheet is included in English (`short-drama-batch-template.xlsx`) and Chinese (`短剧批量示例模板.xlsx`). In the app, **Save sample template…** on the Batch import tab saves the one that matches your interface language. Columns: `Title`, `Duration (s)`, `Resolution`, `Aspect ratio`, `Prompt` (only the prompt column is required; legacy `Wan 3.0 Prompt` still works). An optional `Model` column accepts a model ID or display name.
 
 ### CLI
 
@@ -260,13 +260,17 @@ More details are in the Chinese user guide: [使用说明.md](使用说明.md). 
 
 ## FAQ
 
+### Why do some files still say Wan?
+
+Internal names such as `pt_wan.py` and the data folder `%LOCALAPPDATA%\PowerTokensWan` are kept for compatibility with existing installs, task records and saved keys. The product name is PowerTokens Video Studio.
+
 ### What is PowerTokens Video Studio?
 
 PowerTokens Video Studio is a free, open-source (MIT) Windows desktop app for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5 and kling v3, with batch import from Excel / CSV, resume by Task ID and protection against double charges.
 
 ### Can I batch-generate videos from a spreadsheet?
 
-Yes. On the **Batch import** tab, load an Excel or CSV file with one row per clip; only the `Wan 3.0 Prompt` / `Prompt` column is required, and English or Chinese headers both work. An optional `Model` column picks the model per row (blank = Wan 3.0). Rows run with 1–8 concurrent generations, and you can export the results to CSV.
+Yes. On the **Batch import** tab, load an Excel or CSV file with one row per clip; only the `Prompt` column is required (legacy `Wan 3.0 Prompt` still works), and English or Chinese headers both work. An optional `Model` column picks the model per row (blank = Wan 3.0). Rows run with 1–8 concurrent generations, and you can export the results to CSV.
 
 ### How do I keep characters consistent across episodes of an AI short drama?
 

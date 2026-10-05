@@ -321,6 +321,105 @@ def list_models():
     return [MODELS[mid] for mid in MODEL_ORDER]
 
 
+
+
+RES_RANK = {'480p': 480, '720p': 720, '1080p': 1080, '4k': 2160}
+RATIO_ASPECT = {
+    '16:9': 16 / 9, '9:16': 9 / 16, '1:1': 1.0, '4:3': 4 / 3, '3:4': 3 / 4,
+    '21:9': 21 / 9, 'adaptive': None,
+}
+
+
+def normalize_resolution(value):
+    value = str(value or '').strip().lower().replace(' ', '')
+    if value in ('720', '1080', '480'):
+        value += 'p'
+    if value in ('2160p', '2160'):
+        value = '4k'
+    return value
+
+
+def normalize_ratio(value, default='16:9'):
+    value = str(value or '').replace('：', ':').replace(' ', '').strip()
+    return value or default
+
+
+def nearest_duration(spec, duration):
+    try:
+        duration = int(duration)
+    except (TypeError, ValueError):
+        return spec.default_duration
+    if duration in spec.durations:
+        return duration
+    return min(spec.durations, key=lambda item: (abs(item - duration), item))
+
+
+def nearest_resolution(spec, resolution):
+    resolution = normalize_resolution(resolution)
+    if resolution in spec.resolutions:
+        return resolution
+    rank = RES_RANK.get(resolution)
+    if rank is None:
+        return spec.default_resolution if spec.default_resolution in spec.resolutions else spec.resolutions[0]
+    return min(spec.resolutions, key=lambda item: abs(RES_RANK.get(item, 10**9) - rank))
+
+
+def nearest_ratio(spec, ratio):
+    ratio = normalize_ratio(ratio, spec.default_ratio)
+    if ratio in spec.ratios:
+        return ratio
+    aspect = RATIO_ASPECT.get(ratio)
+    candidates = [(item, RATIO_ASPECT[item]) for item in spec.ratios
+                  if item in RATIO_ASPECT and RATIO_ASPECT[item] is not None]
+    if aspect is None or not candidates:
+        if spec.default_ratio in spec.ratios:
+            return spec.default_ratio
+        return spec.ratios[0]
+    return min(candidates, key=lambda pair: abs(pair[1] - aspect))[0]
+
+
+def snap_params(spec, duration, resolution, ratio):
+    """Snap unsupported params to the nearest allowed values.
+
+    Returns (duration, resolution, ratio, changes) where each change is
+    (field, old_value, new_value) with field in ('duration', 'resolution', 'ratio').
+    """
+    changes = []
+    try:
+        old_duration = int(duration)
+    except (TypeError, ValueError):
+        old_duration = duration
+    new_duration = nearest_duration(spec, duration)
+    if str(old_duration) != str(new_duration):
+        changes.append(('duration', old_duration, new_duration))
+
+    old_resolution = normalize_resolution(resolution) if str(resolution or '').strip() else resolution
+    new_resolution = nearest_resolution(spec, resolution)
+    if normalize_resolution(old_resolution) != new_resolution:
+        changes.append(('resolution', old_resolution or resolution, new_resolution))
+
+    old_ratio = normalize_ratio(ratio, '') if str(ratio or '').strip() else ratio
+    new_ratio = nearest_ratio(spec, ratio)
+    if normalize_ratio(str(old_ratio or ''), '') != new_ratio:
+        changes.append(('ratio', old_ratio or ratio, new_ratio))
+
+    return new_duration, new_resolution, new_ratio, changes
+
+
+def format_adjust_summary(changes, lang=None):
+    """Compact summary like '15s / 720p' or '15 秒 / 720p'."""
+    from i18n import is_zh
+    use_zh = is_zh() if lang is None else lang == 'zh'
+    parts = []
+    for field, _old, new in changes:
+        if field == 'duration':
+            parts.append(('%s 秒' % new) if use_zh else ('%ss' % new))
+        elif field == 'resolution':
+            parts.append(str(new))
+        elif field == 'ratio':
+            parts.append(str(new))
+    return ' / '.join(parts)
+
 def validate_params(spec, duration, resolution, ratio, prompt='', media=None, seed=''):
     """Raise TaskError-compatible ValueError with friendly message, or return cleaned values."""
     from wan_core import TaskError

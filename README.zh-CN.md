@@ -25,7 +25,7 @@ PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm
 - **支持中英文界面切换**：右上角「中文 / English」一键切换，立即生效并自动记住；首次启动跟随 Windows 显示语言。
 - **模型选择**：Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 Fast、Seedance 2.5、kling v3。时长 / 分辨率 / 比例控件会随模型切换。
 - **单条生成**：提示词、时长、分辨率与比例（限制随模型变化），可选首帧、尾帧及参考图片 / 视频 / 音频链接和随机种子（视模型支持）；可从中英文提示词识别时长与比例；支持音频的模型默认开启原生音频。
-- **Excel / CSV 批量生成**：一行一条，支持中英文表头，可选 `模型` / `Model` 列（留空 = Wan 3.0）。旧模板仅有 `Wan 3.0 Prompt` / `Prompt` 列仍可用。限定并发（生成 1–8、下载 1–4），按状态显示行颜色，可导出结果 CSV。
+- **Excel / CSV 批量生成**：一行一条，支持中英文表头，可选 `模型` / `Model` 列（留空 = Wan 3.0）。旧模板仅有 `Prompt` 或旧表头 `Wan 3.0 Prompt` 仍可用。限定并发（生成 1–8、下载 1–4），按状态显示行颜色，可导出结果 CSV。
 - **连续剧集的全剧人物设定**：一段人物设定自动加在每集 Prompt 前，保持人物一致。
 - **按任务 ID 恢复**：轮询前先保存任务 ID；恢复只查询和下载，不会重新提交。
 - **断点续传下载**：`.part` 临时文件，HTTP Range，并校验交界内容和文件大小。
@@ -138,7 +138,7 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 3. 在「API Key」页粘贴 PowerTokens Key，点击「添加到 Key 池」。
 4. 在「生成视频」页填写提示词，或在「批量导入」页导入表格。
 
-附带三集示例表格：`短剧批量示例模板.xlsx`（英文版为 `short-drama-batch-template.xlsx`）。在「批量导入」页点击「保存示例模板…」可保存与当前界面语言一致的模板。列：`标题`、`时长(秒)`、`分辨率`、`画面比例`、`Wan 3.0 Prompt` / `Prompt`（仅提示词列必填）。可选 `模型` / `Model` 列接受模型 ID 或显示名。
+附带三集示例表格：`短剧批量示例模板.xlsx`（英文版为 `short-drama-batch-template.xlsx`）。在「批量导入」页点击「保存示例模板…」可保存与当前界面语言一致的模板。列：`标题`、`时长(秒)`、`分辨率`、`画面比例`、`提示词` / `Prompt`（仅提示词列必填；旧表头 `Wan 3.0 Prompt` 仍可用）。可选 `模型` / `Model` 列接受模型 ID 或显示名。
 
 ### 命令行
 
@@ -249,13 +249,17 @@ GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build
 
 ## 常见问题
 
+### 为什么有的文件名还写着 Wan？
+
+内部名称如 `pt_wan.py` 与数据目录 `%LOCALAPPDATA%\PowerTokensWan` 为兼容已有安装、任务记录与已保存 Key 而保留。产品名称为 PowerTokens Video Studio。
+
 ### PowerTokens Video Studio 是什么？
 
 PowerTokens Video Studio 是一款免费开源（MIT）的 Windows 桌面工具，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 Fast、Seedance 2.5 与 kling v3，以及 Excel / CSV 批量导入、按任务 ID 恢复，并避免重复扣费。
 
 ### 可以用 Excel 表格批量生成视频吗？
 
-可以。在「批量导入」页导入 Excel 或 CSV 文件，一行对应一条视频；只有 `Wan 3.0 Prompt` / `Prompt` 提示词列是必填的，中英文表头均可识别。可选 `模型` / `Model` 列按行指定模型（留空 = Wan 3.0）。生成并发可设为 1–8，结果可导出为 CSV。
+可以。在「批量导入」页导入 Excel 或 CSV 文件，一行对应一条视频；只有 `提示词` / `Prompt` 列是必填的（旧表头 `Wan 3.0 Prompt` 仍可用），中英文表头均可识别。可选 `模型` / `Model` 列按行指定模型（留空 = Wan 3.0）。生成并发可设为 1–8，结果可导出为 CSV。
 
 ### 做 AI 短剧时，如何让多集的人物保持一致？
 

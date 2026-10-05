@@ -10,6 +10,14 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 - **Docker image and Glama listing for the MCP server.** New `Dockerfile` (Python 3.12 slim, `pip install mcp`, runs `mcp_server.py` over stdio as a non-root user; videos go to `/videos`) and `glama.json` (maintainer `PowerTokens`) so the server can be listed and checked on [Glama](https://glama.ai/mcp/servers). The server starts and lists its tools without an API key. The READMEs show how to build and run the image. The desktop app and the EXE are unaffected.
 - **MCP server works with MCP Python SDK 2.x.** SDK 2.x renamed `FastMCP` to `MCPServer` (`mcp.server.mcpserver`), so `mcp_server.py` failed to start with `ModuleNotFoundError: No module named 'mcp.server.fastmcp'` after a plain `pip install mcp`. It now uses `MCPServer` when available and falls back to `FastMCP` on 1.x; the four tools (`check_key`, `estimate_cost`, `generate_video`, `resume_video`) and their parameters are unchanged. The READMEs now say `pip install mcp` instead of pinning `mcp<2`. The desktop app and the EXE are unaffected.
 
+## [1.12](https://github.com/PowerTokens/video-studio/releases/tag/v1.12) - 2026-10-05
+
+- **Multi-model generation.** Choose Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5 or kling v3 in the desktop app, CLI (`--model`) and MCP (`model` on `generate_video` / `estimate_cost`). A short bilingual description under the model picker explains best use and limits.
+- **Auto-adjust on model switch.** Duration, resolution and aspect ratio snap to the nearest values the new model supports, with a short notice. Batch import rows with unsupported params stay unsubmitted and show a clear per-row warning with suggested values (legacy templates keep working).
+- **`list_models`.** CLI `--list-models` / `list-models` subcommand and an MCP `list_models` tool return IDs, display names and descriptions.
+- Optional `Model` column in Excel / CSV batch import; sample templates use a generic `Prompt` column (legacy `Wan 3.0 Prompt` still accepted).
+- Cost estimates follow each model's list price; the existing Wan 3.0 limited-time discount logic through 2026-10-07 is unchanged.
+
 ## [1.11](https://github.com/PowerTokens/video-studio/releases/tag/v1.11) - 2026-09-30
 
 - **English interface.** The whole app (all tabs, dialogs, status messages, batch states, the CLI and the MCP tool descriptions) is now available in English as well as Chinese. Switch with the **中文 / English** toggle in the top-right corner; it applies immediately (your prompt, keys and imported batch are kept) and is remembered in `%LOCALAPPDATA%\PowerTokensWan\settings.json`. On first launch the app uses Chinese when the Windows display language is Chinese, English otherwise. The Chinese wording is unchanged.

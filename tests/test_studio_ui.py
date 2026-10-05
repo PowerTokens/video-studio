@@ -102,7 +102,7 @@ class StudioUITests(unittest.TestCase):
         self.assertIn('任务仍在云端继续，可在任务记录里找回', texts)
         self.assertIn('填写网络可访问的图片 / 视频 / 音频链接，暂不支持本地上传；不需要可留空', texts)
         self.assertIn('直接粘贴从 PowerTokens 官网复制的 Key 即可', texts)
-        self.assertIn('还没有 Key？去 PowerTokens 注册即可使用。本工具目前仅支持 Wan 3.0 视频模型。', texts)
+        self.assertIn('还没有 Key？去 PowerTokens 注册即可使用。支持 Wan、Seedance、Kling 等多种视频模型。', texts)
         self.assertIn('Wan 3.0 限时折扣至 10 月 7 日', texts)
         self.assertFalse(any('界面设计预览' in text for text in texts))
         self.gui.key_input.set('sk-test-only-one, sk-test-only-two')

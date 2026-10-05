@@ -18,7 +18,7 @@ from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE,
                        load_image, header_logo_file)
 from input_helpers import parse_keys, infer_prompt
 from batch_ui import BatchTab
-from models import DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id
+from models import DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id, snap_params, format_adjust_summary
 from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices, list_prices,
                       TaskError, atomic_json, estimate_cost, fingerprint, payload)
 
@@ -225,6 +225,10 @@ class App:
         self.model_combo.pack(fill='x')
         self.model_desc = tk.StringVar()
         label(model_row, variable=self.model_desc).pack(fill='x', pady=(6, 0))
+        self.model_adjust = tk.StringVar()
+        self.model_adjust_label = label(model_row, variable=self.model_adjust, style='Badge.TLabel')
+        self.model_adjust_label.pack(fill='x', pady=(6, 0))
+        self.model_adjust_label.pack_forget()
         self._model_labels = {}
         self._refresh_model_combo()
         self.model_combo.bind('<<ComboboxSelected>>', lambda *_: self._on_model_picked())
@@ -448,19 +452,39 @@ class App:
             self.resolution_combo.configure(values=spec.resolutions)
         if self.ratio_combo is not None:
             self.ratio_combo.configure(values=spec.ratios)
+        changes = []
         if not preserve:
-            if self.resolution.get() not in spec.resolutions:
-                self.resolution.set(spec.default_resolution)
-            if self.ratio.get() not in spec.ratios:
-                self.ratio.set(spec.default_ratio)
             try:
-                dur = int(self.duration.get())
+                old_duration = int(self.duration.get())
             except (TypeError, ValueError):
-                dur = spec.default_duration
-            if dur not in spec.durations:
-                self.duration.set(str(spec.default_duration))
+                old_duration = self.duration.get()
+            old_resolution = self.resolution.get()
+            old_ratio = self.ratio.get()
+            new_duration, new_resolution, new_ratio, changes = snap_params(
+                spec, old_duration, old_resolution, old_ratio)
+            if str(self.duration.get()) != str(new_duration):
+                self.duration.set(str(new_duration))
+            if self.resolution.get() != new_resolution:
+                self.resolution.set(new_resolution)
+            if self.ratio.get() != new_ratio:
+                self.ratio.set(new_ratio)
+            self._show_model_adjust(changes)
+        else:
+            self._show_model_adjust([])
         self._update_current_model_badge()
         self._update_model_description()
+
+    def _show_model_adjust(self, changes):
+        if not hasattr(self, 'model_adjust'):
+            return
+        if changes:
+            summary = format_adjust_summary(changes)
+            self.model_adjust.set(t('model_params_adjusted', summary))
+            if not self.model_adjust_label.winfo_manager():
+                self.model_adjust_label.pack(fill='x', pady=(6, 0))
+        else:
+            self.model_adjust.set('')
+            self.model_adjust_label.pack_forget()
 
     def _update_model_description(self):
         if not hasattr(self, 'model_desc'):

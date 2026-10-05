@@ -173,3 +173,44 @@ class BatchModelColumnTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SnapTests(unittest.TestCase):
+    def test_seedance_fast_snaps_1080p_and_long_duration(self):
+        spec = models.get_model('dreamina-seedance-2-0-fast-260128')
+        duration, resolution, ratio, changes = models.snap_params(spec, 30, '1080p', '16:9')
+        self.assertEqual(duration, 15)
+        self.assertEqual(resolution, '720p')
+        self.assertEqual(ratio, '16:9')
+        fields = [c[0] for c in changes]
+        self.assertEqual(fields, ['duration', 'resolution'])
+        summary = models.format_adjust_summary(changes)
+        self.assertIn('15', summary)
+        self.assertIn('720p', summary)
+
+    def test_unchanged_when_already_valid(self):
+        spec = models.get_model('wan3.0-video')
+        duration, resolution, ratio, changes = models.snap_params(spec, 10, '720p', '9:16')
+        self.assertEqual((duration, resolution, ratio, changes), (10, '720p', '9:16', []))
+
+    def test_kling_snaps_unsupported_ratio_and_resolution(self):
+        spec = models.get_model('kling-v3')
+        duration, resolution, ratio, changes = models.snap_params(spec, 2, '480p', '4:3')
+        self.assertEqual(duration, 3)
+        self.assertEqual(resolution, '720p')
+        self.assertIn(ratio, spec.ratios)
+        self.assertTrue(changes)
+
+
+class BatchSnapWarnTests(unittest.TestCase):
+    def test_batch_row_warns_with_suggestion_without_changing(self):
+        from batch_import import build_job
+        job = build_job('Sheet', 2,
+                        {'duration': 0, 'resolution': 1, 'prompt': 2, 'model': 3},
+                        ['30', '1080p', 'a short scene', 'dreamina-seedance-2-0-fast-260128'])
+        self.assertEqual(job['state'], 'invalid')
+        self.assertIsNone(job['payload'])
+        self.assertIn('720p', job['note'])
+        self.assertIn('15', job['note'])
+        self.assertEqual(job['suggested']['duration'], 15)
+        self.assertEqual(job['suggested']['resolution'], '720p')
