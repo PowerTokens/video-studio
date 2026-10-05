@@ -7,8 +7,9 @@ from pathlib import Path
 import sys
 from i18n import is_zh, t
 from input_helpers import parse_keys
+from models import DEFAULT_MODEL_ID, MODELS, get_model, resolve_model_id
 from wan_core import (API_BASE, Client, DATA_DIR, LIST_PRICE_USD_PER_SECOND, MODEL, PROMO_END_DATE, PRICE_CHECKED_DATE,
-                      PRICE_SOURCE_URL, PRICE_SOURCE_URL_EN, promo_active,
+                      PRICE_SOURCE_URL, PRICE_SOURCE_URL_EN, promo_active, current_prices, list_prices,
                       TaskError, api, atomic_json, category, estimate_cost, payload)
 
 MODEL_ID = MODEL
@@ -58,14 +59,15 @@ def main():
     config.add_argument('--remove-key')
     config.add_argument('--list-keys', action='store_true')
     config.add_argument('--show', action='store_true')
+    model_choices = list(MODELS)
     for name in ('generate', 'estimate'):
         item = subs.add_parser(name)
         item.add_argument('-d', '--duration', type=int, default=5)
-        item.add_argument('-r', '--resolution', choices=['720p', '1080p'], default='720p')
+        item.add_argument('-r', '--resolution', default='720p')
+        item.add_argument('-m', '--model', default=MODEL, help=t('cli_model_help'))
         if name == 'generate':
             item.add_argument('-p', '--prompt', default='')
-            item.add_argument('-m', '--model', default=MODEL)
-            item.add_argument('--ratio', choices=['16:9', '9:16', '1:1'], default='16:9')
+            item.add_argument('--ratio', default='16:9')
             item.add_argument('--seed', default='')
             item.add_argument('-o', '--output')
             item.add_argument('-i', '--image', '--first-frame', dest='first_frame')
@@ -95,23 +97,33 @@ def main():
             save_config(cfg)
         emit({'config_pool': [mask_key(k) for k in pool], 'effective_pool': [mask_key(k) for k in resolve_keys()], 'config_path': str(CONFIG_PATH)})
         return 0
+    if args.command in ('estimate', 'generate'):
+        try:
+            model_id = resolve_model_id(args.model)
+        except KeyError:
+            raise TaskError(t('model_unknown', args.model), 'PARAM')
+        args.model = model_id
     if args.command == 'estimate':
-        if not 2 <= args.duration <= 30:
-            raise TaskError(t('cli_duration_range'), 'PARAM')
-        result = {'model': MODEL, 'est_cost_usd': estimate_cost(args.duration, args.resolution),
+        spec = get_model(args.model)
+        if args.duration not in spec.durations:
+            raise TaskError(t('duration_not_allowed', spec.label(), spec.durations[0], spec.durations[-1]), 'PARAM')
+        if args.resolution not in spec.resolutions:
+            raise TaskError(t('resolution_not_allowed', spec.label(), ', '.join(spec.resolutions)), 'PARAM')
+        result = {'model': args.model, 'est_cost_usd': estimate_cost(args.duration, args.resolution, model_id=args.model),
                   'price_checked_date': PRICE_CHECKED_DATE,
-                  'price_source': PRICE_SOURCE_URL if is_zh() else PRICE_SOURCE_URL_EN}
-        if promo_active():
-            result['list_cost_usd'] = estimate_cost(args.duration, args.resolution, LIST_PRICE_USD_PER_SECOND)
-            result['promo_end_date'] = PROMO_END_DATE.isoformat()
+                  'price_source': spec.price_source()}
+        regular = list_prices(model_id=args.model)
+        if args.resolution in regular:
+            result['list_cost_usd'] = estimate_cost(args.duration, args.resolution, prices=regular)
+            if args.model == DEFAULT_MODEL_ID and promo_active():
+                result['promo_end_date'] = PROMO_END_DATE.isoformat()
         result['note'] = t('cli_estimate_note')
         emit(result)
         return 0
-    if args.command == 'generate' and args.model != MODEL:
-        raise TaskError(t('cli_model_only') + MODEL, 'PARAM')
     keys = resolve_keys()
     if args.command == 'check':
-        emit({'key_pool_size': len(keys), 'keys_masked': [mask_key(k) for k in keys], 'model_locked': MODEL, 'ready': bool(keys)})
+        emit({'key_pool_size': len(keys), 'keys_masked': [mask_key(k) for k in keys],
+              'models': list(MODELS), 'default_model': DEFAULT_MODEL_ID, 'ready': bool(keys)})
         return 0 if keys else 2
     if not keys:
         emit({'error': t('cli_need_key'), 'error_type': 'AUTH'})
@@ -139,7 +151,7 @@ def main():
         result = client.resume(keys[args.key_index - 1], args.task_id, args.output)
     else:
         media = [{'type': name, 'url': getattr(args, name)} for name in ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio') if getattr(args, name)]
-        request = payload(args.prompt, args.duration, args.resolution, args.ratio, media, args.seed)
+        request = payload(args.prompt, args.duration, args.resolution, args.ratio, media, args.seed, model=args.model)
         if os.environ.get('PT_DRY_RUN'):
             emit({'dry_run': True, 'payload': request})
             return 0

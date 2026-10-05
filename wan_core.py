@@ -15,7 +15,7 @@ from pathlib import Path
 
 from i18n import t
 
-APP_VERSION = '1.11'
+APP_VERSION = '1.12'
 USER_AGENT = 'PowerTokensVideoStudio/' + APP_VERSION
 DEFAULT_API_BASE = 'https://api.powertokens.ai'
 UTM = 'utm_source=github&utm_medium=oss&utm_campaign=video-studio'
@@ -34,35 +34,40 @@ def resolve_api_base(value=None):
 # Single source of truth for the API host; override with the POWERTOKENS_API_BASE environment variable.
 API_BASE = resolve_api_base(os.environ.get('POWERTOKENS_API_BASE'))
 BASE = API_BASE  # Backward-compatible alias.
-MODEL = 'wan3.0-video'
-# PT prices per second (USD), checked on PRICE_CHECKED_DATE at PRICE_SOURCE_URL.
-LIST_PRICE_USD_PER_SECOND = {'720p': 0.10, '1080p': 0.20}
-# Wan 3.0 limited-time discount, valid through PROMO_END_DATE (inclusive, local date).
-PROMO_PRICE_USD_PER_SECOND = {'720p': 0.04, '1080p': 0.08}
-PROMO_END_DATE = datetime.date(2026, 10, 7)
+
+import models as _models
+from models import (DEFAULT_MODEL_ID, MODELS, PRICE_CHECKED_DATE, WAN_LIST_USD_PER_SECOND,
+                    WAN_PROMO_END_DATE, WAN_PROMO_USD_PER_SECOND, get_model, list_models,
+                    resolve_model_id, wan_promo_active)
+
+MODEL = DEFAULT_MODEL_ID  # Backward-compatible default model id.
+LIST_PRICE_USD_PER_SECOND = dict(WAN_LIST_USD_PER_SECOND)
+PROMO_PRICE_USD_PER_SECOND = dict(WAN_PROMO_USD_PER_SECOND)
+PROMO_END_DATE = WAN_PROMO_END_DATE
 
 
 def local_today():
-    return datetime.date.today()  # Local calendar date of this computer.
+    return _models.local_today()
 
 
 def promo_active(today=None):
     """True on or before PROMO_END_DATE (local date). `today` is injectable for tests."""
-    return (today or local_today()) <= PROMO_END_DATE
+    return wan_promo_active(today if today is not None else local_today())
 
 
-def current_prices(today=None):
-    return PROMO_PRICE_USD_PER_SECOND if promo_active(today) else LIST_PRICE_USD_PER_SECOND
+def current_prices(today=None, model_id=None):
+    return get_model(model_id or DEFAULT_MODEL_ID).current_prices(
+        today if today is not None else local_today())
 
 
-def list_prices(today=None):
+def list_prices(today=None, model_id=None):
     """Regular prices to show as "原价" while the discount runs; {} afterwards."""
-    return LIST_PRICE_USD_PER_SECOND if promo_active(today) else {}
+    return get_model(model_id or DEFAULT_MODEL_ID).list_prices_for_display(
+        today if today is not None else local_today())
 
 
-PRICE_CHECKED_DATE = '2026-09-30'
-PRICE_SOURCE_URL = 'https://powertokens.ai/zh-Hans/models/wan3.0-video?' + UTM
-PRICE_SOURCE_URL_EN = 'https://powertokens.ai/models/wan3.0-video?' + UTM
+PRICE_SOURCE_URL = get_model(DEFAULT_MODEL_ID).model_page_url_zh
+PRICE_SOURCE_URL_EN = get_model(DEFAULT_MODEL_ID).model_page_url
 DATA_DIR = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / '.local' / 'share'))) / 'PowerTokensWan'
 
 
@@ -87,10 +92,10 @@ def fingerprint(key):
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
-def task_url(task_id):
+def task_url(task_id, poll_kind='unified'):
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,200}', task_id):
         raise TaskError(t('task_id_invalid'), 'PARAM')
-    return API_BASE + '/v1/videos/' + task_id
+    return _models.poll_url(API_BASE, task_id, poll_kind)
 
 
 def origin(url):
@@ -105,11 +110,17 @@ def is_api_url(url):
     return origin(url) == origin(API_BASE)
 
 
-def estimate_cost(duration, resolution, prices=None, today=None):
-    prices = current_prices(today) if prices is None else prices
-    if resolution not in prices:
-        raise ValueError(t('resolution_unsupported'))
-    return round(int(duration) * prices[resolution], 3)
+def estimate_cost(duration, resolution, prices=None, today=None, model_id=None):
+    if prices is not None:
+        resolution = str(resolution).strip().lower()
+        if resolution in ('720', '1080', '480'):
+            resolution += 'p'
+        if resolution not in prices:
+            raise ValueError(t('resolution_unsupported'))
+        return round(int(duration) * prices[resolution], 3)
+    return _models.estimate_cost(
+        duration, resolution, model_id=model_id,
+        today=today if today is not None else local_today())
 
 
 class SafeRedirect(urllib.request.HTTPRedirectHandler):
@@ -159,34 +170,9 @@ def category(code, body):
     return 'UNKNOWN'
 
 
-def payload(prompt, duration=5, resolution='720p', ratio='16:9', media=None, seed=''):
-    try:
-        duration = int(duration)
-    except (TypeError, ValueError):
-        raise TaskError(t('duration_int'), 'PARAM')
-    if not 2 <= duration <= 30:
-        raise TaskError(t('duration_range'), 'PARAM')
-    if resolution not in ('720p', '1080p') or ratio not in ('16:9', '9:16', '1:1'):
-        raise TaskError(t('choose_valid_params'), 'PARAM')
-    media = media or []
-    if not prompt.strip() and not media:
-        raise TaskError(t('need_prompt_or_media'), 'PARAM')
-    for item in media:
-        parsed = urllib.parse.urlsplit(item['url'])
-        if parsed.scheme not in ('http', 'https') or not parsed.hostname:
-            raise TaskError(t('media_url_invalid'), 'PARAM')
-        if item['type'] not in ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio'):
-            raise TaskError(t('media_type_invalid'), 'PARAM')
-    result = dict(model=MODEL, prompt=prompt.strip(), seconds=str(duration), size=resolution.upper(), ratio=ratio,
-                  generate_audio=True)
-    if media:
-        result['media'] = media
-    if str(seed).strip():
-        try:
-            result['seed'] = int(seed)
-        except (TypeError, ValueError):
-            raise TaskError(t('seed_invalid'), 'PARAM')
-    return result
+def payload(prompt, duration=5, resolution='720p', ratio='16:9', media=None, seed='', model=None):
+    """Build a provider request for the selected model. Defaults to Wan 3.0."""
+    return _models.build_request(model or DEFAULT_MODEL_ID, prompt, duration, resolution, ratio, media, seed)
 
 
 def download_source(url):
@@ -388,8 +374,14 @@ class Client:
             self.on_record(dict(self.record))
 
     def submit(self, keys, request, out_path):
-        if request.get('model') != MODEL:
-            raise TaskError(t('model_only'), 'PARAM')
+        request = dict(request)
+        poll_kind = request.pop('_poll_kind', None)
+        model_id = request.get('model') or request.get('model_name') or DEFAULT_MODEL_ID
+        if model_id not in MODELS:
+            raise TaskError(t('model_unknown', model_id), 'PARAM')
+        spec = get_model(model_id)
+        if poll_kind is None:
+            poll_kind = spec.poll_kind
         if not keys:
             raise TaskError(t('add_api_key'), 'AUTH')
         output = Path(out_path)
@@ -400,21 +392,31 @@ class Client:
         finally:
             probe.unlink(missing_ok=True)
         self.record = dict(local_id=uuid.uuid4().hex, task_id='', created=time.strftime('%Y-%m-%d %H:%M:%S'),
-                           output=str(Path(out_path).absolute()), state=t('state_preparing'), key_hash='', key_hint='')
+                           output=str(Path(out_path).absolute()), state=t('state_preparing'), key_hash='', key_hint='',
+                           model=model_id, poll_kind=poll_kind)
         self.record.update(self.context)
+        submit_endpoint = _models.submit_url(API_BASE, request)
         for index, key in enumerate(keys):
             if self.stop.is_set():
                 raise TaskError(t('submit_stopped'), 'PAUSED')
-            self.save(state=t('state_submitting'), key_hash=fingerprint(key), key_hint='****' + key[-4:])
+            self.save(state=t('state_submitting'), key_hash=fingerprint(key), key_hint='****' + key[-4:],
+                      model=model_id, poll_kind=poll_kind)
             self.report(t('submitting_key', index + 1, len(keys), key[-4:]))
-            code, body = api('POST', API_BASE + '/v1/videos', key, request)
-            task_id = body.get('id') or body.get('task_id')
+            code, body = api('POST', submit_endpoint, key, request)
+            task_id = _models.extract_task_id(body, spec.family)
+            # Kling may return HTTP 200 with code!=0
+            if spec.family == 'kling' and isinstance(body.get('code'), int) and body.get('code') != 0 and not task_id:
+                kind = category(code or 400, body)
+                if kind in ('AUTH', 'QUOTA', 'NOT_ALLOWED'):
+                    self.save(state=t('state_rejected') + kind)
+                    self.report(t('key_rejected') + kind)
+                    continue
             if isinstance(task_id, str) and task_id:
-                task_url(task_id)
+                task_url(task_id, poll_kind)
                 # Persist before the first query so a restart can recover the same task.
                 self.report(t('task_id_log') + task_id)
                 try:
-                    self.save(task_id=task_id, state=t('state_submitted'))
+                    self.save(task_id=task_id, state=t('state_submitted'), model=model_id, poll_kind=poll_kind)
                 except OSError:
                     raise TaskError(t('record_save_failed') + task_id, 'STORAGE', task_id)
                 return self.wait(key, task_id, out_path)
@@ -484,7 +486,12 @@ class Client:
         return 'ok'
 
     def wait(self, key, task_id, out_path, wall_timeout=3600, interval=10):
-        url = task_url(task_id)
+        poll_kind = _models.poll_kind_for_record(self.record)
+        family = _models.family_for_record(self.record)
+        # Remember model on resume of legacy records that pre-date the model field.
+        if not self.record.get('model'):
+            self.save(model=DEFAULT_MODEL_ID, poll_kind=poll_kind)
+        url = task_url(task_id, poll_kind)
         deadline = time.monotonic() + wall_timeout
         query_errors = 0
         cached_video_url = self.record.get('download_url', '')
@@ -496,21 +503,23 @@ class Client:
             if code == 403 and self.defer_on_403:
                 self.save(state=t('state_403_deferred'))
                 raise TaskError(t('query_403_deferred'), 'QUERY_FORBIDDEN', task_id)
-            status = str(body.get('status') or '').strip().lower()
+            status, progress, direct = _models.normalize_status(body, family)
+            # Kling wraps errors as HTTP 200 + code != 0
+            kling_err = family == 'kling' and isinstance(body.get('code'), int) and body.get('code') != 0 and not status
             expired = time.monotonic() >= deadline
             ready = status in ('succeeded', 'completed', 'success')
             terminal = status in ('failed', 'cancelled', 'canceled')
-            query_failed = code != 200 or not status
+            query_failed = (code != 200 and not (family == 'kling' and code == 200)) or not status or kling_err
+            if family == 'kling' and code == 200 and status:
+                query_failed = False
             if query_failed:
                 query_errors += 1
                 self.report(t('query_failed', code, status or t('no_valid_status'), query_errors))
             else:
                 query_errors = 0
                 self.report(t('query_ok', code, status,
-                              (' · %s%%' % body['progress']) if body.get('progress') is not None else ''))
+                              (' · %s%%' % progress) if progress is not None else ''))
             retrying_download = False
-            response_meta = body.get('metadata') or {}
-            direct = response_meta.get('url') if isinstance(response_meta, dict) else None
             if ready and isinstance(direct, str) and direct.startswith('https://'):
                 if cached_video_url != direct:
                     cached_video_url = direct
@@ -519,9 +528,10 @@ class Client:
                 candidates = []
                 if cached_video_url:
                     candidates.append(cached_video_url)
-                content_url = url + '/content'
-                if (ready or code == 403 or expired or terminal or query_errors >= 3) and content_url not in candidates:
-                    candidates.append(content_url)
+                if family != 'kling':
+                    content_url = url + '/content'
+                    if (ready or code == 403 or expired or terminal or query_errors >= 3) and content_url not in candidates:
+                        candidates.append(content_url)
                 # Keep resuming the same endpoint after a dropped connection.
                 saved_source = partial_download_source(out_path)
                 if saved_source:

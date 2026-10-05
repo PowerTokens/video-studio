@@ -2,23 +2,30 @@
 
 [English](README.md) | **简体中文**
 
-基于 Wan 3.0 的 Windows 批量 / 连续剧集 AI 视频生成工具：Excel 导入、安全恢复、不重复扣费。
-
-<!-- promo:start （活动结束后删除此段） -->
-> **Wan 3.0 限时折扣至 2026 年 10 月 7 日。** 当前价格见 [Wan 3.0 模型页](https://powertokens.ai/zh-Hans/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio)。
-<!-- promo:end -->
+Windows 批量 / 连续剧集 AI 视频生成工具：Excel 导入、安全恢复、不重复扣费。
 
 ![演示：Wan 3.0 生成的片段](docs/images/demo.gif)
 
-PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm_source=github&utm_medium=oss&utm_campaign=video-studio) API 调用 Wan 3.0 视频模型（`wan3.0-video`），适合需要一次生成大量片段（例如短剧分集），并希望中断后能恢复、不重复付费的用户。
+PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm_source=github&utm_medium=oss&utm_campaign=video-studio) API 生成视频，适合需要一次生成大量片段（例如短剧分集），并希望中断后能恢复、不重复付费的用户。
 
-**目前仅支持 Wan 3.0 视频模型。** 需要其他模型，欢迎在 [Issues](../../issues) 中提出。
+### 支持的模型
+
+| 显示名 | 模型 ID | 文档 / 价格 |
+|---|---|---|
+| Wan 3.0（默认） | `wan3.0-video` | [模型页](https://powertokens.ai/zh-Hans/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Wan 3.0 Prime | `wan3.0-video-prime` | [模型页](https://powertokens.ai/zh-Hans/models/wan3.0-video-prime?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Seedance 2.0 Fast | `dreamina-seedance-2-0-fast-260128` | [模型页](https://powertokens.ai/zh-Hans/models/dreamina-seedance-2-0-fast-260128?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/byteplus/dreamina-seedance-2-0-fast-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Seedance 2.5 | `dreamina-seedance-2-5-260628` | [模型页](https://powertokens.ai/zh-Hans/models/dreamina-seedance-2-5-260628?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/byteplus/dreamina-seedance-2-5-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| kling v3 | `kling-v3` | [模型页](https://powertokens.ai/zh-Hans/models/kling-v3?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/kling/kling-v3-text2video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+
+在桌面端选择模型，CLI 使用 `--model`，MCP 工具传入 `model`，或在批量表格中增加可选的 `模型` / `Model` 列。各模型允许的时长、分辨率和画面比例不同；不合法的组合会在提交前被拒绝。
 
 ## 功能
 
 - **支持中英文界面切换**：右上角「中文 / English」一键切换，立即生效并自动记住；首次启动跟随 Windows 显示语言。
-- **单条生成**：提示词、时长（2–30 秒）、720p / 1080p、16:9 / 9:16 / 1:1，可选首帧、尾帧及参考图片 / 视频 / 音频链接和随机种子；可从中英文提示词识别时长与比例（如“16秒，16:9横屏…”、分镜时间轴“0-5秒…10-16秒”或英文 “total length 15s”、“00:00-00:03”）；默认开启原生音频。
-- **Excel / CSV 批量生成**：一行一条，支持中英文表头，限定并发（生成 1–8、下载 1–4），按状态显示行颜色，可导出结果 CSV。
+- **模型选择**：Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 Fast、Seedance 2.5、kling v3。时长 / 分辨率 / 比例控件会随模型切换。
+- **单条生成**：提示词、时长、分辨率与比例（限制随模型变化），可选首帧、尾帧及参考图片 / 视频 / 音频链接和随机种子（视模型支持）；可从中英文提示词识别时长与比例；支持音频的模型默认开启原生音频。
+- **Excel / CSV 批量生成**：一行一条，支持中英文表头，可选 `模型` / `Model` 列（留空 = Wan 3.0）。旧模板仅有 `Wan 3.0 Prompt` / `Prompt` 列仍可用。限定并发（生成 1–8、下载 1–4），按状态显示行颜色，可导出结果 CSV。
 - **连续剧集的全剧人物设定**：一段人物设定自动加在每集 Prompt 前，保持人物一致。
 - **按任务 ID 恢复**：轮询前先保存任务 ID；恢复只查询和下载，不会重新提交。
 - **断点续传下载**：`.part` 临时文件，HTTP Range，并校验交界内容和文件大小。
@@ -131,7 +138,16 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 3. 在「API Key」页粘贴 PowerTokens Key，点击「添加到 Key 池」。
 4. 在「生成视频」页填写提示词，或在「批量导入」页导入表格。
 
-附带三集示例表格：`短剧批量示例模板.xlsx`（英文版为 `short-drama-batch-template.xlsx`）。在「批量导入」页点击「保存示例模板…」可保存与当前界面语言一致的模板。
+附带三集示例表格：`短剧批量示例模板.xlsx`（英文版为 `short-drama-batch-template.xlsx`）。在「批量导入」页点击「保存示例模板…」可保存与当前界面语言一致的模板。列：`标题`、`时长(秒)`、`分辨率`、`画面比例`、`Wan 3.0 Prompt` / `Prompt`（仅提示词列必填）。可选 `模型` / `Model` 列接受模型 ID 或显示名。
+
+### 命令行
+
+```bash
+python pt_wan.py estimate -d 5 -r 720p --model wan3.0-video
+python pt_wan.py generate -p "一只猫在草地上奔跑" -d 5 -r 720p --model dreamina-seedance-2-0-fast-260128 -o out.mp4
+```
+
+`--model` 默认为 `wan3.0-video`。更多媒体参数见 `python pt_wan.py generate -h`。
 
 ## 获取 API Key
 
@@ -143,13 +159,13 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 
 ## 在 AI 助手中使用（MCP）
 
-`mcp_server.py` 是一个小型 [MCP](https://modelcontextprotocol.io) 服务，可让 Claude Desktop、Cursor 等 AI 助手直接为你生成 Wan 3.0 视频。它与桌面端使用同一套引擎（通过 `pt_wan.py` 调用），每个任务 ID 都会保存，中断后恢复原任务而不是重新提交。AI 助手可使用四个工具：
+`mcp_server.py` 是一个小型 [MCP](https://modelcontextprotocol.io) 服务，可让 Claude Desktop、Cursor 等 AI 助手直接为你生成视频。它与桌面端使用同一套引擎（通过 `pt_wan.py` 调用），每个任务 ID（及其模型）都会保存，中断后恢复原任务而不是重新提交。AI 助手可使用四个工具：
 
 | 工具 | 作用 |
 |---|---|
 | `check_key` | 显示已配置的 API Key 数量（脱敏）以及服务是否就绪，不会访问接口。 |
-| `estimate_cost` | 按 `duration_s`（2–30 秒，默认 5）和 `resolution`（`720p` 或 `1080p`，默认 `720p`）估算费用。 |
-| `generate_video` | 提交 `prompt`，可选 `duration_s`、`resolution` 和 `output` 保存路径；等待结果（最长约 1 小时）并下载 MP4。 |
+| `estimate_cost` | 按 `duration_s`、`resolution` 和可选 `model`（默认 `wan3.0-video`）估算费用。 |
+| `generate_video` | 提交 `prompt`，可选 `duration_s`、`resolution`、`model` 和 `output` 保存路径；等待结果（最长约 1 小时）并下载 MP4。 |
 | `resume_video` | 按 `task_id` 用原 Key（`key_index`，从 1 开始，默认 1）查询并下载已有任务到 `output`，不提交新生成。 |
 
 工具说明和返回信息跟随工具的界面语言设置（中文或英文）。
@@ -202,7 +218,7 @@ GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build
 
 ## 费用
 
-PowerTokens 按视频秒数计费，价格与分辨率有关。工具按界面上标注的检查日期时的价格估算，实际扣费以 PowerTokens 账单为准。2026 年 10 月 7 日（本机日期）及之前按折扣价估算并同时显示原价；10 月 8 日起自动改按原价估算。最新价格请查看 [PT 的 Wan 3.0 价格页](https://powertokens.ai/zh-Hans/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio)。
+费用由 PowerTokens 按所选模型、时长与分辨率计费。工具按界面上标注的检查日期时的公示价估算，实际扣费以 PowerTokens 账单为准。最新价格请查看上方[支持的模型](#支持的模型)链接。
 
 ## 安全说明
 
@@ -235,21 +251,21 @@ PowerTokens 按视频秒数计费，价格与分辨率有关。工具按界面�
 
 ### PowerTokens Video Studio 是什么？
 
-PowerTokens Video Studio 是一款免费开源（MIT）的 Windows 桌面工具，通过 PowerTokens API 调用阿里巴巴 Wan 3.0 视频模型（`wan3.0-video`）批量生成 AI 视频，支持 Excel / CSV 批量导入、按任务 ID 恢复，并避免重复扣费。目前仅支持 Wan 3.0 视频模型。
+PowerTokens Video Studio 是一款免费开源（MIT）的 Windows 桌面工具，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 Fast、Seedance 2.5 与 kling v3，以及 Excel / CSV 批量导入、按任务 ID 恢复，并避免重复扣费。
 
-### 可以用 Excel 表格批量生成 Wan 视频吗？
+### 可以用 Excel 表格批量生成视频吗？
 
-可以。在「批量导入」页导入 Excel 或 CSV 文件，一行对应一条视频；只有 `Wan 3.0 Prompt` 提示词列是必填的，中英文表头均可识别。生成并发可设为 1–8，结果可导出为 CSV。
+可以。在「批量导入」页导入 Excel 或 CSV 文件，一行对应一条视频；只有 `Wan 3.0 Prompt` / `Prompt` 提示词列是必填的，中英文表头均可识别。可选 `模型` / `Model` 列按行指定模型（留空 = Wan 3.0）。生成并发可设为 1–8，结果可导出为 CSV。
 
 ### 做 AI 短剧时，如何让多集的人物保持一致？
 
 填写全剧人物设定：同一段人物设定会自动加在每集提示词前面，让每一行都使用相同的角色。附带的三集示例表格可以直接参考格式。
 
-### Wan 3.0 生成中断了，会重复扣费吗？
+### 生成中断了，会重复扣费吗？
 
 只要选择恢复而不是重新生成，就不会。轮询前会先保存任务 ID，恢复时只查询和下载原任务；只有在尚未获得任务 ID 且提交被明确拒绝时才会换 Key，超时和 5xx 错误都不会自动重试。
 
-### 能在 Claude Desktop、Cursor 等 AI 助手里生成 Wan 3.0 视频吗？
+### 能在 Claude Desktop、Cursor 等 AI 助手里生成视频吗？
 
 可以。`mcp_server.py` 是一个 MCP 服务（已[收录于 Glama](https://glama.ai/mcp/servers/PowerTokens/video-studio)），为 Claude Desktop、Cursor 等支持 MCP 的助手提供 `check_key`、`estimate_cost`、`generate_video` 和 `resume_video` 四个工具。可在源码目录用 Python 3.11+ 并执行 `pip install mcp` 后运行，也可使用仓库中的 `Dockerfile`（详见[在 AI 助手中使用（MCP）](#在-ai-助手中使用mcp)）。
 
@@ -257,9 +273,9 @@ PowerTokens Video Studio 是一款免费开源（MIT）的 Windows 桌面工具�
 
 桌面端和 EXE 仅支持 Windows。MCP 服务可在 macOS、Linux 上用 Python 3.11+ 运行，也可在任意系统上通过 Docker 运行。
 
-### 如何获取 PowerTokens API Key？Wan 3.0 怎么计费？
+### 如何获取 PowerTokens API Key？模型怎么计费？
 
-在 [PowerTokens](https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=readme&utm_campaign=faq) 注册并创建 Key 即可，一个 Key 可调用平台上的所有模型，支持信用卡或 PayPal 付款（见[快速入门](https://docs.powertokens.ai/zh-Hans/guides/powertokens-quickstart?utm_source=github&utm_medium=readme&utm_campaign=faq)）。Wan 3.0 按视频秒数计费，价格与分辨率有关；接口说明见 [Wan 3.0 API 文档](https://docs.powertokens.ai/zh-Hans/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=readme&utm_campaign=faq)。
+在 [PowerTokens](https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=readme&utm_campaign=faq) 注册并创建 Key 即可，一个 Key 可调用平台上的所有模型，支持信用卡或 PayPal 付款（见[快速入门](https://docs.powertokens.ai/zh-Hans/guides/powertokens-quickstart?utm_source=github&utm_medium=readme&utm_campaign=faq)）。计费因模型而异，请查看[支持的模型](#支持的模型)链接获取最新价格与 API 说明。
 
 ## 开发
 

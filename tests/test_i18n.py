@@ -40,21 +40,25 @@ class StringTableTests(unittest.TestCase):
                     self.assertEqual(PLACEHOLDER.findall(zh), PLACEHOLDER.findall(value), key)
 
     def test_english_strings_are_english_and_mention_no_other_model(self):
+        # Allowed: wan 3.0 / seedance / kling v3 (supported by this app). Ban others.
+        banned = ('wan 2', 'wan2', 'kling-video-o1', 'kling 3.0 omni', 'kling-v3-omni',
+                  'veo', 'sora', 'runway', 'hailuo', 'deepseek-v4', 'kimi')
         for key, value in i18n.EN.items():
             for text in (value if isinstance(value, tuple) else (value,)):
                 self.assertIsNone(re.search('[\u4e00-\u9fff]', text), key)
-                for other in ('wan 2', 'wan2', 'kling', 'veo', 'sora', 'runway', 'seedance', 'hailuo'):
-                    self.assertNotIn(other, text.lower(), key)
+                lower = text.lower()
+                for other in banned:
+                    self.assertNotIn(other, lower, key)
 
     def test_chinese_wording_is_unchanged(self):
         # Spot-check the original v1.10 strings.
-        self.assertEqual(i18n.ZH['subtitle'], 'Wan 3.0 视频批量生成')
+        self.assertEqual(i18n.ZH['subtitle'], '多模型视频批量生成')
         self.assertEqual(i18n.ZH['promo'], 'Wan 3.0 限时折扣至 10 月 7 日')
         self.assertEqual(i18n.ZH['tab_history'], '任务记录 / 恢复')
         self.assertEqual(i18n.ZH['start_all'], '开始 / 继续全部（付费生成）')
 
     def test_requested_english_copy(self):
-        self.assertEqual(i18n.EN['subtitle'], 'Wan 3.0 batch video generation')
+        self.assertEqual(i18n.EN['subtitle'], 'Multi-model batch video generation')
         self.assertEqual(i18n.EN['promo'], 'Wan 3.0 limited-time discount until Oct 7')
         self.assertEqual([i18n.EN[k] for k in ('tab_generate', 'tab_batch', 'tab_keys')],
                          ['Generate video', 'Batch import', 'API Key'])
@@ -117,7 +121,7 @@ class PromoTests(English):
     def test_english_badge_until_end_date(self):
         self.assertEqual(studio_ui.promotion_text(datetime.date(2026, 10, 7)), 'Wan 3.0 limited-time discount until Oct 7')
         self.assertEqual(studio_ui.promotion_text(datetime.date(2026, 10, 8)), '')
-        self.assertEqual(studio_ui.subtitle(), 'Wan 3.0 batch video generation')
+        self.assertEqual(studio_ui.subtitle(), 'Multi-model batch video generation')
 
 
 class EnglishDurationTests(English):

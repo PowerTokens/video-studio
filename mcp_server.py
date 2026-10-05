@@ -30,13 +30,14 @@ def check_key() -> str:
 
 
 @mcp.tool(description=t('mcp_estimate'))
-def estimate_cost(duration_s: int = 5, resolution: str = '720p') -> str:
-    return run(['estimate', '-d', str(duration_s), '-r', resolution])
+def estimate_cost(duration_s: int = 5, resolution: str = '720p', model: str = 'wan3.0-video') -> str:
+    return run(['estimate', '-d', str(duration_s), '-r', resolution, '-m', model])
 
 
 @mcp.tool(description=t('mcp_generate'))
-def generate_video(prompt: str, duration_s: int = 5, resolution: str = '720p', output: str = '') -> str:
-    args = ['generate', '-p', prompt, '-d', str(duration_s), '-r', resolution]
+def generate_video(prompt: str, duration_s: int = 5, resolution: str = '720p', output: str = '',
+                   model: str = 'wan3.0-video') -> str:
+    args = ['generate', '-p', prompt, '-d', str(duration_s), '-r', resolution, '-m', model]
     if output:
         args += ['-o', output]
     return run(args)

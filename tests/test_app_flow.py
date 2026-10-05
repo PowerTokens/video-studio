@@ -5,7 +5,10 @@ i18n.set_language('zh')  # Existing tests check the original Chinese wording.
 import unittest
 from unittest.mock import Mock, patch
 from app import App
-from test_inputs import REPORTED_PROMPT
+try:
+    from test_inputs import REPORTED_PROMPT
+except ImportError:
+    from tests.test_inputs import REPORTED_PROMPT
 
 class Value:
     def __init__(self, value): self.value = value
@@ -21,6 +24,7 @@ class FlowTests(unittest.TestCase):
         app.auto_prompt = Value(automatic)
         app.prompt_hint = Value('')
         app.duration, app.ratio, app.resolution = Value('5'), Value('16:9'), Value('720p')
+        app.model_id = Value('wan3.0-video')
         app.media, app.seed = {}, Value('')
         app.new_output = lambda: 'test.mp4'
         client = Mock()

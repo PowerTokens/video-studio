@@ -240,7 +240,7 @@ class LanguageSwitchTests(unittest.TestCase):
         self.assertEqual(self.gui.prompt_hint.get(), 'Detected: 12 s · 9:16')
         self.assertIn('$0.04/s, regular $0.10/s', self.gui.cost.get())
         texts = self.texts()
-        self.assertIn('Wan 3.0 batch video generation', texts)
+        self.assertIn('Multi-model batch video generation', texts)
         self.assertIn('Wan 3.0 limited-time discount until Oct 7', texts)
         self.assertIn('Stop waiting', texts)
         self.assertIn('Save sample template…', texts)

@@ -214,7 +214,8 @@ class PromoPricingTests(unittest.TestCase):
         for day, p720, p1080, regular in ((datetime.date(2026, 9, 30), .04, .08, True),
                                           (datetime.date(2026, 10, 7), .04, .08, True),
                                           (datetime.date(2026, 10, 8), .10, .20, False)):
-            self.assertEqual(wan_core.current_prices(day), {'720p': p720, '1080p': p1080}, day)
+            self.assertEqual(wan_core.current_prices(day),
+                             {'480p': 0.05, '720p': p720, '1080p': p1080}, day)
             self.assertEqual(bool(wan_core.list_prices(day)), regular, day)
             self.assertEqual(wan_core.estimate_cost(20, '1080p', today=day), round(20 * p1080, 3), day)
 

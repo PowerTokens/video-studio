@@ -18,6 +18,7 @@ from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE,
                        load_image, header_logo_file)
 from input_helpers import parse_keys, infer_prompt
 from batch_ui import BatchTab
+from models import DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id
 from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices, list_prices,
                       TaskError, atomic_json, estimate_cost, fingerprint, payload)
 
@@ -155,7 +156,8 @@ class App:
     def capture_state(self):
         return dict(
             tab=self.tabs.index('current'), prompt=self.prompt.get('1.0', 'end-1c'),
-            auto=self.auto_prompt.get(), duration=self.duration.get(), resolution=self.resolution.get(),
+            auto=self.auto_prompt.get(), model=getattr(self, 'model_id', tk.StringVar(value=DEFAULT_MODEL_ID)).get(),
+            duration=self.duration.get(), resolution=self.resolution.get(),
             ratio=self.ratio.get(), output=self.output.get(), seed=self.seed.get(),
             media={kind: var.get() for kind, var in self.media.items()}, log=self.log.get('1.0', 'end-1c'),
             key_input=self.key_input.get(), show_key=self.show_key.get(), remember=self.remember.get(),
@@ -166,8 +168,16 @@ class App:
         self.auto_prompt.set(state['auto'])
         self.prompt.insert('1.0', state['prompt'])
         self.prompt.edit_modified(False)
+        if 'model' in state and hasattr(self, 'model_id'):
+            try:
+                mid = resolve_model_id(state['model'])
+            except KeyError:
+                mid = DEFAULT_MODEL_ID
+            self.model_id.set(mid)
+            self._sync_model_widgets(preserve=True)
         for name in ('duration', 'resolution', 'ratio', 'output', 'seed', 'key_input', 'task_id', 'video_link'):
-            getattr(self, name).set(state[name])
+            if name in state:
+                getattr(self, name).set(state[name])
         for kind, value in state['media'].items():
             self.media[kind].set(value)
         self.show_key.set(state['show_key'])
@@ -206,21 +216,44 @@ class App:
         self.prompt.bind('<<Modified>>', self.prompt_changed)
         self.prompt.edit_modified(False)
         params = card(columns.left, t('params_card'), t('params_card_desc'))
+        self.model_id = tk.StringVar(value=DEFAULT_MODEL_ID)
+        self.model_label = tk.StringVar()
+        model_row = ttk.Frame(params)
+        model_row.pack(fill='x', pady=(0, 12))
+        ttk.Label(model_row, text=t('param_model'), style='Muted.TLabel').pack(anchor='w', pady=(0, 8))
+        self.model_combo = ttk.Combobox(model_row, textvariable=self.model_label, state='readonly', width=28)
+        self.model_combo.pack(fill='x')
+        self._model_labels = {}
+        self._refresh_model_combo()
+        self.model_combo.bind('<<ComboboxSelected>>', lambda *_: self._on_model_picked())
         row = ttk.Frame(params)
         row.pack(fill='x')
         self.duration, self.resolution, self.ratio = tk.StringVar(value='5'), tk.StringVar(value='720p'), tk.StringVar(value='16:9')
-        for index, (name, var, values) in enumerate([
-                (t('param_duration'), self.duration, None), (t('param_resolution'), self.resolution, ('720p', '1080p')),
-                (t('param_ratio'), self.ratio, ('16:9', '9:16', '1:1'))]):
+        self.duration_spin = self.resolution_combo = self.ratio_combo = None
+        widgets = []
+        for index, (name, var, kind) in enumerate([
+                (t('param_duration'), self.duration, 'duration'),
+                (t('param_resolution'), self.resolution, 'resolution'),
+                (t('param_ratio'), self.ratio, 'ratio')]):
             row.columnconfigure(index, weight=1, uniform='params')
             field = ttk.Frame(row)
             field.grid(row=0, column=index, sticky='ew', padx=(0, 12 if index < 2 else 0))
             ttk.Label(field, text=name, style='Muted.TLabel').pack(anchor='w', pady=(0, 8))
-            widget = ttk.Combobox(field, textvariable=var, values=values, state='readonly', width=6) if values else ttk.Spinbox(field, from_=2, to=30, textvariable=var, width=6)
+            if kind == 'duration':
+                widget = ttk.Spinbox(field, from_=2, to=30, textvariable=var, width=6)
+                self.duration_spin = widget
+            else:
+                widget = ttk.Combobox(field, textvariable=var, values=('720p', '1080p') if kind == 'resolution' else ('16:9', '9:16', '1:1'),
+                                      state='readonly', width=6)
+                if kind == 'resolution':
+                    self.resolution_combo = widget
+                else:
+                    self.ratio_combo = widget
             widget.pack(fill='x')
             var.trace_add('write', lambda *_: self.update_cost())
         self.cost = tk.StringVar()
         label(params, variable=self.cost).pack(fill='x', pady=(12, 0))
+        self._sync_model_widgets()
         self.update_cost()
         save_box = card(columns.left, t('save_card'))
         ttk.Label(save_box, text=t('output_folder'), style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
@@ -248,8 +281,10 @@ class App:
         self.seed = tk.StringVar()
         ttk.Entry(advanced, textvariable=self.seed, width=12).pack(fill='x')
         current = card(columns.right, t('current_card'))
-        label(current, t('current_model'), style='Badge.TLabel').pack(fill='x')
+        self.current_model_badge = tk.StringVar()
+        label(current, variable=self.current_model_badge, style='Badge.TLabel').pack(fill='x')
         label(current, t('current_saved')).pack(fill='x', pady=(10, 0))
+        self._update_current_model_badge()
         logs = card(frame, t('progress_card'))
         self.log = text_area(logs, height=5, state='disabled')
         self.log.pack(fill='x')
@@ -385,19 +420,65 @@ class App:
         else:
             self.promo_label.pack_forget()
 
+    def _refresh_model_combo(self):
+        self._model_labels = {}
+        labels = []
+        for spec in list_models():
+            label_text = spec.label()
+            self._model_labels[label_text] = spec.id
+            labels.append(label_text)
+        self.model_combo.configure(values=labels)
+        current = get_model(self.model_id.get())
+        self.model_label.set(current.label())
+
+    def _on_model_picked(self):
+        mid = self._model_labels.get(self.model_label.get(), DEFAULT_MODEL_ID)
+        self.model_id.set(mid)
+        self._sync_model_widgets()
+        self.update_cost()
+
+    def _sync_model_widgets(self, preserve=False):
+        spec = get_model(self.model_id.get())
+        if self.duration_spin is not None:
+            self.duration_spin.configure(from_=spec.durations[0], to=spec.durations[-1])
+        if self.resolution_combo is not None:
+            self.resolution_combo.configure(values=spec.resolutions)
+        if self.ratio_combo is not None:
+            self.ratio_combo.configure(values=spec.ratios)
+        if not preserve:
+            if self.resolution.get() not in spec.resolutions:
+                self.resolution.set(spec.default_resolution)
+            if self.ratio.get() not in spec.ratios:
+                self.ratio.set(spec.default_ratio)
+            try:
+                dur = int(self.duration.get())
+            except (TypeError, ValueError):
+                dur = spec.default_duration
+            if dur not in spec.durations:
+                self.duration.set(str(spec.default_duration))
+        self._update_current_model_badge()
+
+    def _update_current_model_badge(self):
+        if not hasattr(self, 'current_model_badge'):
+            return
+        spec = get_model(self.model_id.get())
+        self.current_model_badge.set(t('current_model_fmt', spec.label(), spec.id))
+
     def update_cost(self):
         if not hasattr(self, 'cost'):
             return
         self.refresh_promo()  # Also catches the end date passing while the app stays open.
         try:
+            mid = self.model_id.get() if hasattr(self, 'model_id') else DEFAULT_MODEL_ID
             resolution = self.resolution.get()
-            value = estimate_cost(self.duration.get(), resolution)
-            text = t('cost_estimate', PRICE_CHECKED_DATE, value, current_prices()[resolution])
-            regular = list_prices()
+            value = estimate_cost(self.duration.get(), resolution, model_id=mid)
+            prices = current_prices(model_id=mid)
+            text = t('cost_estimate', PRICE_CHECKED_DATE, value, prices[resolution])
+            regular = list_prices(model_id=mid)
             if resolution in regular:
                 text += t('cost_regular', regular[resolution])
             self.cost.set(text + t('cost_tail'))
-        except ValueError:
+        except (ValueError, KeyError, TaskError):
             self.cost.set(t('cost_invalid'))
 
     def open_official_keys(self):
@@ -488,7 +569,8 @@ class App:
             if recognized['warnings']:
                 raise TaskError(t('warning_sep').join(recognized['warnings']))
             request = payload(self.prompt.get('1.0', 'end'), self.duration.get(), self.resolution.get(),
-                self.ratio.get(), [{'type': k, 'url': v.get().strip()} for k, v in self.media.items() if v.get().strip()], self.seed.get())
+                self.ratio.get(), [{'type': k, 'url': v.get().strip()} for k, v in self.media.items() if v.get().strip()],
+                self.seed.get(), model=self.model_id.get())
             output = self.new_output()
         except Exception as exc:
             messagebox.showerror(t('check_input'), str(exc))
