@@ -27,6 +27,7 @@ class ModelSpec:
     id: str
     display_name: str
     display_name_zh: str
+    short_name: str  # filename-safe slug for compare outputs
     description_en: str
     description_zh: str
     family: str  # 'wan' | 'seedance' | 'kling'
@@ -169,6 +170,7 @@ MODELS = {
         id='wan3.0-video',
         display_name='Wan 3.0',
         display_name_zh='Wan 3.0',
+        short_name='wan',
         description_en='All-in-one Wan model for text-to-video, image-to-video (first / first-last frame), and reference-to-video with native audio. Up to 30 seconds at 480p–1080p — a solid default for short-drama and general clips.',
         description_zh='全能型 Wan 模型：文生视频、图生视频（首帧 / 首尾帧）与参考生视频，带原生音频。最长 30 秒，支持 480p–1080p，适合短剧分集与日常成片，作为默认选项。',
         family='wan',
@@ -185,6 +187,7 @@ MODELS = {
         id='wan3.0-video-prime',
         display_name='Wan 3.0 Prime',
         display_name_zh='Wan 3.0 Prime',
+        short_name='wan-prime',
         description_en='Same capabilities as Wan 3.0 (text / image / reference, up to 30s, 480p–1080p, native audio), tuned for significantly faster end-to-end generation when you want quicker turnaround.',
         description_zh='能力与 Wan 3.0 相同（文生 / 图生 / 参考、最长 30 秒、480p–1080p、原生音频），端到端生成明显更快，适合更赶时间的出片。',
         family='wan',
@@ -201,6 +204,7 @@ MODELS = {
         id='dreamina-seedance-2-0-fast-260128',
         display_name='Seedance 2.0 Fast',
         display_name_zh='Seedance 2.0 Fast',
+        short_name='seedance-fast',
         description_en='Seedance 2.0 Fast prioritizes speed for drafts and previews: text-to-video, image-to-video, and multimodal reference, with native audio. Clips are 4–15 seconds and top out at 720p (no 1080p).',
         description_zh='Seedance 2.0 Fast 侧重速度，适合草稿与预览：支持文生、图生与多模态参考，带原生音频。时长 4–15 秒，最高 720p（不支持 1080p）。',
         family='seedance',
@@ -217,6 +221,7 @@ MODELS = {
         id='dreamina-seedance-2-5-260628',
         display_name='Seedance 2.5',
         display_name_zh='Seedance 2.5',
+        short_name='seedance-25',
         description_en='Seedance 2.5 targets longer storytelling with native audio sync, up to 30 seconds and 480p–1080p. Supports text-to-video, image-to-video, and multimodal references for scene and character consistency.',
         description_zh='Seedance 2.5 面向更长叙事与原生音频同步，最长 30 秒，支持 480p–1080p。文生、图生与多模态参考可用于保持场景与角色一致性。',
         family='seedance',
@@ -233,6 +238,7 @@ MODELS = {
         id='kling-v3',
         display_name='kling v3',
         display_name_zh='kling v3',
+        short_name='kling-v3',
         description_en='kling v3 offers text-to-video and image-to-video (first / last frame) with optional native audio. Duration 3–15 seconds; choose 720p, 1080p, or 4K mode when you need higher output resolution.',
         description_zh='kling v3 支持文生视频与图生视频（首帧 / 尾帧），可选原生音频。时长 3–15 秒；可选 720p、1080p 或 4K 模式，需要更高输出分辨率时选用。',
         family='kling',

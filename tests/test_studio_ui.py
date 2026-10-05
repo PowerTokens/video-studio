@@ -65,7 +65,7 @@ class StudioUITests(unittest.TestCase):
     def test_pages_reflow_without_callback_errors_or_clipped_cards(self):
         for width in (1280, 860):
             self.root.geometry('%dx800' % width)
-            for index in range(4):
+            for index in range(5):
                 self.gui.tabs.select(index)
                 self.root.update()
                 for widget in self.widgets(self.gui.pages[index]):
@@ -217,7 +217,7 @@ class LanguageSwitchTests(unittest.TestCase):
                 if isinstance(w, (ttk.Label, ttk.Button, ttk.Checkbutton)) and str(w.cget('text'))]
 
     def tab_names(self):
-        return [self.gui.tabs.tab(i, 'text') for i in range(4)]
+        return [self.gui.tabs.tab(i, 'text') for i in range(5)]
 
     def test_switch_to_english_and_back_keeps_everything(self):
         self.gui.key_input.set('sk-test-only-one')
@@ -225,13 +225,13 @@ class LanguageSwitchTests(unittest.TestCase):
         self.gui.prompt.insert('1.0', 'Total length 12s, 9:16 vertical. 0-4s: hook; 4-12s: chase')
         self.gui.apply_prompt()
         self.gui.seed.set('42')
-        self.gui.tabs.select(3)
+        self.gui.tabs.select(4)
         self.gui.switch_language('en')
         self.root.update()
         self.assertEqual(i18n.get_language(), 'en')
         self.assertEqual(i18n.load_settings()['language'], 'en')
-        self.assertEqual(self.tab_names(), ['Generate video', 'Batch import', 'History / Resume', 'API Key'])
-        self.assertEqual(self.gui.tabs.index('current'), 3)
+        self.assertEqual(self.tab_names(), ['Generate video', 'Compare', 'Batch import', 'History / Resume', 'API Key'])
+        self.assertEqual(self.gui.tabs.index('current'), 4)
         self.assertEqual(self.gui.keys, ['sk-test-only-one'])
         self.assertEqual(self.gui.key_count.get(), '1 key')
         self.assertEqual(self.gui.key_badge.get(), '1 key added')
@@ -248,7 +248,7 @@ class LanguageSwitchTests(unittest.TestCase):
         self.assertEqual(chinese, [])
         self.gui.switch_language('zh')
         self.root.update()
-        self.assertEqual(self.tab_names(), ['生成视频', '批量导入', '任务记录 / 恢复', 'API Key'])
+        self.assertEqual(self.tab_names(), ['生成视频', '模型对比', '批量导入', '任务记录 / 恢复', 'API Key'])
         self.assertIn('任务仍在云端继续，可在任务记录里找回', self.texts())
         self.assertEqual(self.gui.key_count.get(), '共 1 个 Key')
         self.assertEqual(self.gui.prompt_hint.get(), '已识别：12 秒 · 9:16')
@@ -270,7 +270,7 @@ class LanguageSwitchTests(unittest.TestCase):
             self.gui.switch_language(lang)
             for width in (1280, 1000, 860):
                 self.root.geometry('%dx800' % width)
-                for index in range(4):
+                for index in range(5):
                     self.gui.tabs.select(index)
                     self.root.update()
                     for widget in self.widgets(self.root):

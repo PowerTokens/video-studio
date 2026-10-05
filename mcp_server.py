@@ -53,5 +53,17 @@ def resume_video(task_id: str, output: str, key_index: int = 1) -> str:
     return run(['resume', task_id, '-o', output, '--key-index', str(key_index)])
 
 
+
+@mcp.tool(description=t('mcp_compare'))
+def compare_videos(prompt: str, models: str, duration_s: int = 5, resolution: str = '720p',
+                   ratio: str = '16:9', output_dir: str = '', name: str = '') -> str:
+    args = ['compare', '--models', models, '-p', prompt, '-d', str(duration_s), '-r', resolution,
+            '--ratio', ratio]
+    if output_dir:
+        args += ['-o', output_dir]
+    if name:
+        args += ['--name', name]
+    return run(args)
+
 if __name__ == '__main__':
     mcp.run()

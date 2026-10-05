@@ -8,6 +8,7 @@ import sys
 from i18n import is_zh, t
 from input_helpers import parse_keys
 from models import DEFAULT_MODEL_ID, MODELS, get_model, list_models, resolve_model_id
+from compare_core import parse_model_list, plan_compare, run_compare
 from wan_core import (API_BASE, Client, DATA_DIR, LIST_PRICE_USD_PER_SECOND, MODEL, PROMO_END_DATE, PRICE_CHECKED_DATE,
                       PRICE_SOURCE_URL, PRICE_SOURCE_URL_EN, promo_active, current_prices, list_prices,
                       TaskError, api, atomic_json, category, estimate_cost, payload)
@@ -91,6 +92,18 @@ def main():
             item.add_argument('-i', '--image', '--first-frame', dest='first_frame')
             for field in ('last-frame', 'reference-image', 'reference-video', 'reference-audio'):
                 item.add_argument('--' + field)
+    compare = subs.add_parser('compare', help=t('cli_compare_help'))
+    compare.add_argument('--models', '-m', required=True, help=t('cli_compare_models_help'))
+    compare.add_argument('--prompt', '-p', required=True)
+    compare.add_argument('--duration', '-d', type=int, default=5)
+    compare.add_argument('--resolution', '-r', default='720p')
+    compare.add_argument('--ratio', default='16:9')
+    compare.add_argument('--output-dir', '-o', default='')
+    compare.add_argument('--name', default='')
+    compare.add_argument('--seed', default='')
+    for media_name in ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio'):
+        compare.add_argument('--' + media_name.replace('_', '-'), default='', dest=media_name)
+
     resume = subs.add_parser('resume')
     resume.add_argument('task_id')
     resume.add_argument('-o', '--output', required=True)
@@ -167,6 +180,31 @@ def main():
             save_config(cfg)
         emit({'results': results, 'note': t('cli_prune_note')})
         return 5 if any(r['alive'] is not True for r in results) else 0
+    if args.command == 'compare':
+        model_ids = parse_model_list(args.models)
+        media = [{'type': name, 'url': getattr(args, name)} for name in
+                 ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio')
+                 if getattr(args, name, '')]
+        folder = args.output_dir or str(Path.cwd())
+        plan = plan_compare(args.prompt, args.duration, args.resolution, args.ratio, model_ids,
+                            media=media, seed=args.seed, name=args.name, folder=folder)
+        if os.environ.get('PT_DRY_RUN'):
+            emit({'dry_run': True, 'compare_id': plan['compare_id'], 'total_cost_usd': plan['total_cost'],
+                  'items': [dict({k: item[k] for k in ('model_id', 'duration', 'resolution', 'ratio', 'cost', 'notice', 'output')},
+                       request=item['request']) for item in plan['items']]})
+            return 0
+        def factory():
+            return Client(report=lambda message: print(message, file=sys.stderr, flush=True))
+        results = run_compare(factory, keys, plan,
+                              report=lambda message: print(message, file=sys.stderr, flush=True))
+        emit({'compare_id': plan['compare_id'], 'total_cost_usd': plan['total_cost'],
+              'folder': plan['folder'], 'results': [
+                  {'model_id': r['model_id'], 'ok': r['ok'],
+                   'task_id': (r.get('record') or {}).get('task_id') or r.get('task_id') or '',
+                   'output': r.get('output') or '',
+                   'error': r.get('error') or ''} for r in results]})
+        return 0 if all(r.get('ok') for r in results) else 4
+
     client = Client(report=lambda message: print(message, file=sys.stderr, flush=True))
     if args.command == 'resume':
         if not 1 <= args.key_index <= len(keys):

@@ -23,6 +23,7 @@ Pick a model in the desktop UI, pass `--model` on the CLI, set `model` on MCP to
 ## Features
 
 - **English and Chinese interface**: switch any time with the **中文 / English** toggle in the top-right corner. On first launch the app follows your Windows display language.
+- **Compare models**: send one prompt to 2–3 models (Compare tab, CLI `compare`, or MCP `compare_videos`), see side-by-side status and open the best file. Outputs land in a `compare/` subfolder as `name_model-short.mp4`.
 - **Model picker**: choose Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5 or kling v3. Duration / resolution / ratio controls update to what that model allows.
 - **Single video**: prompt, duration, resolution and ratio (limits depend on the model), optional first/last frame and reference image / video / audio URLs, seed (where supported). Duration and ratio are detected from the prompt in English or Chinese. Native audio is on when the model supports it.
 - **Batch from Excel / CSV**: one row per clip, English or Chinese column headers, optional `Model` column (blank = Wan 3.0). Old templates with only a `Prompt` or legacy `Wan 3.0 Prompt` column keep working. Bounded concurrency (1–8 generations, 1–4 downloads), per-row status colors and CSV export of results.
@@ -147,6 +148,7 @@ A three-episode sample spreadsheet is included in English (`short-drama-batch-te
 ```bash
 python pt_wan.py estimate -d 5 -r 720p --model wan3.0-video
 python pt_wan.py generate -p "A cat runs across grass" -d 5 -r 720p --model dreamina-seedance-2-0-fast-260128 -o out.mp4
+python pt_wan.py compare --models wan3.0-video,dreamina-seedance-2-5-260628,kling-v3 -p "A cat runs across grass" -d 5 -r 720p -o ./out
 ```
 
 `--model` defaults to `wan3.0-video`. See `python pt_wan.py generate -h` for media options.
@@ -167,7 +169,7 @@ or `python app.py`.
 
 ## Use with AI assistants (MCP)
 
-`mcp_server.py` is a small [MCP](https://modelcontextprotocol.io) server that lets AI assistants such as Claude Desktop and Cursor create videos for you. It uses the same engine as the desktop app (through `pt_wan.py`), so every Task ID (and its model) is saved and interrupted jobs are resumed instead of resubmitted. The assistant gets four tools:
+`mcp_server.py` is a small [MCP](https://modelcontextprotocol.io) server that lets AI assistants such as Claude Desktop and Cursor create videos for you. It uses the same engine as the desktop app (through `pt_wan.py`), so every Task ID (and its model) is saved and interrupted jobs are resumed instead of resubmitted. The assistant gets these tools:
 
 | Tool | What it does |
 |---|---|
@@ -282,7 +284,7 @@ No, as long as you resume instead of generating again. Every Task ID (and its mo
 
 ### Can Claude Desktop, Cursor or other AI assistants generate videos with it?
 
-Yes. `mcp_server.py` is an MCP server, also [listed on Glama](https://glama.ai/mcp/servers/PowerTokens/video-studio), that gives MCP-compatible assistants such as Claude Desktop and Cursor four tools: `check_key`, `estimate_cost`, `generate_video` and `resume_video`. Run it from source with Python 3.11+ and `pip install mcp`, or with the included `Dockerfile` (see [Use with AI assistants (MCP)](#use-with-ai-assistants-mcp)).
+Yes. `mcp_server.py` is an MCP server, also [listed on Glama](https://glama.ai/mcp/servers/PowerTokens/video-studio), that gives MCP-compatible assistants such as Claude Desktop and Cursor four tools: `check_key`, `estimate_cost`, `generate_video`, `resume_video`, `list_models` and `compare_videos`. Run it from source with Python 3.11+ and `pip install mcp`, or with the included `Dockerfile` (see [Use with AI assistants (MCP)](#use-with-ai-assistants-mcp)).
 
 ### Does it run on macOS or Linux?
 

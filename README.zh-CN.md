@@ -23,6 +23,7 @@ PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm
 ## 功能
 
 - **支持中英文界面切换**：右上角「中文 / English」一键切换，立即生效并自动记住；首次启动跟随 Windows 显示语言。
+- **模型对比**：同一提示词发给 2–3 个模型（「模型对比」页、CLI `compare`、或 MCP `compare_videos`），并排查看状态并打开最好的文件。输出保存在 `compare/` 子目录，文件名为 `名称_模型简称.mp4`。
 - **模型选择**：Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 Fast、Seedance 2.5、kling v3。时长 / 分辨率 / 比例控件会随模型切换。
 - **单条生成**：提示词、时长、分辨率与比例（限制随模型变化），可选首帧、尾帧及参考图片 / 视频 / 音频链接和随机种子（视模型支持）；可从中英文提示词识别时长与比例；支持音频的模型默认开启原生音频。
 - **Excel / CSV 批量生成**：一行一条，支持中英文表头，可选 `模型` / `Model` 列（留空 = Wan 3.0）。旧模板仅有 `Prompt` 或旧表头 `Wan 3.0 Prompt` 仍可用。限定并发（生成 1–8、下载 1–4），按状态显示行颜色，可导出结果 CSV。
@@ -145,6 +146,7 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 ```bash
 python pt_wan.py estimate -d 5 -r 720p --model wan3.0-video
 python pt_wan.py generate -p "一只猫在草地上奔跑" -d 5 -r 720p --model dreamina-seedance-2-0-fast-260128 -o out.mp4
+python pt_wan.py compare --models wan3.0-video,dreamina-seedance-2-5-260628,kling-v3 -p "一只猫在草地上奔跑" -d 5 -r 720p -o ./out
 ```
 
 `--model` 默认为 `wan3.0-video`。更多媒体参数见 `python pt_wan.py generate -h`。
@@ -159,7 +161,7 @@ python pt_wan.py generate -p "一只猫在草地上奔跑" -d 5 -r 720p --model 
 
 ## 在 AI 助手中使用（MCP）
 
-`mcp_server.py` 是一个小型 [MCP](https://modelcontextprotocol.io) 服务，可让 Claude Desktop、Cursor 等 AI 助手直接为你生成视频。它与桌面端使用同一套引擎（通过 `pt_wan.py` 调用），每个任务 ID（及其模型）都会保存，中断后恢复原任务而不是重新提交。AI 助手可使用四个工具：
+`mcp_server.py` 是一个小型 [MCP](https://modelcontextprotocol.io) 服务，可让 Claude Desktop、Cursor 等 AI 助手直接为你生成视频。它与桌面端使用同一套引擎（通过 `pt_wan.py` 调用），每个任务 ID（及其模型）都会保存，中断后恢复原任务而不是重新提交。AI 助手可使用这些工具：
 
 | 工具 | 作用 |
 |---|---|
@@ -271,7 +273,7 @@ PowerTokens Video Studio 是一款免费开源（MIT）的 Windows 桌面工具�
 
 ### 能在 Claude Desktop、Cursor 等 AI 助手里生成视频吗？
 
-可以。`mcp_server.py` 是一个 MCP 服务（已[收录于 Glama](https://glama.ai/mcp/servers/PowerTokens/video-studio)），为 Claude Desktop、Cursor 等支持 MCP 的助手提供 `check_key`、`estimate_cost`、`generate_video` 和 `resume_video` 四个工具。可在源码目录用 Python 3.11+ 并执行 `pip install mcp` 后运行，也可使用仓库中的 `Dockerfile`（详见[在 AI 助手中使用（MCP）](#在-ai-助手中使用mcp)）。
+可以。`mcp_server.py` 是一个 MCP 服务（已[收录于 Glama](https://glama.ai/mcp/servers/PowerTokens/video-studio)），为 Claude Desktop、Cursor 等支持 MCP 的助手提供 `check_key`、`estimate_cost`、`generate_video`、`resume_video`、`list_models` 和 `compare_videos` 这些工具。可在源码目录用 Python 3.11+ 并执行 `pip install mcp` 后运行，也可使用仓库中的 `Dockerfile`（详见[在 AI 助手中使用（MCP）](#在-ai-助手中使用mcp)）。
 
 ### 支持 macOS 或 Linux 吗？
 

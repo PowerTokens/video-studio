@@ -18,6 +18,7 @@ from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE,
                        load_image, header_logo_file)
 from input_helpers import parse_keys, infer_prompt
 from batch_ui import BatchTab
+from compare_ui import CompareTab
 from models import DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id, snap_params, format_adjust_notice
 from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices, list_prices,
                       TaskError, atomic_json, estimate_cost, fingerprint, payload)
@@ -116,14 +117,15 @@ class App:
         ttk.Label(header_row, textvariable=self.key_badge, style='Badge.TLabel').pack(side='right', padx=12)
         tabs = ttk.Notebook(shell)
         tabs.pack(fill='both', expand=True)
-        pages = [ScrollPage(tabs) for _ in range(4)]
-        for page, name in zip(pages, ('tab_generate', 'tab_batch', 'tab_history', 'tab_keys')):
+        pages = [ScrollPage(tabs) for _ in range(5)]
+        for page, name in zip(pages, ('tab_generate', 'tab_compare', 'tab_batch', 'tab_history', 'tab_keys')):
             tabs.add(page, text=t(name))
         self.tabs, self.pages = tabs, pages
         self.build_create(pages[0].body)
-        self.batch = BatchTab(self, pages[1].body)
-        self.build_history(pages[2].body)
-        self.build_keys(pages[3].body)
+        self.compare = CompareTab(self, pages[1].body)
+        self.batch = BatchTab(self, pages[2].body)
+        self.build_history(pages[3].body)
+        self.build_keys(pages[4].body)
         self.status = tk.StringVar(value=t('status_ready'))
         label(shell, variable=self.status, style='Page.TLabel').pack(fill='x', padx=28, pady=(8, 12))
 
@@ -162,7 +164,8 @@ class App:
             media={kind: var.get() for kind, var in self.media.items()}, log=self.log.get('1.0', 'end-1c'),
             key_input=self.key_input.get(), show_key=self.show_key.get(), remember=self.remember.get(),
             key_selection=self.key_list.curselection(), task_id=self.task_id.get(),
-            video_link=self.video_link.get(), batch=self.batch.export_state())
+            video_link=self.video_link.get(), batch=self.batch.export_state(),
+            compare=self.compare.export_state() if hasattr(self, 'compare') else {})
 
     def restore_state(self, state):
         self.auto_prompt.set(state['auto'])
@@ -196,6 +199,8 @@ class App:
         elif not state['auto']:
             self.prompt_hint.set(t('hint_off'))
         self.batch.restore_state(state['batch'])
+        if hasattr(self, 'compare'):
+            self.compare.import_state(state.get('compare') or {})
         self.update_cost()
         self.refresh_history()
         self.status.set(t('status_idle') if self.keys else t('status_ready'))
@@ -667,15 +672,18 @@ class App:
         except Exception as exc:
             messagebox.showerror(t('link_failed_title'), str(exc))
 
-    def launch(self, operation):
+    def launch(self, operation, prefer_tab=None):
         self.busy = True
         self.stop.clear()
         for button in (self.generate_btn, self.resume_btn, self.manual_btn, self.link_btn):
             button.configure(state='disabled')
         self.stop_btn.configure(state='normal')
         self.batch.set_busy(True)
+        if hasattr(self, 'compare'):
+            self.compare.set_busy(True)
         self.bar.start(12)
-        self.tabs.select(0)
+        tab_map = {'generate': 0, 'compare': 1, 'batch': 2, 'history': 3, 'keys': 4}
+        self.tabs.select(tab_map.get(prefer_tab, 0))
         self.status.set(t('working'))
         def worker():
             client = Client(report=lambda text: self.events.put(('log', text)), stop=self.stop)
@@ -703,9 +711,15 @@ class App:
                 self.log.insert('end', text + '\n')
                 self.log.see('end')
                 self.log.configure(state='disabled')
+                if kind in ('compare_status', 'compare_output'):
+                    if hasattr(self, 'compare'):
+                        self.compare.handle_event(kind, text)
+                    continue
                 if kind == 'done':
                     self.busy = False
                     self.batch.set_busy(False)
+                    if hasattr(self, 'compare'):
+                        self.compare.set_busy(False)
                     self.bar.stop()
                     for button in (self.generate_btn, self.resume_btn, self.manual_btn, self.link_btn):
                         button.configure(state='normal')
@@ -725,7 +739,10 @@ class App:
             try:
                 row = json.loads(path.read_text(encoding='utf-8'))
                 self.records[path.stem] = row
-                self.tree.insert('', 'end', iid=path.stem, values=(row['created'], row.get('task_id') or t('no_task_id'), row['state'], row.get('key_hint', '')))
+                task_label = row.get('task_id') or t('no_task_id')
+                if row.get('compare_id'):
+                    task_label = t('compare_group_tag', row['compare_id'][:6]) + ' · ' + task_label
+                self.tree.insert('', 'end', iid=path.stem, values=(row['created'], task_label, row['state'], row.get('key_hint', '')))
             except (OSError, ValueError, KeyError):
                 continue
         retained = [item for item in selection if item in self.records]
