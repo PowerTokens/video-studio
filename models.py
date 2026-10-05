@@ -61,6 +61,21 @@ class ModelSpec:
         use_zh = is_zh() if lang is None else lang == 'zh'
         return self.description_zh if use_zh else self.description_en
 
+    def summary(self, lang=None):
+        """One-line blurb for the compact model picker."""
+        from i18n import is_zh
+        use_zh = is_zh() if lang is None else lang == 'zh'
+        text = self.description(lang)
+        if use_zh:
+            part = text.split('。')[0]
+            return (part + '。') if part else text
+        # English: first sentence
+        for sep in ('. ', ' — ', ' - '):
+            if sep in text:
+                chunk = text.split(sep)[0].rstrip('.')
+                return chunk + '.'
+        return text
+
     def price_source(self, lang=None):
         from i18n import is_zh
         use_zh = is_zh() if lang is None else lang == 'zh'
@@ -171,8 +186,8 @@ MODELS = {
         display_name='Wan 3.0',
         display_name_zh='Wan 3.0',
         short_name='wan',
-        description_en='All-in-one Wan model for text-to-video, image-to-video (first / first-last frame), and reference-to-video with native audio. Up to 30 seconds at 480p–1080p — a solid default for short-drama and general clips.',
-        description_zh='全能型 Wan 模型：文生视频、图生视频（首帧 / 首尾帧）与参考生视频，带原生音频。最长 30 秒，支持 480p–1080p，适合短剧分集与日常成片，作为默认选项。',
+        description_en='All-in-one Wan model for text-to-video, image-to-video (first / first-last frame), and reference-to-video with native audio. Up to 30 seconds at 480p–1080p — a solid default for product demos, talking-head clips, and everyday videos.',
+        description_zh='全能型 Wan 模型：文生视频、图生视频（首帧 / 首尾帧）与参考生视频，带原生音频。最长 30 秒，支持 480p–1080p，适合产品展示、口播与日常成片，作为默认选项。',
         family='wan',
         durations=tuple(range(2, 31)),
         resolutions=('480p', '720p', '1080p'),

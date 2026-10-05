@@ -9,6 +9,7 @@ from i18n import is_zh, t
 from input_helpers import parse_keys
 from models import DEFAULT_MODEL_ID, MODELS, get_model, list_models, resolve_model_id
 from compare_core import parse_model_list, plan_compare, run_compare
+from storyboard import DEFAULT_TEXT_MODEL, ALLOWED_TEXT_MODELS, storyboard_from_script, rows_to_xlsx
 from wan_core import (API_BASE, Client, DATA_DIR, LIST_PRICE_USD_PER_SECOND, MODEL, PROMO_END_DATE, PRICE_CHECKED_DATE,
                       PRICE_SOURCE_URL, PRICE_SOURCE_URL_EN, promo_active, current_prices, list_prices,
                       TaskError, api, atomic_json, category, estimate_cost, payload)
@@ -103,6 +104,16 @@ def main():
     compare.add_argument('--seed', default='')
     for media_name in ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio'):
         compare.add_argument('--' + media_name.replace('_', '-'), default='', dest=media_name)
+
+    storyboard = subs.add_parser('storyboard', help=t('cli_storyboard_help'))
+    storyboard.add_argument('--script', '-s', required=True, help='Path to a UTF-8 script/outline file')
+    storyboard.add_argument('--out', '-o', required=True, help='Output .xlsx path')
+    storyboard.add_argument('--clips', type=int, default=0)
+    storyboard.add_argument('--duration', '-d', type=int, default=8)
+    storyboard.add_argument('--model', '-m', default=MODEL, help=t('cli_model_help'))
+    storyboard.add_argument('--text-model', default=DEFAULT_TEXT_MODEL, choices=list(ALLOWED_TEXT_MODELS))
+    storyboard.add_argument('--ratio', default='9:16')
+    storyboard.add_argument('--resolution', '-r', default='720p')
 
     resume = subs.add_parser('resume')
     resume.add_argument('task_id')
@@ -204,6 +215,17 @@ def main():
                    'output': r.get('output') or '',
                    'error': r.get('error') or ''} for r in results]})
         return 0 if all(r.get('ok') for r in results) else 4
+
+    if args.command == 'storyboard':
+        script_path = Path(args.script)
+        script = script_path.read_text(encoding='utf-8')
+        jobs, meta = storyboard_from_script(
+            script, keys[0], clip_count=args.clips, duration=args.duration, model_id=args.model,
+            text_model=args.text_model, ratio=args.ratio, resolution=args.resolution)
+        out = rows_to_xlsx(jobs, args.out)
+        emit({'ok': True, 'rows': len(jobs), 'out': str(out), 'text_model': meta['text_model'],
+              'video_model': meta['video_model'], 'free_text': meta['free_text']})
+        return 0
 
     client = Client(report=lambda message: print(message, file=sys.stderr, flush=True))
     if args.command == 'resume':

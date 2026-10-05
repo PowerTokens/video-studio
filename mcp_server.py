@@ -65,5 +65,27 @@ def compare_videos(prompt: str, models: str, duration_s: int = 5, resolution: st
         args += ['--name', name]
     return run(args)
 
+
+@mcp.tool(description=t('cli_storyboard_help'))
+def storyboard(script: str, output: str, clips: int = 0, duration_s: int = 8,
+               model: str = 'wan3.0-video', text_model: str = 'glm-4.7-flash',
+               ratio: str = '9:16', resolution: str = '720p') -> str:
+    # Write script to a temp file path via args expects a file — pass through env by writing in CLI.
+    import tempfile
+    from pathlib import Path as P
+    tmp = tempfile.NamedTemporaryFile('w', encoding='utf-8', suffix='.txt', delete=False)
+    tmp.write(script)
+    tmp.close()
+    args = ['storyboard', '--script', tmp.name, '--out', output or 'storyboard.xlsx',
+            '--clips', str(clips), '-d', str(duration_s), '-m', model, '--text-model', text_model,
+            '--ratio', ratio, '-r', resolution]
+    try:
+        return run(args)
+    finally:
+        try:
+            P(tmp.name).unlink(missing_ok=True)
+        except OSError:
+            pass
+
 if __name__ == '__main__':
     mcp.run()

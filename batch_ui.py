@@ -16,12 +16,16 @@ from batch_engine import BatchStore, BatchRunner, BatchLease, LABELS
 from wan_core import DATA_DIR, PRICE_CHECKED_DATE, atomic_json, fingerprint, task_url
 
 CHARACTER_SETTING_PATH = DATA_DIR / 'batch-character-setting.json'
-# Sample spreadsheets shipped next to app.py (and bundled into the EXE); offered in the UI language.
-TEMPLATE_FILES = {'zh': '短剧批量示例模板.xlsx', 'en': 'short-drama-batch-template.xlsx'}
+# Sample spreadsheets shipped next to app.py (and bundled into the EXE).
+TEMPLATE_FILES = {
+    'drama': {'zh': '短剧批量示例模板.xlsx', 'en': 'short-drama-batch-template.xlsx'},
+    'product': {'zh': '产品批量示例模板.xlsx', 'en': 'product-batch-template.xlsx'},
+}
 
 
-def template_file():
-    return TEMPLATE_FILES['zh' if is_zh() else 'en']
+def template_file(kind='drama'):
+    files = TEMPLATE_FILES.get(kind) or TEMPLATE_FILES['drama']
+    return files['zh' if is_zh() else 'en']
 # Row text colors by job state: completed green, running blue, failed red, everything pending gray.
 STATE_COLORS = {'completed': '#1e8a4c', 'running': '#2563eb', 'failed': '#c62828', 'invalid': '#c62828',
                 'uncertain': '#c62828', 'queued': '#6b7785', 'paused': '#6b7785', 'deferred_403': '#6b7785',
@@ -50,7 +54,7 @@ class BatchTab:
         columns = Columns(frame, app.scale, weights=(1, 2))
         columns.pack(fill='x')
         setting_box = card(columns.left, t('character_card'), t('character_card_desc'))
-        self.character_setting = text_area(setting_box, height=5, undo=True)
+        self.character_setting = text_area(setting_box, height=3, undo=True)
         self.character_setting.pack(fill='x')
         try:
             saved = json.loads(CHARACTER_SETTING_PATH.read_text(encoding='utf-8'))
@@ -66,8 +70,15 @@ class BatchTab:
         self.import_btn = ttk.Button(import_box, text=t('import_btn'), style='Accent.TButton', command=self.import_file)
         self.import_btn.pack(fill='x')
         label(import_box, variable=self.source).pack(fill='x', pady=(12, 0))
-        self.template_btn = ttk.Button(import_box, text=t('template_btn'), command=self.save_template)
+        self.template_btn = ttk.Button(import_box, text=t('template_btn_drama'),
+                                       command=lambda: self.save_template('drama'))
         self.template_btn.pack(anchor='w', pady=(10, 0))
+        self.product_template_btn = ttk.Button(import_box, text=t('template_btn_product'),
+                                               command=lambda: self.save_template('product'))
+        self.product_template_btn.pack(anchor='w', pady=(6, 0))
+        self.storyboard_btn = ttk.Button(import_box, text=t('storyboard_btn'),
+                                         command=self.open_storyboard)
+        self.storyboard_btn.pack(anchor='w', pady=(10, 0))
         output_box = card(columns.left, t('batch_output_card'))
         ttk.Entry(output_box, textvariable=self.output, width=12).pack(fill='x')
         ttk.Button(output_box, text=t('browse'), command=self.choose_folder).pack(anchor='w', pady=(10, 0))
@@ -152,18 +163,19 @@ class BatchTab:
         if selection:
             self.tree.selection_set(*selection)
 
-    def save_template(self):
-        name = template_file()
+    def save_template(self, kind='drama'):
+        name = template_file(kind)
+        source = resource_path(name)
+        if not Path(source).is_file():
+            messagebox.showerror(t('import_failed'), name)
+            return
         path = filedialog.asksaveasfilename(defaultextension='.xlsx', initialfile=name,
                                             filetypes=[('Excel', '*.xlsx')])
         if not path:
             return
-        try:
-            shutil.copyfile(resource_path(name), path)
-        except OSError as exc:
-            messagebox.showerror(t('save_failed_title'), str(exc))
-            return
+        shutil.copyfile(source, path)
         self.app.status.set(t('template_saved', path))
+
 
     def choose_folder(self):
         folder = filedialog.askdirectory()
@@ -171,9 +183,34 @@ class BatchTab:
             self.output.set(folder)
 
     def set_busy(self, busy):
-        for button in (self.import_btn, self.start_btn, self.selected_btn, self.attach_btn, self.retry_btn):
-            button.configure(state='disabled' if busy else 'normal')
+        for button in (self.import_btn, self.start_btn, self.selected_btn, self.attach_btn, self.retry_btn,
+                       getattr(self, 'storyboard_btn', None), getattr(self, 'product_template_btn', None),
+                       getattr(self, 'template_btn', None)):
+            if button is not None:
+                button.configure(state='disabled' if busy else 'normal')
         self.stop_btn.configure(state='normal' if busy else 'disabled')
+
+
+    def load_jobs(self, jobs, source='storyboard', character_setting=''):
+        """Put prepared jobs into the preview table (shared by Excel import and From-script)."""
+        store = BatchStore(jobs, self.output.get(), source=source)
+        self.store = store
+        self.imported_character_setting = character_setting
+        self.last_applied_character_setting = character_setting
+        self.jobs = {j['id']: j for j in store.snapshot()}
+        self.tree.delete(*self.tree.get_children())
+        for job in self.jobs.values():
+            self.update_job(job, summarize=False)
+        self.import_info = (Path(str(source)).name if source else 'storyboard', len(jobs),
+                            bool(character_setting), store.reused, [])
+        self.show_source()
+        self.summarize()
+        return store
+
+    def open_storyboard(self):
+        if self.app.busy:
+            return
+        StoryboardDialog(self)
 
     def import_file(self):
         if self.app.busy:
@@ -400,3 +437,135 @@ class BatchTab:
                         (j.get('record') or {}).get('task_id', ''), j['output'], j['note']]])
         except OSError as exc:
             messagebox.showerror(t('export_failed'), str(exc))
+
+
+class StoryboardDialog(tk.Toplevel):
+    """Paste a script → text model → rows in the batch preview. Batch tab only."""
+
+    def __init__(self, batch_tab):
+        super().__init__(batch_tab.frame.winfo_toplevel())
+        self.batch = batch_tab
+        self.app = batch_tab.app
+        self.title(t('storyboard_title'))
+        self.transient(self.app.root)
+        self.grab_set()
+        self.geometry('640x720')
+        body = ttk.Frame(self, padding=16)
+        body.pack(fill='both', expand=True)
+        label(body, t('storyboard_desc')).pack(fill='x', pady=(0, 10))
+        ttk.Label(body, text=t('storyboard_script'), style='Muted.TLabel').pack(anchor='w')
+        self.script = text_area(body, height=6, undo=True)
+        self.script.pack(fill='both', expand=True, pady=(4, 10))
+
+        from models import DEFAULT_MODEL_ID, list_models
+        from storyboard import DEFAULT_TEXT_MODEL, TEXT_MODEL_QWEN, text_model_label, is_free_text_model
+
+        grid = ttk.Frame(body)
+        grid.pack(fill='x', pady=(0, 8))
+        self.clips = tk.StringVar(value='0')
+        self.duration = tk.StringVar(value='8')
+        self.ratio = tk.StringVar(value='9:16')
+        self.resolution = tk.StringVar(value='720p')
+        self.video_model = tk.StringVar(value=DEFAULT_MODEL_ID)
+        self.text_model = tk.StringVar(value=DEFAULT_TEXT_MODEL)
+        self._model_labels = {}
+        labels = []
+        for spec in list_models():
+            lab = spec.label()
+            self._model_labels[lab] = spec.id
+            labels.append(lab)
+        self.video_label = tk.StringVar(value=list_models()[0].label())
+        self.text_choices = {
+            text_model_label(DEFAULT_TEXT_MODEL): DEFAULT_TEXT_MODEL,
+            text_model_label(TEXT_MODEL_QWEN): TEXT_MODEL_QWEN,
+        }
+        self.text_label = tk.StringVar(value=text_model_label(DEFAULT_TEXT_MODEL))
+
+        fields = [
+            (t('storyboard_clips'), self.clips, None),
+            (t('storyboard_duration'), self.duration, None),
+            (t('storyboard_resolution'), self.resolution, ('720p', '1080p', '480p')),
+            (t('storyboard_ratio'), self.ratio, ('9:16', '16:9', '1:1')),
+        ]
+        for i, (title, var, values) in enumerate(fields):
+            grid.columnconfigure(i % 2, weight=1)
+            box = ttk.Frame(grid)
+            box.grid(row=i // 2, column=i % 2, sticky='ew', padx=(0, 10), pady=4)
+            ttk.Label(box, text=title, style='Muted.TLabel').pack(anchor='w')
+            if values is None:
+                ttk.Entry(box, textvariable=var, width=8).pack(fill='x')
+            else:
+                ttk.Combobox(box, textvariable=var, values=values, state='readonly', width=8).pack(fill='x')
+
+        tm = ttk.Frame(body)
+        tm.pack(fill='x', pady=4)
+        ttk.Label(tm, text=t('storyboard_text_model'), style='Muted.TLabel').pack(anchor='w')
+        self.text_combo = ttk.Combobox(tm, textvariable=self.text_label,
+                                       values=list(self.text_choices.keys()), state='readonly')
+        self.text_combo.pack(fill='x')
+        self.text_combo.bind('<<ComboboxSelected>>', lambda *_: self._sync_credit_note())
+        self.credit_note = tk.StringVar()
+        self.credit_label = label(body, variable=self.credit_note)
+        # packed only when non-free model selected
+        self._sync_credit_note()
+        vm = ttk.Frame(body)
+        vm.pack(fill='x', pady=4)
+        ttk.Label(vm, text=t('storyboard_model'), style='Muted.TLabel').pack(anchor='w')
+        ttk.Combobox(vm, textvariable=self.video_label, values=labels, state='readonly').pack(fill='x')
+
+        actions = ttk.Frame(body)
+        actions.pack(fill='x', pady=(12, 0))
+        ttk.Button(actions, text=t('storyboard_run'), style='Accent.TButton',
+                   command=self.run).pack(side='left')
+        ttk.Button(actions, text=t('storyboard_cancel'), command=self.destroy).pack(side='right')
+
+    def _sync_credit_note(self):
+        from storyboard import is_free_text_model
+        mid = self.text_choices.get(self.text_label.get(), self.text_model.get())
+        self.text_model.set(mid)
+        if is_free_text_model(mid):
+            self.credit_note.set('')
+            self.credit_label.pack_forget()
+        else:
+            self.credit_note.set(t('storyboard_credit_note'))
+            if not self.credit_label.winfo_manager():
+                self.credit_label.pack(fill='x', pady=(6, 0))
+
+    def run(self):
+        from storyboard import storyboard_from_script
+        script = self.script.get('1.0', 'end').strip()
+        if not script:
+            messagebox.showerror(t('storyboard_title'), t('storyboard_need_script'), parent=self)
+            return
+        try:
+            key = self.app.selected_key()
+        except Exception:
+            messagebox.showerror(t('storyboard_title'), t('storyboard_need_key'), parent=self)
+            return
+        try:
+            clips = int(self.clips.get() or 0)
+            duration = int(self.duration.get() or 8)
+        except ValueError:
+            messagebox.showerror(t('storyboard_title'), t('storyboard_need_script'), parent=self)
+            return
+        video_id = self._model_labels.get(self.video_label.get(), self.video_model.get())
+        text_id = self.text_choices.get(self.text_label.get(), self.text_model.get())
+        character = self.batch.character_setting.get('1.0', 'end-1c').strip()
+        self.configure(cursor='watch')
+        self.update()
+        try:
+            jobs, meta = storyboard_from_script(
+                script, key, clip_count=clips, duration=duration, model_id=video_id,
+                text_model=text_id, ratio=self.ratio.get(), resolution=self.resolution.get(),
+                character_setting=character)
+            self.batch.load_jobs(jobs, source='storyboard', character_setting=character)
+            self.app.status.set(t('storyboard_ok', len(jobs)))
+            messagebox.showinfo(t('storyboard_title'), t('storyboard_ok', len(jobs)), parent=self)
+            self.destroy()
+        except Exception as exc:
+            messagebox.showerror(t('storyboard_title'), str(exc), parent=self)
+        finally:
+            try:
+                self.configure(cursor='')
+            except tk.TclError:
+                pass

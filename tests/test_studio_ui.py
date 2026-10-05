@@ -240,10 +240,10 @@ class LanguageSwitchTests(unittest.TestCase):
         self.assertEqual(self.gui.prompt_hint.get(), 'Detected: 12 s · 9:16')
         self.assertIn('$0.04/s, regular $0.10/s', self.gui.cost.get())
         texts = self.texts()
-        self.assertIn('Multi-model batch video generation', texts)
+        self.assertIn('Multi-model AI video generation', texts)
         self.assertIn('Wan 3.0 limited-time discount until Oct 7', texts)
         self.assertIn('Stop waiting', texts)
-        self.assertIn('Save sample template…', texts)
+        self.assertIn('Save short-drama sample…', texts)
         chinese = [text for text in texts if re.search('[\u4e00-\u9fff]', text) and text != '中文']
         self.assertEqual(chinese, [])
         self.gui.switch_language('zh')

@@ -23,6 +23,8 @@ Pick a model in the desktop UI, pass `--model` on the CLI, set `model` on MCP to
 ## Features
 
 - **English and Chinese interface**: switch any time with the **中文 / English** toggle in the top-right corner. On first launch the app follows your Windows display language.
+- **Use cases:** short-drama batch production remains a headline use case; also product demos, talking-head clips and social posts.
+- **From script** (Batch tab only): paste a script/outline; free text model `glm-4.7-flash` (or `qwen3-max`) splits it into clip prompts for the preview table.
 - **Compare models**: send one prompt to 2–3 models (Compare tab, CLI `compare`, or MCP `compare_videos`), see side-by-side status and open the best file. Outputs land in a `compare/` subfolder as `name_model-short.mp4`.
 - **Model picker**: choose Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5 or kling v3. Duration / resolution / ratio controls update to what that model allows.
 - **Single video**: prompt, duration, resolution and ratio (limits depend on the model), optional first/last frame and reference image / video / audio URLs, seed (where supported). Duration and ratio are detected from the prompt in English or Chinese. Native audio is on when the model supports it.
@@ -141,7 +143,7 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 3. Open the **API Key** tab, paste your PowerTokens key and click **Add to key pool**.
 4. Write a prompt on the **Generate video** tab, or import a spreadsheet on the **Batch import** tab.
 
-A three-episode sample spreadsheet is included in English (`short-drama-batch-template.xlsx`) and Chinese (`短剧批量示例模板.xlsx`). In the app, **Save sample template…** on the Batch import tab saves the one that matches your interface language. Columns: `Title`, `Duration (s)`, `Resolution`, `Aspect ratio`, `Prompt` (only the prompt column is required; legacy `Wan 3.0 Prompt` still works). An optional `Model` column accepts a model ID or display name.
+A three-episode sample spreadsheet is included in short-drama (`short-drama-batch-template.xlsx` / `短剧批量示例模板.xlsx`) and product (`product-batch-template.xlsx` / `产品批量示例模板.xlsx`). In the app, **Save short-drama sample…** / **Save product sample…** on the Batch import tab. Columns: `Title`, `Duration (s)`, `Resolution`, `Aspect ratio`, `Prompt` (only the prompt column is required; legacy `Wan 3.0 Prompt` still works). An optional `Model` column accepts a model ID or display name.
 
 ### CLI
 
@@ -149,6 +151,7 @@ A three-episode sample spreadsheet is included in English (`short-drama-batch-te
 python pt_wan.py estimate -d 5 -r 720p --model wan3.0-video
 python pt_wan.py generate -p "A cat runs across grass" -d 5 -r 720p --model dreamina-seedance-2-0-fast-260128 -o out.mp4
 python pt_wan.py compare --models wan3.0-video,dreamina-seedance-2-5-260628,kling-v3 -p "A cat runs across grass" -d 5 -r 720p -o ./out
+python pt_wan.py storyboard --script outline.txt --out rows.xlsx --duration 8 --text-model glm-4.7-flash
 ```
 
 `--model` defaults to `wan3.0-video`. See `python pt_wan.py generate -h` for media options.

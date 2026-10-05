@@ -216,26 +216,36 @@ class App:
         heading(frame, t('gen_title'), t('gen_desc'))
         columns = Columns(frame, self.scale)
         columns.pack(fill='x')
-        prompt_box = card(columns.left, t('prompt_card'), t('prompt_card_desc'))
-        self.prompt = text_area(prompt_box, height=6, undo=True)
-        self.prompt.pack(fill='x', pady=(0, 12))
+        prompt_box = card(columns.left, t('prompt_card'))
+        self.prompt = text_area(prompt_box, height=2, undo=True)
+        self.prompt.pack(fill='x', pady=(0, 4))
         self.auto_prompt = tk.BooleanVar(value=True)
         self.prompt_hint = tk.StringVar(value=t('prompt_hint_default'))
         ttk.Checkbutton(prompt_box, text=t('auto_detect'), variable=self.auto_prompt,
                         command=self.apply_prompt).pack(anchor='w')
-        label(prompt_box, variable=self.prompt_hint).pack(fill='x', pady=(4, 0))
+        label(prompt_box, variable=self.prompt_hint).pack(fill='x', pady=(2, 0))
         self.prompt.bind('<<Modified>>', self.prompt_changed)
         self.prompt.edit_modified(False)
-        params = card(columns.left, t('params_card'), t('params_card_desc'))
+        params = card(columns.left, t('params_card'))
         self.model_id = tk.StringVar(value=DEFAULT_MODEL_ID)
         self.model_label = tk.StringVar()
         model_row = ttk.Frame(params)
-        model_row.pack(fill='x', pady=(0, 12))
-        ttk.Label(model_row, text=t('param_model'), style='Muted.TLabel').pack(anchor='w', pady=(0, 8))
+        model_row.pack(fill='x', pady=(0, 4))
+        ttk.Label(model_row, text=t('param_model'), style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
         self.model_combo = ttk.Combobox(model_row, textvariable=self.model_label, state='readonly', width=28)
         self.model_combo.pack(fill='x')
+        desc_row = ttk.Frame(model_row)
+        desc_row.pack(fill='x', pady=(4, 0))
         self.model_desc = tk.StringVar()
-        label(model_row, variable=self.model_desc).pack(fill='x', pady=(6, 0))
+        self.model_desc_full = tk.StringVar()
+        self._model_details_open = False
+        label(desc_row, variable=self.model_desc).pack(side='left', fill='x', expand=True)
+        self.model_details_btn = ttk.Button(desc_row, text=t('model_details'), style='Link.TButton',
+                                            command=self._toggle_model_details)
+        self.model_details_btn.pack(side='right', padx=(8, 0))
+        self.model_desc_full_label = label(model_row, variable=self.model_desc_full)
+        self.model_desc_full_label.pack(fill='x', pady=(4, 0))
+        self.model_desc_full_label.pack_forget()
         self.model_adjust = tk.StringVar()
         self.model_adjust_label = label(model_row, variable=self.model_adjust, style='Badge.TLabel')
         self.model_adjust_label.pack(fill='x', pady=(6, 0))
@@ -247,7 +257,6 @@ class App:
         row.pack(fill='x')
         self.duration, self.resolution, self.ratio = tk.StringVar(value='5'), tk.StringVar(value='720p'), tk.StringVar(value='16:9')
         self.duration_spin = self.resolution_combo = self.ratio_combo = None
-        widgets = []
         for index, (name, var, kind) in enumerate([
                 (t('param_duration'), self.duration, 'duration'),
                 (t('param_resolution'), self.resolution, 'resolution'),
@@ -255,7 +264,7 @@ class App:
             row.columnconfigure(index, weight=1, uniform='params')
             field = ttk.Frame(row)
             field.grid(row=0, column=index, sticky='ew', padx=(0, 12 if index < 2 else 0))
-            ttk.Label(field, text=name, style='Muted.TLabel').pack(anchor='w', pady=(0, 8))
+            ttk.Label(field, text=name, style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
             if kind == 'duration':
                 widget = ttk.Spinbox(field, from_=2, to=30, textvariable=var, width=6)
                 self.duration_spin = widget
@@ -269,42 +278,70 @@ class App:
             widget.pack(fill='x')
             var.trace_add('write', lambda *_: self.update_cost())
         self.cost = tk.StringVar()
-        label(params, variable=self.cost).pack(fill='x', pady=(12, 0))
+        label(params, variable=self.cost).pack(fill='x', pady=(4, 0))
         self._sync_model_widgets()
         self.update_cost()
-        save_box = card(columns.left, t('save_card'))
+        actions = Flow(params)
+        actions.pack(fill='x', pady=(6, 0))
+        self.generate_btn = ttk.Button(actions, text=t('generate_btn'), style='Accent.TButton', command=self.generate)
+        self.stop_btn = ttk.Button(actions, text=t('stop_btn'), command=self.stop_wait, state='disabled')
+        actions.schedule()
+        self.bar = ttk.Progressbar(params, mode='indeterminate')
+        # Right column: current config + save folder + collapsed advanced
+        current = card(columns.right, t('current_card'))
+        self.current_model_badge = tk.StringVar()
+        label(current, variable=self.current_model_badge, style='Badge.TLabel').pack(fill='x')
+        label(current, t('current_saved')).pack(fill='x', pady=(10, 0))
+        self._update_current_model_badge()
+        self.advanced_open = tk.BooleanVar(value=False)
+        adv_card = card(columns.right, t('media_card'))
+        self.advanced_toggle_btn = ttk.Button(adv_card, text=t('advanced_show'), style='Link.TButton',
+                                              command=self._toggle_advanced)
+        self.advanced_toggle_btn.pack(anchor='w')
+        self.advanced_body = ttk.Frame(adv_card)
+        label(self.advanced_body, t('media_card_desc')).pack(fill='x', pady=(0, 8))
+        self.media = {}
+        for kind in ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio'):
+            ttk.Label(self.advanced_body, text=t('media_' + kind), style='Muted.TLabel').pack(anchor='w', pady=(0, 4))
+            var = tk.StringVar()
+            ttk.Entry(self.advanced_body, textvariable=var, width=12).pack(fill='x', pady=(0, 8))
+            self.media[kind] = var
+        ttk.Label(self.advanced_body, text=t('seed_label'), style='Muted.TLabel').pack(anchor='w', pady=(0, 4))
+        self.seed = tk.StringVar()
+        ttk.Entry(self.advanced_body, textvariable=self.seed, width=12).pack(fill='x')
+        # Collapsed by default so Generate stays on the first screen.
+
+        save_box = card(columns.right, t('save_card'))
         ttk.Label(save_box, text=t('output_folder'), style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
         row = ttk.Frame(save_box)
         row.pack(fill='x')
         self.output = tk.StringVar(value=str(Path.home() / 'Videos' / 'PowerTokensVideoStudio'))
         ttk.Entry(row, textvariable=self.output, width=12).pack(side='left', fill='x', expand=True)
         ttk.Button(row, text=t('browse'), command=self.choose_folder).pack(side='left', padx=(10, 0))
-        actions = Flow(save_box)
-        actions.pack(fill='x', pady=(12, 0))
-        self.generate_btn = ttk.Button(actions, text=t('generate_btn'), style='Accent.TButton', command=self.generate)
-        self.stop_btn = ttk.Button(actions, text=t('stop_btn'), command=self.stop_wait, state='disabled')
-        actions.schedule()
-        label(save_box, t('cloud_note')).pack(fill='x', pady=(6, 12))
-        self.bar = ttk.Progressbar(save_box, mode='indeterminate')
-        self.bar.pack(fill='x')
-        advanced = card(columns.right, t('media_card'), t('media_card_desc'))
-        self.media = {}
-        for kind in ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio'):
-            ttk.Label(advanced, text=t('media_' + kind), style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
-            var = tk.StringVar()
-            ttk.Entry(advanced, textvariable=var, width=12).pack(fill='x', pady=(0, 12))
-            self.media[kind] = var
-        ttk.Label(advanced, text=t('seed_label'), style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
-        self.seed = tk.StringVar()
-        ttk.Entry(advanced, textvariable=self.seed, width=12).pack(fill='x')
-        current = card(columns.right, t('current_card'))
-        self.current_model_badge = tk.StringVar()
-        label(current, variable=self.current_model_badge, style='Badge.TLabel').pack(fill='x')
-        label(current, t('current_saved')).pack(fill='x', pady=(10, 0))
-        self._update_current_model_badge()
+        label(save_box, t('cloud_note')).pack(fill='x', pady=(6, 0))
+
         logs = card(frame, t('progress_card'))
-        self.log = text_area(logs, height=5, state='disabled')
+        self.log = text_area(logs, height=2, state='disabled')
         self.log.pack(fill='x')
+
+    def _toggle_advanced(self):
+        if self.advanced_open.get():
+            self.advanced_body.pack_forget()
+            self.advanced_open.set(False)
+            self.advanced_toggle_btn.configure(text=t('advanced_show'))
+        else:
+            self.advanced_body.pack(fill='x', pady=(8, 0))
+            self.advanced_open.set(True)
+            self.advanced_toggle_btn.configure(text=t('advanced_hide'))
+
+    def _toggle_model_details(self):
+        self._model_details_open = not getattr(self, '_model_details_open', False)
+        if self._model_details_open:
+            self.model_desc_full_label.pack(fill='x', pady=(4, 0))
+            self.model_details_btn.configure(text=t('model_details_hide'))
+        else:
+            self.model_desc_full_label.pack_forget()
+            self.model_details_btn.configure(text=t('model_details'))
 
     def build_history(self, frame):
         heading(frame, t('history_title'), t('history_desc'))
@@ -512,7 +549,9 @@ class App:
         if not hasattr(self, 'model_desc'):
             return
         spec = get_model(self.model_id.get())
-        self.model_desc.set(spec.description())
+        self.model_desc.set(spec.summary())
+        if hasattr(self, 'model_desc_full'):
+            self.model_desc_full.set(spec.description())
 
     def _update_current_model_badge(self):
         if not hasattr(self, 'current_model_badge'):
@@ -706,6 +745,8 @@ class App:
         self.batch.set_busy(True)
         if hasattr(self, 'compare'):
             self.compare.set_busy(True)
+        if not self.bar.winfo_manager():
+            self.bar.pack(fill='x', pady=(8, 0))
         self.bar.start(12)
         tab_map = {'generate': 0, 'compare': 1, 'batch': 2, 'history': 3, 'keys': 4}
         self.tabs.select(tab_map.get(prefer_tab, 0))
@@ -746,6 +787,7 @@ class App:
                     if hasattr(self, 'compare'):
                         self.compare.set_busy(False)
                     self.bar.stop()
+                    self.bar.pack_forget()
                     for button in (self.generate_btn, self.resume_btn, self.manual_btn, self.link_btn):
                         button.configure(state='normal')
                     self.stop_btn.configure(state='disabled')

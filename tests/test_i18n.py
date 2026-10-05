@@ -52,13 +52,13 @@ class StringTableTests(unittest.TestCase):
 
     def test_chinese_wording_is_unchanged(self):
         # Spot-check the original v1.10 strings.
-        self.assertEqual(i18n.ZH['subtitle'], '多模型视频批量生成')
+        self.assertEqual(i18n.ZH['subtitle'], '多模型 AI 视频生成')
         self.assertEqual(i18n.ZH['promo'], 'Wan 3.0 限时折扣至 10 月 7 日')
         self.assertEqual(i18n.ZH['tab_history'], '任务记录 / 恢复')
         self.assertEqual(i18n.ZH['start_all'], '开始 / 继续全部（付费生成）')
 
     def test_requested_english_copy(self):
-        self.assertEqual(i18n.EN['subtitle'], 'Multi-model batch video generation')
+        self.assertEqual(i18n.EN['subtitle'], 'Multi-model AI video generation')
         self.assertEqual(i18n.EN['promo'], 'Wan 3.0 limited-time discount until Oct 7')
         self.assertEqual([i18n.EN[k] for k in ('tab_generate', 'tab_batch', 'tab_keys')],
                          ['Generate video', 'Batch import', 'API Key'])
@@ -121,7 +121,7 @@ class PromoTests(English):
     def test_english_badge_until_end_date(self):
         self.assertEqual(studio_ui.promotion_text(datetime.date(2026, 10, 7)), 'Wan 3.0 limited-time discount until Oct 7')
         self.assertEqual(studio_ui.promotion_text(datetime.date(2026, 10, 8)), '')
-        self.assertEqual(studio_ui.subtitle(), 'Multi-model batch video generation')
+        self.assertEqual(studio_ui.subtitle(), 'Multi-model AI video generation')
 
 
 class EnglishDurationTests(English):
@@ -270,10 +270,13 @@ class EnglishImportTests(English):
     def test_template_matches_ui_language(self):
         import batch_ui
         self.assertEqual(batch_ui.template_file(), 'short-drama-batch-template.xlsx')
+        self.assertEqual(batch_ui.template_file('product'), 'product-batch-template.xlsx')
         i18n.set_language('zh')
-        self.assertEqual(batch_ui.template_file(), '短剧批量示例模板.xlsx')
-        for name in batch_ui.TEMPLATE_FILES.values():
-            self.assertTrue(studio_ui.resource_path(name).is_file(), name)
+        self.assertEqual(batch_ui.template_file('drama'), '短剧批量示例模板.xlsx')
+        self.assertEqual(batch_ui.template_file('product'), '产品批量示例模板.xlsx')
+        for files in batch_ui.TEMPLATE_FILES.values():
+            for name in files.values():
+                self.assertTrue(studio_ui.resource_path(name).is_file(), name)
 
     def test_english_state_labels_and_errors(self):
         from batch_engine import LABELS

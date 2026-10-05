@@ -23,6 +23,8 @@ PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm
 ## 功能
 
 - **支持中英文界面切换**：右上角「中文 / English」一键切换，立即生效并自动记住；首次启动跟随 Windows 显示语言。
+- **适用场景**：短剧分集批量生产（仍是核心用例）；也可做产品展示、口播与社交短视频。
+- **从剧本生成**（仅批量导入页）：粘贴剧本/提纲，用免费文本模型 `glm-4.7-flash`（或 `qwen3-max`）拆成多条提示词，载入预览表后再生成。
 - **模型对比**：同一提示词发给 2–3 个模型（「模型对比」页、CLI `compare`、或 MCP `compare_videos`），并排查看状态并打开最好的文件。输出保存在 `compare/` 子目录，文件名为 `名称_模型简称.mp4`。
 - **模型选择**：Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 Fast、Seedance 2.5、kling v3。时长 / 分辨率 / 比例控件会随模型切换。
 - **单条生成**：提示词、时长、分辨率与比例（限制随模型变化），可选首帧、尾帧及参考图片 / 视频 / 音频链接和随机种子（视模型支持）；可从中英文提示词识别时长与比例；支持音频的模型默认开启原生音频。
@@ -139,7 +141,7 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 3. 在「API Key」页粘贴 PowerTokens Key，点击「添加到 Key 池」。
 4. 在「生成视频」页填写提示词，或在「批量导入」页导入表格。
 
-附带三集示例表格：`短剧批量示例模板.xlsx`（英文版为 `short-drama-batch-template.xlsx`）。在「批量导入」页点击「保存示例模板…」可保存与当前界面语言一致的模板。列：`标题`、`时长(秒)`、`分辨率`、`画面比例`、`提示词` / `Prompt`（仅提示词列必填；旧表头 `Wan 3.0 Prompt` 仍可用）。可选 `模型` / `Model` 列接受模型 ID 或显示名。
+附带三集示例表格：`短剧批量示例模板.xlsx` / `产品批量示例模板.xlsx`（英文：`short-drama-batch-template.xlsx` / `product-batch-template.xlsx`）。在「批量导入」页可分别保存「短剧示例模板」与「产品示例模板」。列：`标题`、`时长(秒)`、`分辨率`、`画面比例`、`提示词` / `Prompt`（仅提示词列必填；旧表头 `Wan 3.0 Prompt` 仍可用）。可选 `模型` / `Model` 列接受模型 ID 或显示名。
 
 ### 命令行
 
@@ -147,6 +149,7 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 python pt_wan.py estimate -d 5 -r 720p --model wan3.0-video
 python pt_wan.py generate -p "一只猫在草地上奔跑" -d 5 -r 720p --model dreamina-seedance-2-0-fast-260128 -o out.mp4
 python pt_wan.py compare --models wan3.0-video,dreamina-seedance-2-5-260628,kling-v3 -p "一只猫在草地上奔跑" -d 5 -r 720p -o ./out
+python pt_wan.py storyboard --script outline.txt --out rows.xlsx --duration 8 --text-model glm-4.7-flash
 ```
 
 `--model` 默认为 `wan3.0-video`。更多媒体参数见 `python pt_wan.py generate -h`。
