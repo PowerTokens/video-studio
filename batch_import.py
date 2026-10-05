@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from i18n import t
 from input_helpers import infer_prompt
-from models import DEFAULT_MODEL_ID, get_model, resolve_model_id, snap_params, format_adjust_summary
+from models import DEFAULT_MODEL_ID, get_model, resolve_model_id, snap_params, format_adjust_notice
 from wan_core import TaskError, estimate_cost, payload
 
 NS = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
@@ -181,12 +181,11 @@ def build_job(sheet, row_number, columns, cells, character_setting=''):
         spec = get_model(model_id)
         _d, _r, _ratio, changes = snap_params(spec, duration, resolution, ratio)
         if changes:
-            summary = format_adjust_summary(changes)
             job['suggested'] = {
                 'duration': _d, 'resolution': _r, 'ratio': _ratio,
                 'changes': [(field, old, new) for field, old, new in changes],
             }
-            raise ValueError(t('batch_params_need_adjust', summary))
+            raise ValueError(format_adjust_notice(spec, changes, for_batch=True))
         job['payload'] = payload(prompt, duration, resolution, ratio, model=model_id)
         job['cost'] = estimate_cost(duration, resolution, model_id=model_id)
         notes = [] if duration_text else detected.get('notes', [])

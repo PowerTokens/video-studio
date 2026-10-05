@@ -406,11 +406,78 @@ def snap_params(spec, duration, resolution, ratio):
     return new_duration, new_resolution, new_ratio, changes
 
 
-def format_adjust_summary(changes, lang=None):
-    """Compact summary like '15s / 720p' or '15 秒 / 720p'."""
+def _duration_limit_phrase(spec, old, new, use_zh):
+    try:
+        old_n = int(old)
+    except (TypeError, ValueError):
+        old_n = None
+    lo, hi = spec.durations[0], spec.durations[-1]
+    if old_n is not None and old_n < lo:
+        return ('最短 %s 秒' % lo) if use_zh else ('at least %s s' % lo)
+    return ('最长 %s 秒' % hi) if use_zh else ('up to %s s' % hi)
+
+
+def _resolution_limit_phrase(spec, old, new, use_zh):
+    ranked = sorted(spec.resolutions, key=lambda item: RES_RANK.get(item, 0))
+    lo, hi = ranked[0], ranked[-1]
+    old_n = RES_RANK.get(normalize_resolution(old))
+    new_n = RES_RANK.get(new, RES_RANK.get(hi, 0))
+    if old_n is not None and old_n < new_n:
+        return ('最低 %s' % lo) if use_zh else ('at least %s' % lo)
+    # EN matches "… and 720p" (plain ceiling); ZH keeps 最高.
+    return ('最高 %s' % hi) if use_zh else hi
+
+
+def _ratio_limit_phrase(spec, use_zh):
+    joined = ' / '.join(spec.ratios)
+    if use_zh:
+        return '比例仅支持 %s' % joined
+    if len(spec.ratios) == 1:
+        return 'aspect ratio %s' % spec.ratios[0]
+    return 'aspect ratios %s' % joined
+
+
+def format_adjust_notice(spec, changes, *, for_batch=False, lang=None):
+    """Plain notice naming only the model limits that forced a change.
+
+    UI example (ZH): "Seedance 2.0 Fast 最长 15 秒、最高 720p，已自动调整"
+    UI example (EN): "Seedance 2.0 Fast supports up to 15 s and 720p, so settings were adjusted automatically."
+    Batch uses the same limit phrasing with a "please update" ending.
+    """
     from i18n import is_zh
+    if not changes:
+        return ''
     use_zh = is_zh() if lang is None else lang == 'zh'
+    name = spec.label(lang)
+    phrases = []
+    for field, old, new in changes:
+        if field == 'duration':
+            phrases.append(_duration_limit_phrase(spec, old, new, use_zh))
+        elif field == 'resolution':
+            phrases.append(_resolution_limit_phrase(spec, old, new, use_zh))
+        elif field == 'ratio':
+            phrases.append(_ratio_limit_phrase(spec, use_zh))
+    if use_zh:
+        limits = '、'.join(phrases)
+        if for_batch:
+            return '%s %s，请按此修改' % (name, limits)
+        return '%s %s，已自动调整' % (name, limits)
+    # English: "supports A and B" / "supports A, B and C"
+    if len(phrases) == 1:
+        limits = phrases[0]
+    elif len(phrases) == 2:
+        limits = '%s and %s' % (phrases[0], phrases[1])
+    else:
+        limits = '%s and %s' % (', '.join(phrases[:-1]), phrases[-1])
+    if for_batch:
+        return '%s supports %s; please update this row.' % (name, limits)
+    return '%s supports %s, so settings were adjusted automatically.' % (name, limits)
+
+
+# Back-compat alias used by older call sites / tests
+def format_adjust_summary(changes, lang=None):
     parts = []
+    use_zh = (lang == 'zh') if lang is not None else False
     for field, _old, new in changes:
         if field == 'duration':
             parts.append(('%s 秒' % new) if use_zh else ('%ss' % new))

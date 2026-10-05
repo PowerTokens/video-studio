@@ -18,7 +18,7 @@ from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE,
                        load_image, header_logo_file)
 from input_helpers import parse_keys, infer_prompt
 from batch_ui import BatchTab
-from models import DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id, snap_params, format_adjust_summary
+from models import DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id, snap_params, format_adjust_notice
 from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices, list_prices,
                       TaskError, atomic_json, estimate_cost, fingerprint, payload)
 
@@ -478,8 +478,8 @@ class App:
         if not hasattr(self, 'model_adjust'):
             return
         if changes:
-            summary = format_adjust_summary(changes)
-            self.model_adjust.set(t('model_params_adjusted', summary))
+            spec = get_model(self.model_id.get())
+            self.model_adjust.set(format_adjust_notice(spec, changes))
             if not self.model_adjust_label.winfo_manager():
                 self.model_adjust_label.pack(fill='x', pady=(6, 0))
         else:

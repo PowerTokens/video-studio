@@ -171,10 +171,6 @@ class BatchModelColumnTests(unittest.TestCase):
         self.assertEqual(job['payload']['model'], 'wan3.0-video')
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class SnapTests(unittest.TestCase):
     def test_seedance_fast_snaps_1080p_and_long_duration(self):
         spec = models.get_model('dreamina-seedance-2-0-fast-260128')
@@ -184,14 +180,36 @@ class SnapTests(unittest.TestCase):
         self.assertEqual(ratio, '16:9')
         fields = [c[0] for c in changes]
         self.assertEqual(fields, ['duration', 'resolution'])
-        summary = models.format_adjust_summary(changes)
-        self.assertIn('15', summary)
-        self.assertIn('720p', summary)
+        i18n.set_language('zh')
+        zh = models.format_adjust_notice(spec, changes)
+        self.assertEqual(zh, 'Seedance 2.0 Fast 最长 15 秒、最高 720p，已自动调整')
+        i18n.set_language('en')
+        en = models.format_adjust_notice(spec, changes)
+        self.assertEqual(
+            en,
+            'Seedance 2.0 Fast supports up to 15 s and 720p, so settings were adjusted automatically.',
+        )
+
+    def test_notice_only_mentions_changed_limits(self):
+        spec = models.get_model('dreamina-seedance-2-0-fast-260128')
+        _d, _r, _ratio, changes = models.snap_params(spec, 30, '720p', '16:9')
+        self.assertEqual([c[0] for c in changes], ['duration'])
+        i18n.set_language('zh')
+        zh = models.format_adjust_notice(spec, changes)
+        self.assertEqual(zh, 'Seedance 2.0 Fast 最长 15 秒，已自动调整')
+        self.assertNotIn('720p', zh)
+        i18n.set_language('en')
+        en = models.format_adjust_notice(spec, changes)
+        self.assertEqual(
+            en,
+            'Seedance 2.0 Fast supports up to 15 s, so settings were adjusted automatically.',
+        )
 
     def test_unchanged_when_already_valid(self):
         spec = models.get_model('wan3.0-video')
         duration, resolution, ratio, changes = models.snap_params(spec, 10, '720p', '9:16')
         self.assertEqual((duration, resolution, ratio, changes), (10, '720p', '9:16', []))
+        self.assertEqual(models.format_adjust_notice(spec, changes), '')
 
     def test_kling_snaps_unsupported_ratio_and_resolution(self):
         spec = models.get_model('kling-v3')
@@ -200,17 +218,35 @@ class SnapTests(unittest.TestCase):
         self.assertEqual(resolution, '720p')
         self.assertIn(ratio, spec.ratios)
         self.assertTrue(changes)
+        i18n.set_language('zh')
+        zh = models.format_adjust_notice(spec, changes)
+        self.assertIn('最短 3 秒', zh)
+        self.assertIn('最低 720p', zh)  # 480p snapped up; kling min resolution
+        self.assertIn('比例仅支持', zh)
+        self.assertTrue(zh.endswith('，已自动调整'))
 
 
 class BatchSnapWarnTests(unittest.TestCase):
     def test_batch_row_warns_with_suggestion_without_changing(self):
         from batch_import import build_job
+        i18n.set_language('zh')
         job = build_job('Sheet', 2,
                         {'duration': 0, 'resolution': 1, 'prompt': 2, 'model': 3},
                         ['30', '1080p', 'a short scene', 'dreamina-seedance-2-0-fast-260128'])
         self.assertEqual(job['state'], 'invalid')
         self.assertIsNone(job['payload'])
-        self.assertIn('720p', job['note'])
-        self.assertIn('15', job['note'])
+        self.assertEqual(job['note'], 'Seedance 2.0 Fast 最长 15 秒、最高 720p，请按此修改')
         self.assertEqual(job['suggested']['duration'], 15)
         self.assertEqual(job['suggested']['resolution'], '720p')
+        i18n.set_language('en')
+        job_en = build_job('Sheet', 2,
+                           {'duration': 0, 'resolution': 1, 'prompt': 2, 'model': 3},
+                           ['30', '1080p', 'a short scene', 'dreamina-seedance-2-0-fast-260128'])
+        self.assertEqual(
+            job_en['note'],
+            'Seedance 2.0 Fast supports up to 15 s and 720p; please update this row.',
+        )
+
+
+if __name__ == '__main__':
+    unittest.main()
