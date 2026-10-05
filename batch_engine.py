@@ -190,13 +190,13 @@ class BatchRunner:
         import frame_util
         from models import resolve_model_id
         model_id = resolve_model_id(job.get('model') or (job.get('payload') or {}).get('model') or 'wan3.0-video')
-        frame_dir = self.store.data_dir / 'chain_frames' / self.store.id
-        frame_path = frame_dir / ('%s.jpg' % job['id'])
+        # Prefer the sidecar next to the previous clip so users can inspect it.
+        frame_path = frame_util.chain_frame_path_for_video(video)
         if job.get('chain_frame') and Path(job['chain_frame']).is_file():
             frame_path = Path(job['chain_frame'])
         else:
             self.update(job['id'], note=t('chain_extracting'))
-            frame_path = Path(frame_util.extract_last_frame(video, frame_path))
+            frame_path = Path(frame_util.extract_chain_frame(video, frame_path))
             self.update(job['id'], chain_frame=str(frame_path))
         if not frame_util.supports_embedded_first_frame(model_id):
             self.update(job['id'], note=t('chain_wan_data_url_note'))

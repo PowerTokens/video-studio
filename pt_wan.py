@@ -114,6 +114,8 @@ def main():
     storyboard.add_argument('--text-model', default=DEFAULT_TEXT_MODEL, choices=list(ALLOWED_TEXT_MODELS))
     storyboard.add_argument('--ratio', default='9:16')
     storyboard.add_argument('--resolution', '-r', default='720p')
+    storyboard.add_argument('--chain', action='store_true', default=False,
+                           help='Continue each clip from the previous near-end frame (off by default)')
 
     resume = subs.add_parser('resume')
     resume.add_argument('task_id')
@@ -224,7 +226,8 @@ def main():
             text_model=args.text_model, ratio=args.ratio, resolution=args.resolution)
         out = rows_to_xlsx(jobs, args.out)
         emit({'ok': True, 'rows': len(jobs), 'out': str(out), 'text_model': meta['text_model'],
-              'video_model': meta['video_model'], 'free_text': meta['free_text']})
+              'video_model': meta['video_model'], 'free_text': meta['free_text'],
+              'chain': bool(getattr(args, 'chain', False))})
         return 0
 
     client = Client(report=lambda message: print(message, file=sys.stderr, flush=True))

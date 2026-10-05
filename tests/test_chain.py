@@ -86,7 +86,7 @@ class ChainRunnerTests(unittest.TestCase):
         frame = folder / 'frame.jpg'
         frame.write_bytes(b'\xff\xd8\xff' + b'z' * 40 + b'\xff\xd9')
 
-        with patch('frame_util.extract_last_frame', return_value=frame):
+        with patch('frame_util.extract_chain_frame', return_value=frame):
             runner = BatchRunner(store, ['sk-test-key-aaaa'], concurrency=3, chain=True,
                                  client_factory=FakeClient, download_limit=1)
             # Only second job eligible queued
@@ -124,11 +124,72 @@ class ChainRunnerTests(unittest.TestCase):
                 raise AssertionError('must not resubmit')
 
         runner = BatchRunner(store, [key], concurrency=1, chain=True, client_factory=FakeClient)
-        with patch('frame_util.extract_last_frame') as ex:
+        with patch('frame_util.extract_chain_frame') as ex:
             runner.run()
             ex.assert_not_called()
         self.assertEqual(store.snapshot()[0]['state'], 'completed')
 
+
+
+
+class ChainFrameSeekTests(unittest.TestCase):
+    def test_seek_clamps_for_short_clips(self):
+        self.assertEqual(fu.seek_time_before_end(5.0, 0.5), 4.5)
+        self.assertEqual(fu.seek_time_before_end(0.3, 0.5), 0.0)
+        self.assertEqual(fu.seek_time_before_end(0.0, 0.5), 0.0)
+        self.assertIsNone(fu.seek_time_before_end(None, 0.5))
+
+    def test_sidecar_path_next_to_video(self):
+        path = fu.chain_frame_path_for_video('/tmp/batch/003_clip.mp4')
+        self.assertEqual(str(path), '/tmp/batch/003_clip_chain_frame.jpg')
+
+    def test_extract_uses_near_end_seek(self):
+        folder = Path(tempfile.mkdtemp())
+        video = folder / 'clip.mp4'
+        video.write_bytes(b'fake')
+        out = folder / 'clip_chain_frame.jpg'
+        calls = []
+
+        def fake_run(cmd, check=True, capture_output=True, timeout=180):
+            calls.append(list(cmd))
+            # Pretend success on first real extract attempt
+            if '-frames:v' in cmd:
+                out.write_bytes(b'\xff\xd8\xff' + b'x' * 40 + b'\xff\xd9')
+            class R:
+                returncode = 0
+                stderr = b'Duration: 00:00:05.00, start: 0.000000'
+                stdout = b''
+            return R()
+
+        with patch.object(fu, 'find_ffmpeg', return_value='ffmpeg'), \
+             patch.object(fu, 'probe_duration_seconds', return_value=5.0), \
+             patch('subprocess.run', side_effect=fake_run):
+            result = fu.extract_chain_frame(video)
+        self.assertEqual(result, out)
+        # First extract attempt should include -ss 4.500
+        extract_cmds = [c for c in calls if '-frames:v' in c]
+        self.assertTrue(extract_cmds)
+        self.assertIn('-ss', extract_cmds[0])
+        self.assertEqual(extract_cmds[0][extract_cmds[0].index('-ss') + 1], '4.500')
+
+
+class ChainDefaultOffTests(unittest.TestCase):
+    def test_batch_runner_and_cli_mcp_defaults_off(self):
+        from batch_engine import BatchRunner
+        import inspect
+        sig = inspect.signature(BatchRunner.__init__)
+        self.assertFalse(sig.parameters['chain'].default)
+        # CLI: --chain is store_true (off unless passed)
+        cli = Path(__file__).resolve().parents[1] / 'pt_wan.py'
+        text = cli.read_text(encoding='utf-8')
+        self.assertIn("add_argument('--chain', action='store_true', default=False", text)
+        # MCP: chain: bool = False
+        mcp = Path(__file__).resolve().parents[1] / 'mcp_server.py'
+        self.assertIn('chain: bool = False', mcp.read_text(encoding='utf-8'))
+        # UI BooleanVar defaults
+        ui = (Path(__file__).resolve().parents[1] / 'batch_ui.py').read_text(encoding='utf-8')
+        self.assertIn("self.chain_clips = tk.BooleanVar(value=False)", ui)
+        self.assertIn("self.chain_var = tk.BooleanVar(value=False)", ui)
 
 class FfmpegDiscoveryTests(unittest.TestCase):
     def test_find_ffmpeg_prefers_bundled(self):

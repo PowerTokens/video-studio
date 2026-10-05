@@ -69,7 +69,8 @@ def compare_videos(prompt: str, models: str, duration_s: int = 5, resolution: st
 @mcp.tool(description=t('cli_storyboard_help'))
 def storyboard(script: str, output: str, clips: int = 0, duration_s: int = 8,
                model: str = 'wan3.0-video', text_model: str = 'glm-4.7-flash',
-               ratio: str = '9:16', resolution: str = '720p') -> str:
+               ratio: str = '9:16', resolution: str = '720p',
+               chain: bool = False) -> str:
     # Write script to a temp file path via args expects a file — pass through env by writing in CLI.
     import tempfile
     from pathlib import Path as P
@@ -79,6 +80,8 @@ def storyboard(script: str, output: str, clips: int = 0, duration_s: int = 8,
     args = ['storyboard', '--script', tmp.name, '--out', output or 'storyboard.xlsx',
             '--clips', str(clips), '-d', str(duration_s), '-m', model, '--text-model', text_model,
             '--ratio', ratio, '-r', resolution]
+    if chain:
+        args.append('--chain')
     try:
         return run(args)
     finally:

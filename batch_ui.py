@@ -518,7 +518,7 @@ class StoryboardDialog(tk.Toplevel):
         ttk.Label(vm, text=t('storyboard_model'), style='Muted.TLabel').pack(anchor='w')
         ttk.Combobox(vm, textvariable=self.video_label, values=labels, state='readonly').pack(fill='x')
 
-        self.chain_var = tk.BooleanVar(value=bool(self.batch.chain_clips.get()))
+        self.chain_var = tk.BooleanVar(value=False)  # chain stays off unless the user ticks it
         ttk.Checkbutton(body, text=t('chain_enable'), variable=self.chain_var).pack(anchor='w', pady=(8, 0))
         label(body, t('chain_enable_desc')).pack(fill='x', pady=(2, 0))
         actions = ttk.Frame(body)
