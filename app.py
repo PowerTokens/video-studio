@@ -367,7 +367,18 @@ class App:
         ttk.Button(add, text=t('add_btn'), style='Accent.TButton', command=self.add_keys).pack(anchor='w')
         pool = card(columns.left, t('pool_card'), t('pool_card_desc'))
         self.key_count = tk.StringVar(value=t('key_count', 0, count=0))
-        label(pool, variable=self.key_count, style='Badge.TLabel').pack(anchor='w', pady=(0, 12))
+        label(pool, variable=self.key_count, style='Badge.TLabel').pack(anchor='w', pady=(0, 8))
+        # Tip sits under the pool header so it wraps inside the card and stays visible.
+        self.key_quota_tip = label(pool, t('key_quota_tip'), style='Badge.TLabel')
+        self.key_quota_tip.pack(fill='x', pady=(0, 4))
+        self.key_quota_tip.bind('<Button-1>', lambda *_: self.open_key_quota_tip())
+        try:
+            self.key_quota_tip.configure(cursor='hand2')
+        except tk.TclError:
+            pass
+        self.key_quota_btn = ttk.Button(pool, text=t('key_quota_tip_btn'), style='Link.TButton',
+                                        command=self.open_key_quota_tip)
+        self.key_quota_btn.pack(anchor='w', pady=(0, 12))
         list_row = ttk.Frame(pool)
         list_row.pack(fill='x')
         self.key_list = tk.Listbox(list_row, height=8, width=1, exportselection=False, font=(FONT, 11),
@@ -380,10 +391,6 @@ class App:
         self.key_list.configure(yscrollcommand=scroll.set)
         ttk.Button(pool, text=t('remove_key'), command=self.remove_key).pack(anchor='w', pady=(12, 0))
         label(pool, t('pool_note')).pack(fill='x', pady=(10, 0))
-        label(pool, t('key_quota_tip'), style='Badge.TLabel').pack(fill='x', pady=(12, 0))
-        self.key_quota_btn = ttk.Button(pool, text=t('key_quota_tip_btn'), style='Link.TButton',
-                                        command=self.open_key_quota_tip)
-        self.key_quota_btn.pack(anchor='w', pady=(8, 0))
         get = card(columns.right, t('get_card'), t('get_card_desc'))
         self.promo_label = label(get, promotion_text(), style='Badge.TLabel')
         self.get_key_btn = ttk.Button(get, text=t('get_btn'), style='Accent.TButton', command=self.open_official_keys)

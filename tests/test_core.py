@@ -284,9 +284,26 @@ class KeyPoolTests(unittest.TestCase):
         client = w.Client(report=lambda *_: None, data_dir=data, key_pool=w.KeyPool(['a', 'b']))
         with patch.object(w, 'api', side_effect=[
             (402, {'message': 'quota'}),
-            (429, {'message': 'rate limit'}),
+            (401, {'message': 'API key expired'}),
         ]):
             with self.assertRaises(w.TaskError) as caught:
                 client.submit(['a', 'b'], w.payload('hi'), data / 'o.mp4')
         self.assertEqual(caught.exception.kind, 'POOL_EXHAUSTED')
         self.assertTrue(client.key_pool.all_exhausted())
+
+    def test_rate_limit_retries_same_key_without_exhausting(self):
+        data = Path(tempfile.mkdtemp())
+        (data / 'tasks').mkdir()
+        pool = w.KeyPool(['key-a', 'key-b'])
+        client = w.Client(report=lambda *_: None, data_dir=data, key_pool=pool)
+        out = data / 'out.mp4'
+        with patch.object(w, 'RATE_LIMIT_BASE_DELAY_S', 0), patch.object(w, 'api', side_effect=[
+            (429, {'message': 'Too Many Requests'}),
+            (201, {'id': 'task_after_wait'}),
+        ]) as api, patch.object(client, 'wait', return_value={'task_id': 'task_after_wait'}):
+            client.submit(['key-a', 'key-b'], w.payload('hi'), out)
+        self.assertEqual(api.call_count, 2)
+        self.assertEqual(api.call_args_list[0].args[2], 'key-a')
+        self.assertEqual(api.call_args_list[1].args[2], 'key-a')  # same key, not key-b
+        self.assertFalse(pool.is_exhausted('key-a'))
+        self.assertFalse(pool.is_exhausted('key-b'))

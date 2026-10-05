@@ -158,7 +158,7 @@ def api(method, url, key, payload=None, timeout=30):
 
 
 def category(code, body):
-    """Classify API errors for key rotation. QUOTA/AUTH/RATE_LIMIT exhaust a key for this run."""
+    """Classify API errors for key rotation. QUOTA/AUTH/NOT_ALLOWED exhaust; RATE_LIMIT is temporary."""
     text = json.dumps(body, ensure_ascii=False).lower()
     if code == 429 or any(x in text for x in ('rate limit', 'rate_limit', 'too many requests', '请求过于频繁')):
         return 'RATE_LIMIT'
@@ -177,20 +177,24 @@ def category(code, body):
 
 
 # Kinds that mean "this key cannot submit right now — try the next one".
-KEY_EXHAUST_KINDS = ('AUTH', 'QUOTA', 'NOT_ALLOWED', 'RATE_LIMIT')
+KEY_EXHAUST_KINDS = ('AUTH', 'QUOTA', 'NOT_ALLOWED')  # not RATE_LIMIT — that uses cooldown + retry
+RATE_LIMIT_MAX_RETRIES = 4
+RATE_LIMIT_BASE_DELAY_S = 2
 
 
 class KeyPool:
-    """Shared key list with per-run exhaustion (quota / expired / rate-limit / not allowed).
+    """Shared key list with per-run exhaustion for real quota / expiry / not-allowed.
 
-    Thread-safe so a batch can skip a drained key on the next job without ever
-    resubmitting a request that already returned a task ID.
+    429 rate limits use a short cooldown and retry the same key; they do not
+    exhaust the key for the whole run. Thread-safe for batch workers. Never
+    resubmit a request that already returned a task ID.
     """
 
     def __init__(self, keys):
         self.keys = list(keys)
         self._lock = threading.Lock()
         self.exhausted = {}  # fingerprint -> reason
+        self.cooldowns = {}  # fingerprint -> monotonic deadline
 
     def fingerprint_of(self, key):
         return fingerprint(key)
@@ -202,6 +206,16 @@ class KeyPool:
     def mark_exhausted(self, key, reason):
         with self._lock:
             self.exhausted[fingerprint(key)] = reason
+            self.cooldowns.pop(fingerprint(key), None)
+
+    def mark_cooldown(self, key, seconds):
+        with self._lock:
+            self.cooldowns[fingerprint(key)] = time.monotonic() + max(0.1, float(seconds))
+
+    def cooldown_remaining(self, key):
+        with self._lock:
+            deadline = self.cooldowns.get(fingerprint(key), 0)
+        return max(0.0, deadline - time.monotonic())
 
     def available(self, start_offset=0):
         """Keys still usable this run, rotated from start_offset."""
@@ -453,40 +467,62 @@ class Client:
         candidates = [k for k in keys if not pool.is_exhausted(k)]
         if not candidates:
             raise TaskError(t('all_keys_exhausted'), 'POOL_EXHAUSTED')
+
+        def sleep_interruptible(seconds):
+            end = time.monotonic() + max(0.0, seconds)
+            while time.monotonic() < end:
+                if self.stop.is_set():
+                    raise TaskError(t('submit_stopped'), 'PAUSED')
+                time.sleep(min(0.25, max(0.0, end - time.monotonic())))
+
         for index, key in enumerate(candidates):
-            if self.stop.is_set():
-                raise TaskError(t('submit_stopped'), 'PAUSED')
-            self.save(state=t('state_submitting'), key_hash=fingerprint(key), key_hint='****' + key[-4:],
-                      model=model_id, poll_kind=poll_kind)
-            self.report(t('submitting_key', index + 1, len(candidates), key[-4:]))
-            code, body = api('POST', submit_endpoint, key, request)
-            task_id = _models.extract_task_id(body, spec.family)
-            # Kling may return HTTP 200 with code!=0
-            if spec.family == 'kling' and isinstance(body.get('code'), int) and body.get('code') != 0 and not task_id:
-                kind = category(code or 400, body)
+            rate_tries = 0
+            while True:
+                if self.stop.is_set():
+                    raise TaskError(t('submit_stopped'), 'PAUSED')
+                wait_s = pool.cooldown_remaining(key)
+                if wait_s > 0:
+                    self.report(t('key_rate_limited', key[-4:], int(max(1, round(wait_s)))))
+                    sleep_interruptible(wait_s)
+                self.save(state=t('state_submitting'), key_hash=fingerprint(key), key_hint='****' + key[-4:],
+                          model=model_id, poll_kind=poll_kind)
+                self.report(t('submitting_key', index + 1, len(candidates), key[-4:]))
+                code, body = api('POST', submit_endpoint, key, request)
+                task_id = _models.extract_task_id(body, spec.family)
+                kind = category(code or 400, body) if (
+                    spec.family == 'kling' and isinstance(body.get('code'), int)
+                    and body.get('code') != 0 and not task_id) else None
+                if isinstance(task_id, str) and task_id:
+                    task_url(task_id, poll_kind)
+                    # Persist BEFORE any further work so a restart resumes instead of resubmitting.
+                    self.report(t('task_id_log') + task_id)
+                    try:
+                        self.save(task_id=task_id, state=t('state_submitted'), model=model_id, poll_kind=poll_kind)
+                    except OSError:
+                        raise TaskError(t('record_save_failed') + task_id, 'STORAGE', task_id)
+                    return self.wait(key, task_id, out_path)
+                if kind is None:
+                    kind = category(code, body)
+                # Temporary rate limit: backoff and retry the SAME key (do not exhaust).
+                if kind == 'RATE_LIMIT':
+                    rate_tries += 1
+                    if rate_tries > RATE_LIMIT_MAX_RETRIES:
+                        pool.mark_cooldown(key, RATE_LIMIT_BASE_DELAY_S)
+                        self.report(t('key_rate_limited', key[-4:], RATE_LIMIT_BASE_DELAY_S))
+                        break  # try another key this round; key stays available later
+                    delay = min(20, RATE_LIMIT_BASE_DELAY_S ** rate_tries)
+                    pool.mark_cooldown(key, delay)
+                    self.report(t('key_rate_limited', key[-4:], int(delay)))
+                    sleep_interruptible(delay)
+                    continue
+                # Real exhaustion (quota / expired / not allowed) — try the next key.
                 if kind in KEY_EXHAUST_KINDS:
                     pool.mark_exhausted(key, kind)
                     self.save(state=t('state_rejected') + kind)
                     self.report(t('key_exhausted_log', key[-4:], kind))
-                    continue
-            if isinstance(task_id, str) and task_id:
-                task_url(task_id, poll_kind)
-                # Persist BEFORE any further work so a restart resumes instead of resubmitting.
-                self.report(t('task_id_log') + task_id)
-                try:
-                    self.save(task_id=task_id, state=t('state_submitted'), model=model_id, poll_kind=poll_kind)
-                except OSError:
-                    raise TaskError(t('record_save_failed') + task_id, 'STORAGE', task_id)
-                return self.wait(key, task_id, out_path)
-            kind = category(code, body)
-            # Only explicit rejection BEFORE obtaining an ID can switch keys — never resubmit after an ID.
-            if (code in (400, 401, 402, 403, 429) or kind in KEY_EXHAUST_KINDS) and kind in KEY_EXHAUST_KINDS:
-                pool.mark_exhausted(key, kind)
-                self.save(state=t('state_rejected') + kind)
-                self.report(t('key_exhausted_log', key[-4:], kind))
-                continue
-            self.save(state=t('state_unknown'))
-            raise TaskError(t('submit_uncertain', code), 'UNCERTAIN')
+                    break
+                self.save(state=t('state_unknown'))
+                raise TaskError(t('submit_uncertain', code), 'UNCERTAIN')
         if pool.all_exhausted():
             raise TaskError(t('all_keys_exhausted'), 'POOL_EXHAUSTED')
         raise TaskError(t('all_rejected'), 'REJECTED')
