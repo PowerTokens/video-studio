@@ -14,14 +14,15 @@ MAX_FRAME_BYTES = 4 * 1024 * 1024
 
 
 def find_ffmpeg():
-    path = shutil.which('ffmpeg')
-    if path:
-        return path
+    """Prefer the bundled imageio-ffmpeg binary; fall back to ffmpeg on PATH."""
     try:
         import imageio_ffmpeg
-        return imageio_ffmpeg.get_ffmpeg_exe()
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        if exe and Path(exe).is_file():
+            return exe
     except Exception:
-        return None
+        pass
+    return shutil.which('ffmpeg')
 
 
 def extract_last_frame(video_path, out_path):

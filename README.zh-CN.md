@@ -24,7 +24,7 @@ PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm
 
 - **支持中英文界面切换**：右上角「中文 / English」一键切换，立即生效并自动记住；首次启动跟随 Windows 显示语言。
 - **适用场景**：短剧分集批量生产（仍是核心用例）；也可做产品展示、口播与社交短视频。
-- **接上一段**：批量导入可勾选，用上一段最后一帧作为下一段首帧（需本机 ffmpeg；Seedance/Kling 用内嵌图片，Wan 需 live Key 验证）。
+- **接上一段**：批量导入可勾选，用上一段最后一帧作为下一段首帧（Seedance/Kling 用内嵌图片，Wan 需 live Key 验证）。Windows 安装包已内置截帧组件（约增大 70–80 MB）。
 - **从剧本生成**（仅批量导入页）：粘贴剧本/提纲，用免费文本模型 `glm-4.7-flash`（或 `qwen3-max`）拆成多条提示词，载入预览表后再生成。
 - **模型对比**：同一提示词发给 2–3 个模型（「模型对比」页、CLI `compare`、或 MCP `compare_videos`），并排查看状态并打开最好的文件。输出保存在 `compare/` 子目录，文件名为 `名称_模型简称.mp4`。
 - **模型选择**：Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 Fast、Seedance 2.5、kling v3。时长 / 分辨率 / 比例控件会随模型切换。

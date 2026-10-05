@@ -128,3 +128,26 @@ class ChainRunnerTests(unittest.TestCase):
             runner.run()
             ex.assert_not_called()
         self.assertEqual(store.snapshot()[0]['state'], 'completed')
+
+
+class FfmpegDiscoveryTests(unittest.TestCase):
+    def test_find_ffmpeg_prefers_bundled(self):
+        import types, sys
+        mod = types.ModuleType('imageio_ffmpeg')
+        mod.get_ffmpeg_exe = lambda: '/bundled/ffmpeg'
+        sys.modules.pop('imageio_ffmpeg', None)
+        with patch.dict(sys.modules, {'imageio_ffmpeg': mod}):
+            with patch.object(fu.Path, 'is_file', lambda self: str(self) == '/bundled/ffmpeg'):
+                with patch('shutil.which', return_value='/usr/bin/ffmpeg'):
+                    self.assertEqual(fu.find_ffmpeg(), '/bundled/ffmpeg')
+
+    def test_find_ffmpeg_falls_back_to_path(self):
+        import builtins, sys
+        real = builtins.__import__
+        def fake(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == 'imageio_ffmpeg' or (isinstance(name, str) and name.startswith('imageio_ffmpeg')):
+                raise ImportError('missing')
+            return real(name, globals, locals, fromlist, level)
+        sys.modules.pop('imageio_ffmpeg', None)
+        with patch('builtins.__import__', side_effect=fake), patch('shutil.which', return_value='/usr/bin/ffmpeg'):
+            self.assertEqual(fu.find_ffmpeg(), '/usr/bin/ffmpeg')
