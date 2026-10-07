@@ -288,4 +288,4 @@ Questions and feedback: [Discord](https://discord.gg/JtgtRdhJVS) or [Issues](../
 
 Contributing: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Created by [@uselesssoso](https://github.com/uselesssoso) for [PowerTokens](https://powertokens.ai).
+Created by [@uselesssoso](https://github.com/uselesssoso) for [PowerTokens](https://powertokens.ai/?utm_source=github&utm_medium=oss&utm_campaign=video-studio).

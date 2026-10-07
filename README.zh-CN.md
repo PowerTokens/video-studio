@@ -275,4 +275,4 @@ MIT，见 [LICENSE](LICENSE)。
 
 问题与反馈：[Discord](https://discord.gg/JtgtRdhJVS) 或 [Issues](../../issues)。
 
-作者：[@uselesssoso](https://github.com/uselesssoso)，由 [PowerTokens](https://powertokens.ai) 出品。
+作者：[@uselesssoso](https://github.com/uselesssoso)，由 [PowerTokens](https://powertokens.ai/zh-Hans?utm_source=github&utm_medium=oss&utm_campaign=video-studio) 出品。

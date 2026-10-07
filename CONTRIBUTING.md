@@ -15,7 +15,7 @@ Open a [bug report](../../issues/new?template=bug_report.yml) and include:
 
 **Before posting, blur or remove your API key and any Task IDs** in text, screenshots and logs. We will never ask for your full key. If a Task ID is needed to look into a problem, we will ask you to share it privately.
 
-Questions and quick help: [Discord](https://discord.gg/JtgtRdhJVS) and the [PowerTokens docs](https://docs.powertokens.ai).
+Questions and quick help: [Discord](https://discord.gg/JtgtRdhJVS) and the [PowerTokens docs](https://docs.powertokens.ai/?utm_source=github&utm_medium=oss&utm_campaign=video-studio).
 
 ## Run from source on Windows
 
