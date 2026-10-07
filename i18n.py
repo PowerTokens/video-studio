@@ -234,7 +234,7 @@ ZH = {
     'onboard_goto_keys': '去添加 Key',
     'onboard_dismiss': '知道了，不再显示',
     'onboard_help': '使用提示',
-    'onboard_signup_url': 'https://powertokens.ai/zh-Hans/signup?utm_source=github&utm_medium=app&utm_campaign=video-studio',
+    'onboard_signup_url': 'https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=app&utm_campaign=video-studio',
 
     'template_saved': '示例模板已保存：%s',
     'batch_output_card': '保存文件夹',
@@ -676,7 +676,7 @@ EN = {
     'onboard_goto_keys': 'Add a key',
     'onboard_dismiss': 'Got it — don’t show again',
     'onboard_help': 'Tips',
-    'onboard_signup_url': 'https://powertokens.ai/signup?utm_source=github&utm_medium=app&utm_campaign=video-studio',
+    'onboard_signup_url': 'https://powertokens.ai/api-keys?utm_source=github&utm_medium=app&utm_campaign=video-studio',
 
     'template_saved': 'Sample template saved: %s',
     'batch_output_card': 'Output folder',

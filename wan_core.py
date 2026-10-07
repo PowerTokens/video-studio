@@ -18,7 +18,8 @@ from i18n import t
 APP_VERSION = '1.12'
 USER_AGENT = 'PowerTokensVideoStudio/' + APP_VERSION
 DEFAULT_API_BASE = 'https://api.powertokens.ai'
-UTM = 'utm_source=github&utm_medium=oss&utm_campaign=video-studio'
+# In-app links (get-key button, price source) use medium=app; README links use medium=oss.
+UTM = 'utm_source=github&utm_medium=app&utm_campaign=video-studio'
 
 
 def resolve_api_base(value=None):

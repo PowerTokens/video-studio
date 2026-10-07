@@ -273,7 +273,7 @@ Internal names such as `pt_wan.py` and the data folder `%LOCALAPPDATA%\PowerToke
 
 ### Can I limit how much each API key spends?
 
-Yes. On the [API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_medium=app&utm_campaign=video-studio) page you can set a usage limit and an expiry on each key. In this app, when one key in the pool hits its limit or expires, the next key is tried automatically. A submit that already returned a Task ID is never charged again.
+Yes. On the [API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio) page you can set a usage limit and an expiry on each key. In this app, when one key in the pool hits its limit or expires, the next key is tried automatically. A submit that already returned a Task ID is never charged again.
 
 ### What is PowerTokens Video Studio?
 

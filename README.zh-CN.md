@@ -262,7 +262,7 @@ GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build
 
 ### 可以为每个 API Key 限制花费吗？
 
-可以。在 [API Keys](https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=app&utm_campaign=video-studio) 页可为每个 Key 设置额度和到期时间。本工具的 Key 池中，某个 Key 额度用完或过期后会自动换下一个；已经拿到任务 ID 的提交不会再次扣费。
+可以。在 [API Keys](https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio) 页可为每个 Key 设置额度和到期时间。本工具的 Key 池中，某个 Key 额度用完或过期后会自动换下一个；已经拿到任务 ID 的提交不会再次扣费。
 
 ### PowerTokens Video Studio 是什么？
 
