@@ -15,7 +15,7 @@ We will acknowledge your report, keep you updated while we work on a fix and cre
 ## Protect your API key
 
 - **Never post an API key in issues, discussions, pull requests, screenshots or logs.** Blur or remove keys and Task IDs before sharing anything.
-- If a key may have been exposed, delete it in your [PowerTokens dashboard](https://powertokens.ai/api-keys) and create a new one right away.
+- If a key may have been exposed, delete it in your [PowerTokens dashboard](https://powertokens.ai/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio) and create a new one right away.
 - The CLI config (`cli-config.json`) stores keys in plain text. Prefer the `POWERTOKENS_API_KEY` / `POWERTOKENS_API_KEYS` environment variables and never commit that file.
 
 ## Supported versions
