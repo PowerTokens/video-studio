@@ -198,7 +198,7 @@ GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build
 
 ## 费用
 
-PowerTokens 按视频秒数计费，价格与分辨率有关。工具按界面上标注的检查日期时的价格估算，实际扣费以 PowerTokens 账单为准。2026 年 10 月 7 日（本机日期）及之前按折扣价估算并同时显示原价；10 月 8 日起自动改按原价估算。最新价格请查看 [PT 的 Wan 3.0 价格页](https://powertokens.ai/zh-Hans/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio)。
+PowerTokens 按视频秒数计费，价格与分辨率有关。工具按界面上标注的检查日期时的价格估算，实际扣费以 PowerTokens 账单为准。最新价格请查看 [PT 的 Wan 3.0 价格页](https://powertokens.ai/zh-Hans/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio)。
 
 ## 安全说明
 

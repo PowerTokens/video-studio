@@ -206,7 +206,7 @@ The GitHub Actions workflow **Build Windows executable** (`.github/workflows/bui
 
 ## Pricing
 
-Costs are charged by PowerTokens per second of video and depend on resolution. The app shows an estimate based on the price checked on the date it displays; your PowerTokens bill is authoritative. The discounted rate is used through Oct 7, 2026 (local date), with the regular price shown alongside; from Oct 8 the estimate switches to the regular price automatically. Check current prices on [PT's Wan 3.0 pricing page](https://powertokens.ai/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio).
+Costs are charged by PowerTokens per second of video and depend on resolution. The app shows an estimate based on the price checked on the date it displays; your PowerTokens bill is authoritative. Check current prices on [PT's Wan 3.0 pricing page](https://powertokens.ai/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio).
 
 ## Security notes
 
