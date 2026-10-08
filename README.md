@@ -4,10 +4,6 @@
 
 Windows desktop tool for batch & episodic AI video generation with Wan 3.0 — Excel import, safe resume, no double charges.
 
-<!-- promo:start (remove this block when the campaign ends) -->
-> **Wan 3.0 limited-time discount until Oct 7, 2026.** See current prices on the [Wan 3.0 model page](https://powertokens.ai/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio).
-<!-- promo:end -->
-
 ![Demo: a clip generated with Wan 3.0](docs/images/demo.gif)
 
 PowerTokens Video Studio calls the Wan 3.0 video model (`wan3.0-video`) through the [PowerTokens](https://powertokens.ai/?utm_source=github&utm_medium=oss&utm_campaign=video-studio) API. It is built for people who generate many clips at once, such as short-drama episodes, and who need interrupted jobs to recover without paying twice.

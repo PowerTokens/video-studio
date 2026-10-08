@@ -4,10 +4,6 @@
 
 基于 Wan 3.0 的 Windows 批量 / 连续剧集 AI 视频生成工具：Excel 导入、安全恢复、不重复扣费。
 
-<!-- promo:start （活动结束后删除此段） -->
-> **Wan 3.0 限时折扣至 2026 年 10 月 7 日。** 当前价格见 [Wan 3.0 模型页](https://powertokens.ai/zh-Hans/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio)。
-<!-- promo:end -->
-
 ![演示：Wan 3.0 生成的片段](docs/images/demo.gif)
 
 PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm_source=github&utm_medium=oss&utm_campaign=video-studio) API 调用 Wan 3.0 视频模型（`wan3.0-video`），适合需要一次生成大量片段（例如短剧分集），并希望中断后能恢复、不重复付费的用户。
