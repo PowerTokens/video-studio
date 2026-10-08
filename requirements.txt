@@ -1,0 +1,4 @@
+# Runtime deps for the desktop app / Windows EXE build.
+# imageio-ffmpeg ships a platform ffmpeg binary (~70–80 MB on Windows) used for
+# “Continue from previous clip” frame extraction.
+imageio-ffmpeg>=0.5,<0.7

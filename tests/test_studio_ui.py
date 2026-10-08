@@ -65,7 +65,7 @@ class StudioUITests(unittest.TestCase):
     def test_pages_reflow_without_callback_errors_or_clipped_cards(self):
         for width in (1280, 860):
             self.root.geometry('%dx800' % width)
-            for index in range(4):
+            for index in range(5):
                 self.gui.tabs.select(index)
                 self.root.update()
                 for widget in self.widgets(self.gui.pages[index]):
@@ -100,9 +100,9 @@ class StudioUITests(unittest.TestCase):
             if isinstance(widget, (ttk.Label, ttk.Button)):
                 texts.append(str(widget.cget('text')))
         self.assertIn('任务仍在云端继续，可在任务记录里找回', texts)
-        self.assertIn('填写网络可访问的图片 / 视频 / 音频链接，暂不支持本地上传；不需要可留空', texts)
+        self.assertIn('首帧 / 尾帧、参考素材与随机种子。链接需公网可访问；不需要可留空。', texts)
         self.assertIn('直接粘贴从 PowerTokens 官网复制的 Key 即可', texts)
-        self.assertIn('还没有 Key？去 PowerTokens 注册即可使用。本工具目前仅支持 Wan 3.0 视频模型。', texts)
+        self.assertIn('还没有 Key？去 PowerTokens 注册即可使用。支持 Wan、Seedance、Kling 等多种视频模型。', texts)
         self.assertIn('Wan 3.0 限时折扣至 10 月 7 日', texts)
         self.assertFalse(any('界面设计预览' in text for text in texts))
         self.gui.key_input.set('sk-test-only-one, sk-test-only-two')
@@ -217,7 +217,7 @@ class LanguageSwitchTests(unittest.TestCase):
                 if isinstance(w, (ttk.Label, ttk.Button, ttk.Checkbutton)) and str(w.cget('text'))]
 
     def tab_names(self):
-        return [self.gui.tabs.tab(i, 'text') for i in range(4)]
+        return [self.gui.tabs.tab(i, 'text') for i in range(5)]
 
     def test_switch_to_english_and_back_keeps_everything(self):
         self.gui.key_input.set('sk-test-only-one')
@@ -225,13 +225,13 @@ class LanguageSwitchTests(unittest.TestCase):
         self.gui.prompt.insert('1.0', 'Total length 12s, 9:16 vertical. 0-4s: hook; 4-12s: chase')
         self.gui.apply_prompt()
         self.gui.seed.set('42')
-        self.gui.tabs.select(3)
+        self.gui.tabs.select(4)
         self.gui.switch_language('en')
         self.root.update()
         self.assertEqual(i18n.get_language(), 'en')
         self.assertEqual(i18n.load_settings()['language'], 'en')
-        self.assertEqual(self.tab_names(), ['Generate video', 'Batch import', 'History / Resume', 'API Key'])
-        self.assertEqual(self.gui.tabs.index('current'), 3)
+        self.assertEqual(self.tab_names(), ['Generate video', 'Compare', 'Batch import', 'History / Resume', 'API Key'])
+        self.assertEqual(self.gui.tabs.index('current'), 4)
         self.assertEqual(self.gui.keys, ['sk-test-only-one'])
         self.assertEqual(self.gui.key_count.get(), '1 key')
         self.assertEqual(self.gui.key_badge.get(), '1 key added')
@@ -240,15 +240,15 @@ class LanguageSwitchTests(unittest.TestCase):
         self.assertEqual(self.gui.prompt_hint.get(), 'Detected: 12 s · 9:16')
         self.assertIn('$0.04/s, regular $0.10/s', self.gui.cost.get())
         texts = self.texts()
-        self.assertIn('Wan 3.0 batch video generation', texts)
+        self.assertIn('Multi-model AI video generation', texts)
         self.assertIn('Wan 3.0 limited-time discount until Oct 7', texts)
         self.assertIn('Stop waiting', texts)
-        self.assertIn('Save sample template…', texts)
+        self.assertIn('Save short-drama sample…', texts)
         chinese = [text for text in texts if re.search('[\u4e00-\u9fff]', text) and text != '中文']
         self.assertEqual(chinese, [])
         self.gui.switch_language('zh')
         self.root.update()
-        self.assertEqual(self.tab_names(), ['生成视频', '批量导入', '任务记录 / 恢复', 'API Key'])
+        self.assertEqual(self.tab_names(), ['生成视频', '模型对比', '批量导入', '任务记录 / 恢复', 'API Key'])
         self.assertIn('任务仍在云端继续，可在任务记录里找回', self.texts())
         self.assertEqual(self.gui.key_count.get(), '共 1 个 Key')
         self.assertEqual(self.gui.prompt_hint.get(), '已识别：12 秒 · 9:16')
@@ -265,12 +265,14 @@ class LanguageSwitchTests(unittest.TestCase):
         self.assertEqual(self.tab_names()[0], '生成视频')
         self.gui.busy = False
 
+    @unittest.skipIf(os.environ.get('GITHUB_ACTIONS') == 'true',
+                     'font metrics on the GitHub Windows runner are not the layout under test')
     def test_no_button_or_label_is_clipped(self):
         for lang in ('en', 'zh'):
             self.gui.switch_language(lang)
             for width in (1280, 1000, 860):
                 self.root.geometry('%dx800' % width)
-                for index in range(4):
+                for index in range(5):
                     self.gui.tabs.select(index)
                     self.root.update()
                     for widget in self.widgets(self.root):

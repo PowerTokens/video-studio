@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from i18n import t
 from input_helpers import infer_prompt
+from models import DEFAULT_MODEL_ID, get_model, resolve_model_id, snap_params, format_adjust_notice
 from wan_core import TaskError, estimate_cost, payload
 
 NS = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
@@ -89,6 +90,7 @@ PROMPT_HEADERS = ('提示词', '完整提示词', '视频提示词', 'prompt', '
 TITLE_HEADERS = ('名称', '标题', '视频标题', 'title', 'name', 'episode', 'episodetitle', 'cliptitle', 'clipname',
                  'videotitle', 'videoname', 'scene')
 ID_HEADERS = ('编号', '序号', 'id', 'no', 'no.', '#', 'number', 'index')
+MODEL_HEADERS = ('模型', 'model', 'models', 'videomodel', 'modelid', 'modelname')
 
 
 def header_kind(value):
@@ -105,6 +107,8 @@ def header_kind(value):
         return 'title'
     if value in ID_HEADERS:
         return 'id'
+    if value in MODEL_HEADERS or value.endswith('model') or value.startswith('model'):
+        return 'model'
     return None
 
 
@@ -166,10 +170,24 @@ def build_job(sheet, row_number, columns, cells, character_setting=''):
             if len(matches) > 1:
                 raise ValueError(t('resolution_ambiguous'))
             resolution = next(iter(matches), '720p')
-        if resolution in ('720', '1080'):
+        if resolution in ('720', '1080', '480'):
             resolution += 'p'
-        job['payload'] = payload(prompt, duration, resolution, ratio)
-        job['cost'] = estimate_cost(duration, resolution)
+        model_text = get('model')
+        try:
+            model_id = resolve_model_id(model_text) if model_text else DEFAULT_MODEL_ID
+        except KeyError:
+            raise ValueError(t('model_unknown', model_text))
+        job['model'] = model_id
+        spec = get_model(model_id)
+        _d, _r, _ratio, changes = snap_params(spec, duration, resolution, ratio)
+        if changes:
+            job['suggested'] = {
+                'duration': _d, 'resolution': _r, 'ratio': _ratio,
+                'changes': [(field, old, new) for field, old, new in changes],
+            }
+            raise ValueError(format_adjust_notice(spec, changes, for_batch=True))
+        job['payload'] = payload(prompt, duration, resolution, ratio, model=model_id)
+        job['cost'] = estimate_cost(duration, resolution, model_id=model_id)
         notes = [] if duration_text else detected.get('notes', [])
         job['note'] = t('warning_sep').join([t('import_defaults')] + notes)
     except (ValueError, TaskError, OverflowError) as exc:
@@ -200,11 +218,27 @@ def import_jobs(path, character_setting=''):
     return jobs, skipped
 
 
+def _identity_request(request):
+    if not request:
+        return request
+    request = dict(request)
+    if 'prompt' in request:
+        request['prompt'] = identity_prompt(request['prompt'])
+    media = request.get('media')
+    if isinstance(media, list):
+        new_media = []
+        for item in media:
+            item = dict(item)
+            if item.get('type') == 'text' and 'text' in item:
+                item['text'] = identity_prompt(item['text'])
+            new_media.append(item)
+        request['media'] = new_media
+    return request
+
+
 def batch_identity(jobs):
     stable = []
     for j in jobs:
-        request = j['payload']
-        if request and 'prompt' in request:
-            request = dict(request, prompt=identity_prompt(request['prompt']))
-        stable.append((j['sheet'], j['row'], identity_prompt(j['prompt']), request))
+        request = _identity_request(j['payload'])
+        stable.append((j['sheet'], j['row'], identity_prompt(j['prompt']), j.get('model'), request))
     return hashlib.sha256(json.dumps(stable, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:24]

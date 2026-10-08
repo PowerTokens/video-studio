@@ -100,7 +100,7 @@ def apply_theme(root):
 
 
 def label(parent, text=None, variable=None, style='Muted.TLabel', **kwargs):
-    """Wrap to the actual available width instead of forcing a large window."""
+    """Wrap to the host width so long tips are not clipped at the card edge."""
     args = dict(style=style, justify='left', anchor='w', wraplength=280)
     args.update(kwargs)
     if text is not None:
@@ -108,7 +108,20 @@ def label(parent, text=None, variable=None, style='Muted.TLabel', **kwargs):
     if variable is not None:
         args['textvariable'] = variable
     item = ttk.Label(parent, **args)
-    item.bind('<Configure>', lambda event: item.configure(wraplength=max(80, event.width)))
+
+    def sync_wrap(event=None, widget=item, host=parent):
+        try:
+            width = host.winfo_width()
+            if width <= 1 and event is not None and getattr(event, 'widget', None) is widget:
+                width = event.width
+            # Ignore transient tiny widths during layout (they wrap one character per line).
+            if width >= 160:
+                widget.configure(wraplength=max(140, width - 8))
+        except tk.TclError:
+            pass
+
+    item.bind('<Configure>', sync_wrap)
+    parent.bind('<Configure>', sync_wrap, add='+')
     return item
 
 

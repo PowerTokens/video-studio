@@ -214,7 +214,8 @@ class PromoPricingTests(unittest.TestCase):
         for day, p720, p1080, regular in ((datetime.date(2026, 9, 30), .04, .08, True),
                                           (datetime.date(2026, 10, 7), .04, .08, True),
                                           (datetime.date(2026, 10, 8), .10, .20, False)):
-            self.assertEqual(wan_core.current_prices(day), {'720p': p720, '1080p': p1080}, day)
+            self.assertEqual(wan_core.current_prices(day),
+                             {'480p': 0.05, '720p': p720, '1080p': p1080}, day)
             self.assertEqual(bool(wan_core.list_prices(day)), regular, day)
             self.assertEqual(wan_core.estimate_cost(20, '1080p', today=day), round(20 * p1080, 3), day)
 
@@ -234,3 +235,75 @@ class PromoPricingTests(unittest.TestCase):
         from studio_ui import promotion_text
         self.assertEqual(promotion_text(datetime.date(2026, 10, 7)), 'Wan 3.0 限时折扣至 10 月 7 日')
         self.assertEqual(promotion_text(datetime.date(2026, 10, 8)), '')
+
+
+
+class KeyPoolTests(unittest.TestCase):
+    def test_category_quota_rate_limit_and_expired(self):
+        self.assertEqual(w.category(402, {'error': 'Payment Required'}), 'QUOTA')
+        self.assertEqual(w.category(429, {'message': 'Too Many Requests'}), 'RATE_LIMIT')
+        self.assertEqual(w.category(401, {'message': 'API key expired'}), 'AUTH')
+        self.assertEqual(w.category(403, {'message': 'insufficient quota'}), 'QUOTA')
+
+    def test_quota_exhausts_key_and_retries_next(self):
+        data = Path(tempfile.mkdtemp())
+        (data / 'tasks').mkdir()
+        client = w.Client(report=lambda *_: None, data_dir=data)
+        out = data / 'out.mp4'
+        pool = w.KeyPool(['key-a', 'key-b'])
+        client.key_pool = pool
+        with patch.object(w, 'api', side_effect=[
+            (402, {'message': 'insufficient quota'}),
+            (201, {'id': 'task_ok'}),
+        ]) as api, patch.object(client, 'wait', return_value={'task_id': 'task_ok'}):
+            client.submit(['key-a', 'key-b'], w.payload('hi'), out)
+        self.assertEqual(api.call_count, 2)
+        self.assertTrue(pool.is_exhausted('key-a'))
+        self.assertFalse(pool.is_exhausted('key-b'))
+        self.assertEqual(api.call_args_list[0].args[2], 'key-a')
+        self.assertEqual(api.call_args_list[1].args[2], 'key-b')
+
+    def test_task_id_saved_before_wait_never_posts_second_key(self):
+        """A successful submit ID must not be followed by another POST on wait failure."""
+        data = Path(tempfile.mkdtemp())
+        (data / 'tasks').mkdir()
+        client = w.Client(report=lambda *_: None, data_dir=data)
+        out = data / 'out.mp4'
+        with patch.object(w, 'api', side_effect=[(201, {'id': 'task_once'})]) as api, \
+             patch.object(client, 'wait', side_effect=w.TaskError('timeout', 'TIMEOUT', 'task_once')):
+            with self.assertRaises(w.TaskError) as caught:
+                client.submit(['key-a', 'key-b'], w.payload('hi'), out)
+        self.assertEqual(caught.exception.kind, 'TIMEOUT')
+        self.assertEqual(api.call_count, 1)
+        record = json.loads(next((data / 'tasks').glob('*.json')).read_text(encoding='utf-8'))
+        self.assertEqual(record['task_id'], 'task_once')
+
+    def test_all_keys_exhausted_raises_pool_exhausted(self):
+        data = Path(tempfile.mkdtemp())
+        (data / 'tasks').mkdir()
+        client = w.Client(report=lambda *_: None, data_dir=data, key_pool=w.KeyPool(['a', 'b']))
+        with patch.object(w, 'api', side_effect=[
+            (402, {'message': 'quota'}),
+            (401, {'message': 'API key expired'}),
+        ]):
+            with self.assertRaises(w.TaskError) as caught:
+                client.submit(['a', 'b'], w.payload('hi'), data / 'o.mp4')
+        self.assertEqual(caught.exception.kind, 'POOL_EXHAUSTED')
+        self.assertTrue(client.key_pool.all_exhausted())
+
+    def test_rate_limit_retries_same_key_without_exhausting(self):
+        data = Path(tempfile.mkdtemp())
+        (data / 'tasks').mkdir()
+        pool = w.KeyPool(['key-a', 'key-b'])
+        client = w.Client(report=lambda *_: None, data_dir=data, key_pool=pool)
+        out = data / 'out.mp4'
+        with patch.object(w, 'RATE_LIMIT_BASE_DELAY_S', 0), patch.object(w, 'api', side_effect=[
+            (429, {'message': 'Too Many Requests'}),
+            (201, {'id': 'task_after_wait'}),
+        ]) as api, patch.object(client, 'wait', return_value={'task_id': 'task_after_wait'}):
+            client.submit(['key-a', 'key-b'], w.payload('hi'), out)
+        self.assertEqual(api.call_count, 2)
+        self.assertEqual(api.call_args_list[0].args[2], 'key-a')
+        self.assertEqual(api.call_args_list[1].args[2], 'key-a')  # same key, not key-b
+        self.assertFalse(pool.is_exhausted('key-a'))
+        self.assertFalse(pool.is_exhausted('key-b'))

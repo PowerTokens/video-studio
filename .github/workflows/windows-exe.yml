@@ -1,0 +1,52 @@
+name: Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/multi-model
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create venv and install dependencies
+        shell: pwsh
+        run: |
+          python -m venv .build-venv
+          .\.build-venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.build-venv\Scripts\python.exe -m pip install "pyinstaller>=6,<7" -r requirements.txt
+
+      - name: Run tests
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+        run: .\.build-venv\Scripts\python.exe -m unittest discover -s tests -v
+
+      - name: Build executable
+        # Same PyInstaller invocation as Build-EXE.bat, without the trailing pause.
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+        run: |
+          .\.build-venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name PowerTokensVideoStudio --icon assets\logo.ico --add-data "assets;assets" --add-data "*.xlsx;." --collect-all imageio_ffmpeg app.py
+
+      - name: Print executable size
+        shell: pwsh
+        run: Get-Item dist\PowerTokensVideoStudio.exe | Format-List FullName, Length
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/PowerTokensVideoStudio.exe
+          if-no-files-found: error

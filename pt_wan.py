@@ -7,8 +7,11 @@ from pathlib import Path
 import sys
 from i18n import is_zh, t
 from input_helpers import parse_keys
+from models import DEFAULT_MODEL_ID, MODELS, get_model, list_models, resolve_model_id
+from compare_core import parse_model_list, plan_compare, run_compare
+from storyboard import DEFAULT_TEXT_MODEL, ALLOWED_TEXT_MODELS, storyboard_from_script, rows_to_xlsx
 from wan_core import (API_BASE, Client, DATA_DIR, LIST_PRICE_USD_PER_SECOND, MODEL, PROMO_END_DATE, PRICE_CHECKED_DATE,
-                      PRICE_SOURCE_URL, PRICE_SOURCE_URL_EN, promo_active,
+                      PRICE_SOURCE_URL, PRICE_SOURCE_URL_EN, promo_active, current_prices, list_prices,
                       TaskError, api, atomic_json, category, estimate_cost, payload)
 
 MODEL_ID = MODEL
@@ -46,10 +49,28 @@ def emit(value):
     print(json.dumps(value, ensure_ascii=False))
 
 
+def models_payload():
+    """JSON list of supported models with localized descriptions (no prices)."""
+    items = []
+    for spec in list_models():
+        items.append({
+            'id': spec.id,
+            'name': spec.label(),
+            'description': spec.description(),
+            'durations': [spec.durations[0], spec.durations[-1]],
+            'resolutions': list(spec.resolutions),
+            'ratios': list(spec.ratios),
+            'default': spec.id == DEFAULT_MODEL_ID,
+        })
+    return {'models': items, 'default_model': DEFAULT_MODEL_ID}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    subs = parser.add_subparsers(dest='command', required=True)
+    parser.add_argument('--list-models', action='store_true', help=t('cli_list_models_help'))
+    subs = parser.add_subparsers(dest='command', required=False)
     subs.add_parser('check')
+    subs.add_parser('list-models', help=t('cli_list_models_help'))
     verify = subs.add_parser('verify')
     verify.add_argument('--full', action='store_true', help=t('cli_full_help'))
     subs.add_parser('prune')
@@ -58,24 +79,54 @@ def main():
     config.add_argument('--remove-key')
     config.add_argument('--list-keys', action='store_true')
     config.add_argument('--show', action='store_true')
+    model_choices = list(MODELS)
     for name in ('generate', 'estimate'):
         item = subs.add_parser(name)
         item.add_argument('-d', '--duration', type=int, default=5)
-        item.add_argument('-r', '--resolution', choices=['720p', '1080p'], default='720p')
+        item.add_argument('-r', '--resolution', default='720p')
+        item.add_argument('-m', '--model', default=MODEL, help=t('cli_model_help'))
         if name == 'generate':
             item.add_argument('-p', '--prompt', default='')
-            item.add_argument('-m', '--model', default=MODEL)
-            item.add_argument('--ratio', choices=['16:9', '9:16', '1:1'], default='16:9')
+            item.add_argument('--ratio', default='16:9')
             item.add_argument('--seed', default='')
             item.add_argument('-o', '--output')
             item.add_argument('-i', '--image', '--first-frame', dest='first_frame')
             for field in ('last-frame', 'reference-image', 'reference-video', 'reference-audio'):
                 item.add_argument('--' + field)
+    compare = subs.add_parser('compare', help=t('cli_compare_help'))
+    compare.add_argument('--models', '-m', required=True, help=t('cli_compare_models_help'))
+    compare.add_argument('--prompt', '-p', required=True)
+    compare.add_argument('--duration', '-d', type=int, default=5)
+    compare.add_argument('--resolution', '-r', default='720p')
+    compare.add_argument('--ratio', default='16:9')
+    compare.add_argument('--output-dir', '-o', default='')
+    compare.add_argument('--name', default='')
+    compare.add_argument('--seed', default='')
+    for media_name in ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio'):
+        compare.add_argument('--' + media_name.replace('_', '-'), default='', dest=media_name)
+
+    storyboard = subs.add_parser('storyboard', help=t('cli_storyboard_help'))
+    storyboard.add_argument('--script', '-s', required=True, help='Path to a UTF-8 script/outline file')
+    storyboard.add_argument('--out', '-o', required=True, help='Output .xlsx path')
+    storyboard.add_argument('--clips', type=int, default=0)
+    storyboard.add_argument('--duration', '-d', type=int, default=8)
+    storyboard.add_argument('--model', '-m', default=MODEL, help=t('cli_model_help'))
+    storyboard.add_argument('--text-model', default=DEFAULT_TEXT_MODEL, choices=list(ALLOWED_TEXT_MODELS))
+    storyboard.add_argument('--ratio', default='9:16')
+    storyboard.add_argument('--resolution', '-r', default='720p')
+    storyboard.add_argument('--chain', action='store_true', default=False,
+                           help='Continue each clip from the previous near-end frame (off by default)')
+
     resume = subs.add_parser('resume')
     resume.add_argument('task_id')
     resume.add_argument('-o', '--output', required=True)
     resume.add_argument('--key-index', type=int, default=1, help=t('cli_key_index_help'))
     args = parser.parse_args()
+    if args.list_models or args.command == 'list-models':
+        emit(models_payload())
+        return 0
+    if not args.command:
+        parser.error(t('cli_command_required'))
     if args.command == 'config':
         cfg = load_config()
         pool = cfg.get('api_keys', [])
@@ -95,23 +146,33 @@ def main():
             save_config(cfg)
         emit({'config_pool': [mask_key(k) for k in pool], 'effective_pool': [mask_key(k) for k in resolve_keys()], 'config_path': str(CONFIG_PATH)})
         return 0
+    if args.command in ('estimate', 'generate'):
+        try:
+            model_id = resolve_model_id(args.model)
+        except KeyError:
+            raise TaskError(t('model_unknown', args.model), 'PARAM')
+        args.model = model_id
     if args.command == 'estimate':
-        if not 2 <= args.duration <= 30:
-            raise TaskError(t('cli_duration_range'), 'PARAM')
-        result = {'model': MODEL, 'est_cost_usd': estimate_cost(args.duration, args.resolution),
+        spec = get_model(args.model)
+        if args.duration not in spec.durations:
+            raise TaskError(t('duration_not_allowed', spec.label(), spec.durations[0], spec.durations[-1]), 'PARAM')
+        if args.resolution not in spec.resolutions:
+            raise TaskError(t('resolution_not_allowed', spec.label(), ', '.join(spec.resolutions)), 'PARAM')
+        result = {'model': args.model, 'est_cost_usd': estimate_cost(args.duration, args.resolution, model_id=args.model),
                   'price_checked_date': PRICE_CHECKED_DATE,
-                  'price_source': PRICE_SOURCE_URL if is_zh() else PRICE_SOURCE_URL_EN}
-        if promo_active():
-            result['list_cost_usd'] = estimate_cost(args.duration, args.resolution, LIST_PRICE_USD_PER_SECOND)
-            result['promo_end_date'] = PROMO_END_DATE.isoformat()
+                  'price_source': spec.price_source()}
+        regular = list_prices(model_id=args.model)
+        if args.resolution in regular:
+            result['list_cost_usd'] = estimate_cost(args.duration, args.resolution, prices=regular)
+            if args.model == DEFAULT_MODEL_ID and promo_active():
+                result['promo_end_date'] = PROMO_END_DATE.isoformat()
         result['note'] = t('cli_estimate_note')
         emit(result)
         return 0
-    if args.command == 'generate' and args.model != MODEL:
-        raise TaskError(t('cli_model_only') + MODEL, 'PARAM')
     keys = resolve_keys()
     if args.command == 'check':
-        emit({'key_pool_size': len(keys), 'keys_masked': [mask_key(k) for k in keys], 'model_locked': MODEL, 'ready': bool(keys)})
+        emit({'key_pool_size': len(keys), 'keys_masked': [mask_key(k) for k in keys],
+              'models': list(MODELS), 'default_model': DEFAULT_MODEL_ID, 'ready': bool(keys)})
         return 0 if keys else 2
     if not keys:
         emit({'error': t('cli_need_key'), 'error_type': 'AUTH'})
@@ -132,6 +193,43 @@ def main():
             save_config(cfg)
         emit({'results': results, 'note': t('cli_prune_note')})
         return 5 if any(r['alive'] is not True for r in results) else 0
+    if args.command == 'compare':
+        model_ids = parse_model_list(args.models)
+        media = [{'type': name, 'url': getattr(args, name)} for name in
+                 ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio')
+                 if getattr(args, name, '')]
+        folder = args.output_dir or str(Path.cwd())
+        plan = plan_compare(args.prompt, args.duration, args.resolution, args.ratio, model_ids,
+                            media=media, seed=args.seed, name=args.name, folder=folder)
+        if os.environ.get('PT_DRY_RUN'):
+            emit({'dry_run': True, 'compare_id': plan['compare_id'], 'total_cost_usd': plan['total_cost'],
+                  'items': [dict({k: item[k] for k in ('model_id', 'duration', 'resolution', 'ratio', 'cost', 'notice', 'output')},
+                       request=item['request']) for item in plan['items']]})
+            return 0
+        def factory():
+            return Client(report=lambda message: print(message, file=sys.stderr, flush=True))
+        results = run_compare(factory, keys, plan,
+                              report=lambda message: print(message, file=sys.stderr, flush=True))
+        emit({'compare_id': plan['compare_id'], 'total_cost_usd': plan['total_cost'],
+              'folder': plan['folder'], 'results': [
+                  {'model_id': r['model_id'], 'ok': r['ok'],
+                   'task_id': (r.get('record') or {}).get('task_id') or r.get('task_id') or '',
+                   'output': r.get('output') or '',
+                   'error': r.get('error') or ''} for r in results]})
+        return 0 if all(r.get('ok') for r in results) else 4
+
+    if args.command == 'storyboard':
+        script_path = Path(args.script)
+        script = script_path.read_text(encoding='utf-8')
+        jobs, meta = storyboard_from_script(
+            script, keys[0], clip_count=args.clips, duration=args.duration, model_id=args.model,
+            text_model=args.text_model, ratio=args.ratio, resolution=args.resolution)
+        out = rows_to_xlsx(jobs, args.out)
+        emit({'ok': True, 'rows': len(jobs), 'out': str(out), 'text_model': meta['text_model'],
+              'video_model': meta['video_model'], 'free_text': meta['free_text'],
+              'chain': bool(getattr(args, 'chain', False))})
+        return 0
+
     client = Client(report=lambda message: print(message, file=sys.stderr, flush=True))
     if args.command == 'resume':
         if not 1 <= args.key_index <= len(keys):
@@ -139,7 +237,7 @@ def main():
         result = client.resume(keys[args.key_index - 1], args.task_id, args.output)
     else:
         media = [{'type': name, 'url': getattr(args, name)} for name in ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio') if getattr(args, name)]
-        request = payload(args.prompt, args.duration, args.resolution, args.ratio, media, args.seed)
+        request = payload(args.prompt, args.duration, args.resolution, args.ratio, media, args.seed, model=args.model)
         if os.environ.get('PT_DRY_RUN'):
             emit({'dry_run': True, 'payload': request})
             return 0
