@@ -14,8 +14,11 @@ class InAppUtmTests(unittest.TestCase):
         for lang in ('zh', 'en'):
             i18n.set_language(lang)
             urls.append(i18n.t('onboard_signup_url'))
-        self.assertIn('utm_medium=app', wan_core.UTM)
+        self.assertEqual(wan_core.UTM, 'utm_source=videostudio&utm_medium=app&utm_campaign=video-studio')
+        self.assertEqual(models.UTM, wan_core.UTM)
         for url in urls:
+            self.assertIn('utm_source=videostudio', url, url)
+            self.assertNotIn('utm_source=github', url, url)
             self.assertIn('utm_medium=app', url, url)
             self.assertNotIn('utm_medium=oss', url, url)
             self.assertIn('utm_campaign=video-studio', url, url)

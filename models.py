@@ -6,7 +6,7 @@ from typing import Callable, Optional
 from i18n import t
 
 # In-app links (UI, CLI, MCP) use medium=app; README links use medium=oss.
-UTM = 'utm_source=github&utm_medium=app&utm_campaign=video-studio'
+UTM = 'utm_source=videostudio&utm_medium=app&utm_campaign=video-studio'
 PRICE_CHECKED_DATE = '2026-10-05'
 
 # Wan 3.0 limited-time discount (local calendar date, inclusive). Keep; do not treat as permanent copy.

@@ -26,8 +26,8 @@ from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices,
 
 OFFICIAL_KEY_URL = 'https://powertokens.ai/zh-Hans/api-keys?' + UTM
 OFFICIAL_KEY_URL_EN = 'https://powertokens.ai/api-keys?' + UTM
-KEY_QUOTA_TIP_URL = 'https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=app&utm_campaign=video-studio'
-KEY_QUOTA_TIP_URL_EN = 'https://powertokens.ai/api-keys?utm_source=github&utm_medium=app&utm_campaign=video-studio'
+KEY_QUOTA_TIP_URL = 'https://powertokens.ai/zh-Hans/api-keys?utm_source=videostudio&utm_medium=app&utm_campaign=video-studio'
+KEY_QUOTA_TIP_URL_EN = 'https://powertokens.ai/api-keys?utm_source=videostudio&utm_medium=app&utm_campaign=video-studio'
 
 
 def key_quota_tip_url():
