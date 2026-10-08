@@ -167,6 +167,8 @@ python pt_wan.py storyboard --script outline.txt --out rows.xlsx --duration 8 --
 
 `mcp_server.py` 是一个小型 [MCP](https://modelcontextprotocol.io) 服务，可让 Claude Desktop、Cursor 等 AI 助手直接为你生成视频。它与桌面端使用同一套引擎（通过 `pt_wan.py` 调用），每个任务 ID（及其模型）都会保存，中断后恢复原任务而不是重新提交。AI 助手可使用这些工具：
 
+用 `npx skills add PowerTokens/video-studio` 安装给编程助手用的 skill。
+
 | 工具 | 作用 |
 |---|---|
 | `check_key` | 显示已配置的 API Key 数量（脱敏）以及服务是否就绪，不会访问接口。 |

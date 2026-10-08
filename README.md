@@ -175,6 +175,8 @@ or `python app.py`.
 
 `mcp_server.py` is a small [MCP](https://modelcontextprotocol.io) server that lets AI assistants such as Claude Desktop and Cursor create videos for you. It uses the same engine as the desktop app (through `pt_wan.py`), so every Task ID (and its model) is saved and interrupted jobs are resumed instead of resubmitted. The assistant gets these tools:
 
+Install the coding-agent skill with `npx skills add PowerTokens/video-studio`.
+
 | Tool | What it does |
 |---|---|
 | `check_key` | Shows how many API keys are configured (masked) and whether the server is ready. It does not contact the API. |
