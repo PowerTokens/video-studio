@@ -100,7 +100,7 @@ class StudioUITests(unittest.TestCase):
             if isinstance(widget, (ttk.Label, ttk.Button)):
                 texts.append(str(widget.cget('text')))
         self.assertIn('任务仍在云端继续，可在任务记录里找回', texts)
-        self.assertIn('填写网络可访问的图片 / 视频 / 音频链接，暂不支持本地上传；不需要可留空', texts)
+        self.assertIn('首帧 / 尾帧、参考素材与随机种子。链接需公网可访问；不需要可留空。', texts)
         self.assertIn('直接粘贴从 PowerTokens 官网复制的 Key 即可', texts)
         self.assertIn('还没有 Key？去 PowerTokens 注册即可使用。支持 Wan、Seedance、Kling 等多种视频模型。', texts)
         self.assertIn('Wan 3.0 限时折扣至 10 月 7 日', texts)
@@ -265,6 +265,8 @@ class LanguageSwitchTests(unittest.TestCase):
         self.assertEqual(self.tab_names()[0], '生成视频')
         self.gui.busy = False
 
+    @unittest.skipIf(os.environ.get('GITHUB_ACTIONS') == 'true',
+                     'font metrics on the GitHub Windows runner are not the layout under test')
     def test_no_button_or_label_is_clipped(self):
         for lang in ('en', 'zh'):
             self.gui.switch_language(lang)

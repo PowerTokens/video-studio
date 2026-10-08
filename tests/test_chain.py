@@ -141,7 +141,7 @@ class ChainFrameSeekTests(unittest.TestCase):
 
     def test_sidecar_path_next_to_video(self):
         path = fu.chain_frame_path_for_video('/tmp/batch/003_clip.mp4')
-        self.assertEqual(str(path), '/tmp/batch/003_clip_chain_frame.jpg')
+        self.assertEqual(path, Path('/tmp/batch/003_clip_chain_frame.jpg'))
 
     def test_extract_uses_near_end_seek(self):
         folder = Path(tempfile.mkdtemp())
@@ -194,13 +194,16 @@ class ChainDefaultOffTests(unittest.TestCase):
 class FfmpegDiscoveryTests(unittest.TestCase):
     def test_find_ffmpeg_prefers_bundled(self):
         import types, sys
+        bundled = '/bundled/ffmpeg'
         mod = types.ModuleType('imageio_ffmpeg')
-        mod.get_ffmpeg_exe = lambda: '/bundled/ffmpeg'
+        mod.get_ffmpeg_exe = lambda: bundled
         sys.modules.pop('imageio_ffmpeg', None)
+        def is_bundled(self):
+            return Path(self) == Path(bundled)
         with patch.dict(sys.modules, {'imageio_ffmpeg': mod}):
-            with patch.object(fu.Path, 'is_file', lambda self: str(self) == '/bundled/ffmpeg'):
+            with patch.object(fu.Path, 'is_file', is_bundled):
                 with patch('shutil.which', return_value='/usr/bin/ffmpeg'):
-                    self.assertEqual(fu.find_ffmpeg(), '/bundled/ffmpeg')
+                    self.assertEqual(fu.find_ffmpeg(), bundled)
 
     def test_find_ffmpeg_falls_back_to_path(self):
         import builtins, sys
