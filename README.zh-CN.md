@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-免费开源 Video Studio **1.12**（[Windows 桌面端](../../releases/latest) + [网页版](https://powertokens.github.io/video-studio-web/)），支持 **Wan · Seedance · Kling** — Excel/CSV 批量、模型对比、分镜、安全恢复。
+免费开源 Video Studio **1.12**（[Windows 桌面端](../../releases/latest) + [网页版](https://powertokens.github.io/video-studio-web/)），支持 **Wan · Seedance · Kling 等** — Excel/CSV 批量、模型对比、分镜、安全恢复。
 
 ![演示：Wan 3.0 生成的片段](docs/images/demo.gif)
 
@@ -268,7 +268,7 @@ GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build
 
 ### PowerTokens Video Studio 是什么？
 
-PowerTokens Video Studio **1.12** 是一款免费开源（MIT）的 Windows 桌面工具，另有[网页版](https://powertokens.github.io/video-studio-web/)，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 Fast、Seedance 2.5 与 kling v3，以及 Excel / CSV 批量导入、模型对比、分镜、按任务 ID 恢复，并避免重复扣费。
+PowerTokens Video Studio **1.12** 是一款免费开源（MIT）的 Windows 桌面工具，另有[网页版](https://powertokens.github.io/video-studio-web/)，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 Fast、Seedance 2.5、kling v3 等，以及 Excel / CSV 批量导入、模型对比、分镜、按任务 ID 恢复，并避免重复扣费。
 
 ### 可以用 Excel 表格批量生成视频吗？
 

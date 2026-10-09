@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Free open-source Video Studio **1.12** ([Windows desktop](../../releases/latest) + [web](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling** — Excel/CSV batch, compare, storyboard, safe resume.
+Free open-source Video Studio **1.12** ([Windows desktop](../../releases/latest) + [web](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — Excel/CSV batch, compare, storyboard, safe resume.
 
 ![Demo: a clip generated with Wan 3.0](docs/images/demo.gif)
 
@@ -279,7 +279,7 @@ Yes. On the [API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_med
 
 ### What is PowerTokens Video Studio?
 
-PowerTokens Video Studio **1.12** is a free, open-source (MIT) Windows desktop app, with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5 and kling v3, with batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
+PowerTokens Video Studio **1.12** is a free, open-source (MIT) Windows desktop app, with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5, kling v3, and more, with batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
 
 ### Can I batch-generate videos from a spreadsheet?
 
