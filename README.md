@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Windows desktop tool for batch & episodic AI video generation — Excel import, safe resume, no double charges.
+Free open-source Video Studio **1.12** ([Windows desktop](../../releases/latest) + [web](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling** — Excel/CSV batch, compare, storyboard, safe resume.
 
 ![Demo: a clip generated with Wan 3.0](docs/images/demo.gif)
 
@@ -279,7 +279,7 @@ Yes. On the [API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_med
 
 ### What is PowerTokens Video Studio?
 
-PowerTokens Video Studio is a free, open-source (MIT) Windows desktop app for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5 and kling v3, with batch import from Excel / CSV, resume by Task ID and protection against double charges.
+PowerTokens Video Studio **1.12** is a free, open-source (MIT) Windows desktop app, with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5 and kling v3, with batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
 
 ### Can I batch-generate videos from a spreadsheet?
 
@@ -299,7 +299,7 @@ Yes. `mcp_server.py` is an MCP server, also [listed on Glama](https://glama.ai/m
 
 ### Does it run on macOS or Linux?
 
-The desktop app and the EXE are Windows only. The MCP server also runs on macOS and Linux with Python 3.11+, or in Docker on any system.
+The desktop app and the EXE are Windows only. There is also a [web companion](https://powertokens.github.io/video-studio-web/) in the browser. The MCP server also runs on macOS and Linux with Python 3.11+, or in Docker on any system.
 
 ### How do I get a PowerTokens API key, and how are models billed?
 
