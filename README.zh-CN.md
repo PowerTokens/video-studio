@@ -10,13 +10,17 @@ PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm
 
 ### 支持的模型
 
-| 显示名 | 模型 ID | 文档 / 价格 |
-|---|---|---|
-| Wan 3.0（默认） | `wan3.0-video` | [模型页](https://powertokens.ai/zh-Hans/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
-| Wan 3.0 Prime | `wan3.0-video-prime` | [模型页](https://powertokens.ai/zh-Hans/models/wan3.0-video-prime?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
-| Seedance 2.0 Fast | `dreamina-seedance-2-0-fast-260128` | [模型页](https://powertokens.ai/zh-Hans/models/dreamina-seedance-2-0-fast-260128?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/byteplus/dreamina-seedance-2-0-fast-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
-| Seedance 2.5 | `dreamina-seedance-2-5-260628` | [模型页](https://powertokens.ai/zh-Hans/models/dreamina-seedance-2-5-260628?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/byteplus/dreamina-seedance-2-5-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
-| kling v3 | `kling-v3` | [模型页](https://powertokens.ai/zh-Hans/models/kling-v3?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/kling/kling-v3-text2video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| 显示名 | 模型 ID | 限时折扣 / 公示价（无视频输入） | 文档 / 价格 |
+|---|---|---|---|
+| Wan 3.0（默认） | `wan3.0-video` | — | [模型页](https://powertokens.ai/zh-Hans/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Wan 3.0 Prime | `wan3.0-video-prime` | — | [模型页](https://powertokens.ai/zh-Hans/models/wan3.0-video-prime?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Seedance 2.0 | `dreamina-seedance-2-0-260128` | 按分辨率约 $0.069–$0.778/s | [模型页](https://powertokens.ai/zh-Hans/models/dreamina-seedance-2-0-260128?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/byteplus/dreamina-seedance-2-0-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Seedance 2.0 Fast | `dreamina-seedance-2-0-fast-260128` | **限时 −50%** · ~~$0.121~~ → **$0.061**/s · ~~$5.6~~ → **$2.8**/百万 tokens | [模型页](https://powertokens.ai/zh-Hans/models/dreamina-seedance-2-0-fast-260128?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/byteplus/dreamina-seedance-2-0-fast-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Seedance 2.0 Mini | `dreamina-seedance-2-0-mini-260615` | **限时 −60%** · ~~$0.076~~ → **$0.031**/s · ~~$3.5~~ → **$1.4**/百万 tokens | [模型页](https://powertokens.ai/zh-Hans/models/dreamina-seedance-2-0-mini-260615?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/byteplus/dreamina-seedance-2-0-mini-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Seedance 2.5 | `dreamina-seedance-2-5-260628` | — | [模型页](https://powertokens.ai/zh-Hans/models/dreamina-seedance-2-5-260628?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/byteplus/dreamina-seedance-2-5-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| kling v3 | `kling-v3` | — | [模型页](https://powertokens.ai/zh-Hans/models/kling-v3?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/zh-Hans/zmodelVideo/kling/kling-v3-text2video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+
+> **限时折扣（核对日期 2026-10-21）：** Seedance 2.0 Fast **−50%**、Seedance 2.0 Mini **−60%**（模型页划线原价 + 现价）。上表其余模型当前无该促销。应用内估算按现价；实际扣费以 PowerTokens 账单为准。
 
 在桌面端选择模型，CLI 使用 `--model`，MCP 工具传入 `model`，或在批量表格中增加可选的 `模型` / `Model` 列。各模型允许的时长、分辨率和画面比例不同；不合法的组合会在提交前被拒绝。
 
@@ -27,7 +31,7 @@ PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm
 - **接上一段**：批量导入可勾选，用上一段最后一帧作为下一段首帧（Seedance/Kling 用内嵌图片，Wan 需 live Key 验证）。Windows 安装包已内置截帧组件（约增大 70–80 MB）。
 - **从剧本生成**（仅批量导入页）：粘贴剧本/提纲，用免费文本模型 `glm-4.7-flash`（或 `qwen3-max`）拆成多条提示词，载入预览表后再生成。
 - **模型对比**：同一提示词发给 2–3 个模型（「模型对比」页、CLI `compare`、或 MCP `compare_videos`），并排查看状态并打开最好的文件。输出保存在 `compare/` 子目录，文件名为 `名称_模型简称.mp4`。
-- **模型选择**：Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 Fast、Seedance 2.5、kling v3。时长 / 分辨率 / 比例控件会随模型切换。
+- **模型选择**：Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0、Seedance 2.0 Fast（**−50%**）、Seedance 2.0 Mini（**−60%**）、Seedance 2.5、kling v3。时长 / 分辨率 / 比例控件会随模型切换。
 - **单条生成**：提示词、时长、分辨率与比例（限制随模型变化），可选首帧、尾帧及参考图片 / 视频 / 音频链接和随机种子（视模型支持）；可从中英文提示词识别时长与比例；支持音频的模型默认开启原生音频。
 - **Excel / CSV 批量生成**：一行一条，支持中英文表头，可选 `模型` / `Model` 列（留空 = Wan 3.0）。旧模板仅有 `Prompt` 或旧表头 `Wan 3.0 Prompt` 仍可用。限定并发（生成 1–8、下载 1–4），按状态显示行颜色，可导出结果 CSV。
 - **连续剧集的全剧人物设定**：一段人物设定自动加在每集 Prompt 前，保持人物一致。
@@ -268,7 +272,7 @@ GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build
 
 ### PowerTokens Video Studio 是什么？
 
-PowerTokens Video Studio **1.12** 是一款免费开源（MIT）的 Windows 桌面工具，另有[网页版](https://powertokens.github.io/video-studio-web/)，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 Fast、Seedance 2.5、kling v3 等，以及 Excel / CSV 批量导入、模型对比、分镜、按任务 ID 恢复，并避免重复扣费。
+PowerTokens Video Studio **1.12** 是一款免费开源（MIT）的 Windows 桌面工具，另有[网页版](https://powertokens.github.io/video-studio-web/)，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 / Fast（**−50%**）/ Mini（**−60%**）、Seedance 2.5、kling v3 等，以及 Excel / CSV 批量导入、模型对比、分镜、按任务 ID 恢复，并避免重复扣费。
 
 ### 可以用 Excel 表格批量生成视频吗？
 

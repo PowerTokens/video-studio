@@ -4,6 +4,9 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+- **Seedance 2.0 + Mini in catalog** (merged via #3). Model picker includes Seedance 2.0, Seedance 2.0 Fast, and Seedance 2.0 Mini alongside 2.5.
+- **Docs: promo prices called out.** README (EN/ZH) and `使用说明.md` show Seedance 2.0 Fast **−50%** (~~$0.121~~ → $0.061/s) and Mini **−60%** (~~$0.076~~ → $0.031/s), checked 2026-10-21 against live model pages. No invented promos for other models.
+
 - **Community files.** Added `CONTRIBUTING.md` (bug reports, running from source on Windows, tests, pull requests), `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `SECURITY.md` (private reporting, keeping API keys out of public posts), issue forms for bugs and feature requests with links to Discord and the docs, and a pull request template.
 - **README showcase.** A gallery of sample clips with the prompts that produced them.
 - **README: using the MCP server with AI assistants.** Setup for Claude Desktop and Cursor, the four tools, and how API keys are passed.
