@@ -20,7 +20,9 @@ from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE,
 from input_helpers import parse_keys, infer_prompt
 from batch_ui import BatchTab
 from compare_ui import CompareTab
-from models import DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id, snap_params, format_adjust_notice
+from models import (DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id, snap_params,
+                   format_adjust_notice, model_allows_first_frame, allowed_media_types)
+from frame_util import encode_local_image_as_data_url
 from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices, list_prices,
                       TaskError, atomic_json, estimate_cost, fingerprint, payload)
 
@@ -192,7 +194,19 @@ class App:
             if name in state:
                 getattr(self, name).set(state[name])
         for kind, value in state['media'].items():
-            self.media[kind].set(value)
+            if kind in self.media:
+                self.media[kind].set(value)
+        ff = (state.get('media') or {}).get('first_frame', '')
+        self._ff_local_name = None
+        if ff.startswith('data:image/'):
+            self._ff_syncing_url = True
+            self._ff_url_var.set('')
+            self._ff_syncing_url = False
+        elif ff:
+            self._ff_syncing_url = True
+            self._ff_url_var.set(ff)
+            self._ff_syncing_url = False
+        self._refresh_first_frame_ui()
         self.show_key.set(state['show_key'])
         self.key_entry.configure(show='' if state['show_key'] else '•')
         self.remember.set(state['remember'])
@@ -299,6 +313,7 @@ class App:
         label(prompt_box, variable=self.prompt_hint).pack(fill='x', pady=(2, 0))
         self.prompt.bind('<<Modified>>', self.prompt_changed)
         self.prompt.edit_modified(False)
+        self._build_first_frame_card(columns.left)
         params = card(columns.left, t('params_card'))
         self.model_id = tk.StringVar(value=DEFAULT_MODEL_ID)
         self.model_label = tk.StringVar()
@@ -373,8 +388,11 @@ class App:
         self.advanced_toggle_btn.pack(anchor='w')
         self.advanced_body = ttk.Frame(adv_card)
         label(self.advanced_body, t('media_card_desc')).pack(fill='x', pady=(0, 8))
-        self.media = {}
-        for kind in ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio'):
+        if not hasattr(self, 'media') or 'first_frame' not in getattr(self, 'media', {}):
+            # first_frame StringVar is created in _build_first_frame_card (left column).
+            self.media = getattr(self, 'media', {})
+            self.media.setdefault('first_frame', tk.StringVar())
+        for kind in ('last_frame', 'reference_image', 'reference_video', 'reference_audio'):
             ttk.Label(self.advanced_body, text=t('media_' + kind), style='Muted.TLabel').pack(anchor='w', pady=(0, 4))
             var = tk.StringVar()
             ttk.Entry(self.advanced_body, textvariable=var, width=12).pack(fill='x', pady=(0, 8))
@@ -406,6 +424,155 @@ class App:
             self.advanced_body.pack(fill='x', pady=(8, 0))
             self.advanced_open.set(True)
             self.advanced_toggle_btn.configure(text=t('advanced_hide'))
+
+    def _build_first_frame_card(self, parent):
+        """Primary I2V control under the prompt (local upload first, URL secondary)."""
+        self.ff_card = card(parent, t('first_frame_label'))
+        self.ff_tip = label(self.ff_card, t('first_frame_tip'))
+        self.ff_tip.pack(fill='x', pady=(0, 8))
+        self.ff_unsupported = label(self.ff_card, t('first_frame_unsupported'))
+        self.ff_unsupported.pack(fill='x', pady=(0, 4))
+        self.ff_unsupported.pack_forget()
+        self.ff_controls = ttk.Frame(self.ff_card)
+        self.ff_controls.pack(fill='x')
+        row = ttk.Frame(self.ff_controls)
+        row.pack(fill='x')
+        self.ff_pick_btn = ttk.Button(row, text=t('first_frame_pick'), command=self._choose_first_frame)
+        self.ff_pick_btn.pack(side='left')
+        self.ff_clear_btn = ttk.Button(row, text=t('first_frame_remove'), style='Link.TButton',
+                                       command=self._clear_first_frame)
+        self.ff_clear_btn.pack(side='left', padx=(8, 0))
+        self.ff_info = tk.StringVar(value='')
+        self.ff_info_label = label(self.ff_controls, variable=self.ff_info)
+        self.ff_info_label.pack(fill='x', pady=(6, 0))
+        self.ff_info_label.pack_forget()
+        self.ff_url_open = tk.BooleanVar(value=False)
+        self.ff_url_toggle = ttk.Button(self.ff_controls, text=t('first_frame_url_summary'),
+                                        style='Link.TButton', command=self._toggle_ff_url)
+        self.ff_url_toggle.pack(anchor='w', pady=(8, 0))
+        self.ff_url_body = ttk.Frame(self.ff_controls)
+        self.media = getattr(self, 'media', {})
+        self.media['first_frame'] = tk.StringVar()
+        self._ff_local_name = None
+        self._ff_url_var = tk.StringVar()
+        self._ff_syncing_url = False
+        ttk.Entry(self.ff_url_body, textvariable=self._ff_url_var, width=12).pack(fill='x')
+        self._ff_url_var.trace_add('write', lambda *_: self._on_ff_url_typed())
+        self.ff_wan_note = label(self.ff_controls, t('first_frame_wan_note'), style='Badge.TLabel')
+        self.ff_wan_note.pack(fill='x', pady=(8, 0))
+        self.ff_wan_note.pack_forget()
+        self._refresh_first_frame_ui()
+
+    def _toggle_ff_url(self):
+        if self.ff_url_open.get():
+            self.ff_url_body.pack_forget()
+            self.ff_url_open.set(False)
+            self.ff_url_toggle.configure(text=t('first_frame_url_summary'))
+        else:
+            self.ff_url_body.pack(fill='x', pady=(4, 0), after=self.ff_url_toggle)
+            self.ff_url_open.set(True)
+            self.ff_url_toggle.configure(text=t('first_frame_url_hide'))
+
+    def _on_ff_url_typed(self):
+        if self._ff_syncing_url:
+            return
+        url = self._ff_url_var.get().strip()
+        self._ff_local_name = None
+        self.media['first_frame'].set(url)
+        self._refresh_first_frame_ui()
+
+    def _choose_first_frame(self):
+        path = filedialog.askopenfilename(
+            title=t('first_frame_pick'),
+            filetypes=[
+                (t('media_first_frame'), '*.jpg *.jpeg *.png *.webp *.gif *.bmp'),
+                ('*', '*.*'),
+            ])
+        if not path:
+            return
+        try:
+            data_url = encode_local_image_as_data_url(path)
+        except TaskError as exc:
+            messagebox.showerror(t('check_input'), str(exc))
+            return
+        except Exception as exc:
+            messagebox.showerror(t('check_input'), str(exc))
+            return
+        self._ff_local_name = Path(path).name
+        self._ff_syncing_url = True
+        self._ff_url_var.set('')
+        self._ff_syncing_url = False
+        self.media['first_frame'].set(data_url)
+        self._refresh_first_frame_ui()
+
+    def _clear_first_frame(self):
+        self._ff_local_name = None
+        self._ff_syncing_url = True
+        self._ff_url_var.set('')
+        self._ff_syncing_url = False
+        self.media['first_frame'].set('')
+        self._refresh_first_frame_ui()
+
+    def _refresh_first_frame_ui(self):
+        if not hasattr(self, 'ff_controls'):
+            return
+        try:
+            spec = get_model(self.model_id.get())
+        except Exception:
+            return
+        ok = model_allows_first_frame(spec)
+        value = (self.media.get('first_frame').get() if self.media.get('first_frame') else '').strip()
+        if ok:
+            self.ff_unsupported.pack_forget()
+            if not self.ff_tip.winfo_manager():
+                self.ff_tip.pack(fill='x', pady=(0, 8), before=self.ff_controls)
+            if not self.ff_controls.winfo_manager():
+                self.ff_controls.pack(fill='x')
+        else:
+            self.ff_tip.pack_forget()
+            self.ff_controls.pack_forget()
+            if not self.ff_unsupported.winfo_manager():
+                self.ff_unsupported.pack(fill='x', pady=(0, 4))
+        if value.startswith('data:image/'):
+            info = t('first_frame_local_fmt', self._ff_local_name) if self._ff_local_name else t('first_frame_embedded')
+            self.ff_info.set(info)
+            if not self.ff_info_label.winfo_manager():
+                self.ff_info_label.pack(fill='x', pady=(6, 0), after=self.ff_pick_btn.master)
+            self.ff_clear_btn.configure(state='normal')
+        elif value:
+            self.ff_info.set(value if len(value) < 64 else value[:61] + '…')
+            if not self.ff_info_label.winfo_manager():
+                self.ff_info_label.pack(fill='x', pady=(6, 0), after=self.ff_pick_btn.master)
+            self.ff_clear_btn.configure(state='normal')
+            # Keep URL details open when a non-data URL is present.
+            if not value.startswith('data:') and not self.ff_url_open.get():
+                self._toggle_ff_url()
+            if not self._ff_url_var.get().strip() and not value.startswith('data:'):
+                self._ff_syncing_url = True
+                self._ff_url_var.set(value)
+                self._ff_syncing_url = False
+        else:
+            self.ff_info.set('')
+            self.ff_info_label.pack_forget()
+            self.ff_clear_btn.configure(state='disabled')
+        show_wan = ok and value.startswith('data:image/') and spec.family == 'wan'
+        if show_wan:
+            if not self.ff_wan_note.winfo_manager():
+                self.ff_wan_note.pack(fill='x', pady=(8, 0))
+        else:
+            self.ff_wan_note.pack_forget()
+
+    def _collect_generate_media(self):
+        """Build media list for the current model; skip types the family rejects."""
+        spec = get_model(self.model_id.get())
+        allowed = set(allowed_media_types(spec.family))
+        items = []
+        for kind, var in self.media.items():
+            url = var.get().strip()
+            if not url or kind not in allowed:
+                continue
+            items.append({'type': kind, 'url': url})
+        return items
 
     def _toggle_model_details(self):
         self._model_details_open = not getattr(self, '_model_details_open', False)
@@ -612,6 +779,7 @@ class App:
             self._show_model_adjust([])
         self._update_current_model_badge()
         self._update_model_description()
+        self._refresh_first_frame_ui()
 
     def _show_model_adjust(self, changes):
         if not hasattr(self, 'model_adjust'):
@@ -752,7 +920,7 @@ class App:
             if recognized['warnings']:
                 raise TaskError(t('warning_sep').join(recognized['warnings']))
             request = payload(self.prompt.get('1.0', 'end'), self.duration.get(), self.resolution.get(),
-                self.ratio.get(), [{'type': k, 'url': v.get().strip()} for k, v in self.media.items() if v.get().strip()],
+                self.ratio.get(), self._collect_generate_media(),
                 self.seed.get(), model=self.model_id.get())
             output = self.new_output()
         except Exception as exc:
