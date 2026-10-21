@@ -15,6 +15,12 @@ from studio_ui import Columns, Flow, card, heading, label, text_area
 from wan_core import Client, TaskError
 
 
+def _model_picker_label(spec):
+    text = spec.label()
+    pct = spec.discount_percent()
+    return '%s (-%s%%)' % (text, pct) if pct else text
+
+
 class CompareTab:
     def __init__(self, app, frame):
         self.app = app
@@ -65,7 +71,7 @@ class CompareTab:
         defaults = {DEFAULT_MODEL_ID, 'dreamina-seedance-2-5-260628', 'kling-v3'}
         for spec in list_models():
             var = tk.BooleanVar(value=spec.id in defaults)
-            cb = ttk.Checkbutton(models_card, text=spec.label(), variable=var,
+            cb = ttk.Checkbutton(models_card, text=_model_picker_label(spec), variable=var,
                                  command=self._on_model_toggle)
             cb.pack(anchor='w', pady=2)
             self.model_vars[spec.id] = var

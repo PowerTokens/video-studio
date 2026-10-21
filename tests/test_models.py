@@ -13,16 +13,37 @@ class RegistryTests(unittest.TestCase):
     def test_default_and_order(self):
         self.assertEqual(models.DEFAULT_MODEL_ID, 'wan3.0-video')
         ids = [m.id for m in models.list_models()]
-        self.assertEqual(ids[0], 'wan3.0-video')
+        # Discounted models are listed first (Fast -50%, Mini -60%).
+        self.assertEqual(ids[0], 'dreamina-seedance-2-0-fast-260128')
+        self.assertEqual(ids[1], 'dreamina-seedance-2-0-mini-260615')
+        self.assertIn('wan3.0-video', ids)
         self.assertIn('kling-v3', ids)
+        self.assertIn('dreamina-seedance-2-0-260128', ids)
         self.assertIn('dreamina-seedance-2-0-fast-260128', ids)
+        self.assertIn('dreamina-seedance-2-0-mini-260615', ids)
         self.assertIn('dreamina-seedance-2-5-260628', ids)
         self.assertIn('wan3.0-video-prime', ids)
         self.assertNotIn('kling-video-o1', ids)
         self.assertNotIn('kling-v3-omni', ids)
+        self.assertNotIn('viduq3-turbo', ids)
+        self.assertNotIn('viduq3-pro', ids)
+
+    def test_seedance_promo_badges(self):
+        fast = models.get_model('dreamina-seedance-2-0-fast-260128')
+        mini = models.get_model('dreamina-seedance-2-0-mini-260615')
+        full = models.get_model('dreamina-seedance-2-0-260128')
+        self.assertEqual(fast.discount_percent(), 50)
+        self.assertEqual(mini.discount_percent(), 60)
+        self.assertEqual(full.discount_percent(), 0)
+        self.assertEqual(fast.list_price_usd_per_second['720p'], 0.061)
+        self.assertEqual(fast.list_prices_for_display()['720p'], 0.121)
+        self.assertEqual(mini.list_price_usd_per_second['720p'], 0.031)
+        self.assertEqual(mini.list_prices_for_display()['720p'], 0.076)
 
     def test_aliases(self):
         self.assertEqual(models.resolve_model_id('Seedance 2.5'), 'dreamina-seedance-2-5-260628')
+        self.assertEqual(models.resolve_model_id('Seedance 2.0'), 'dreamina-seedance-2-0-260128')
+        self.assertEqual(models.resolve_model_id('seedance mini'), 'dreamina-seedance-2-0-mini-260615')
         self.assertEqual(models.resolve_model_id('kling v3'), 'kling-v3')
         self.assertEqual(models.resolve_model_id(''), 'wan3.0-video')
         with self.assertRaises(KeyError):
@@ -54,6 +75,19 @@ class RegistryTests(unittest.TestCase):
         with self.assertRaises(w.TaskError):
             w.payload('hi', 2, '720p', '16:9', model='dreamina-seedance-2-0-fast-260128')
 
+    def test_seedance_20_allows_4k(self):
+        body = w.payload('scene', 8, '4k', '16:9', model='dreamina-seedance-2-0-260128')
+        self.assertEqual(body['model'], 'dreamina-seedance-2-0-260128')
+        self.assertEqual(body['size'], '4k')
+        self.assertEqual(body['seconds'], '8')
+
+    def test_seedance_mini_rejects_1080p(self):
+        body = w.payload('clip', 5, '720p', '9:16', model='dreamina-seedance-2-0-mini-260615')
+        self.assertEqual(body['model'], 'dreamina-seedance-2-0-mini-260615')
+        self.assertEqual(body['size'], '720p')
+        with self.assertRaises(w.TaskError):
+            w.payload('hi', 5, '1080p', '16:9', model='dreamina-seedance-2-0-mini-260615')
+
     def test_seedance_25_allows_30s_1080p(self):
         body = w.payload('story', 30, '1080p', '21:9', model='dreamina-seedance-2-5-260628')
         self.assertEqual(body['seconds'], '30')
@@ -84,7 +118,9 @@ class RegistryTests(unittest.TestCase):
 
     def test_estimate_per_model(self):
         self.assertEqual(w.estimate_cost(10, '720p', model_id='wan3.0-video-prime'), 1.4)
-        self.assertEqual(w.estimate_cost(5, '720p', model_id='dreamina-seedance-2-0-fast-260128'), 0.605)
+        self.assertEqual(w.estimate_cost(5, '720p', model_id='dreamina-seedance-2-0-fast-260128'), 0.305)
+        self.assertEqual(w.estimate_cost(5, '720p', model_id='dreamina-seedance-2-0-mini-260615'), 0.155)
+        self.assertEqual(w.estimate_cost(5, '1080p', model_id='dreamina-seedance-2-0-260128'), 1.875)
         self.assertEqual(w.estimate_cost(5, '1080p', model_id='dreamina-seedance-2-5-260628'), 2.845)
         self.assertEqual(w.estimate_cost(5, '720p', model_id='kling-v3'), 0.63)
         with patch.object(w, 'local_today', return_value=datetime.date(2026, 10, 7)):

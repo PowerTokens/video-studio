@@ -90,7 +90,7 @@ class CliTests(unittest.TestCase):
             code, body = self.run_cli(args)
             self.assertEqual(code, 0, args)
             ids = [m['id'] for m in body['models']]
-            self.assertEqual(ids[0], 'wan3.0-video')
+            self.assertEqual(ids[0], 'dreamina-seedance-2-0-fast-260128')  # promo-sorted
             self.assertIn('kling-v3', ids)
             self.assertTrue(body['models'][0]['description'])
             self.assertNotIn('$', body['models'][0]['description'])

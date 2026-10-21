@@ -477,9 +477,12 @@ class StoryboardDialog(tk.Toplevel):
         labels = []
         for spec in list_models():
             lab = spec.label()
+            pct = spec.discount_percent()
+            if pct:
+                lab = '%s (-%s%%)' % (lab, pct)
             self._model_labels[lab] = spec.id
             labels.append(lab)
-        self.video_label = tk.StringVar(value=list_models()[0].label())
+        self.video_label = tk.StringVar(value=labels[0] if labels else '')
         self.text_choices = {
             text_model_label(DEFAULT_TEXT_MODEL): DEFAULT_TEXT_MODEL,
             text_model_label(TEXT_MODEL_QWEN): TEXT_MODEL_QWEN,

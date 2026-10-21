@@ -7,7 +7,7 @@ from i18n import t
 
 # In-app links (UI, CLI, MCP) use medium=app; README links use medium=oss.
 UTM = 'utm_source=videostudio&utm_medium=app&utm_campaign=video-studio'
-PRICE_CHECKED_DATE = '2026-10-05'
+PRICE_CHECKED_DATE = '2026-10-21'
 
 # Wan 3.0 limited-time discount (local calendar date, inclusive). Keep; do not treat as permanent copy.
 WAN_PROMO_END_DATE = datetime.date(2026, 10, 7)
@@ -51,6 +51,10 @@ class ModelSpec:
     submit_path: str = '/v1/videos'
     # poll_kind: 'unified' | 'kling_t2v' | 'kling_i2v'
     poll_kind: str = 'unified'
+    # Optional promo: current list_price is the sale rate; before_discount is struck-through list.
+    list_price_before_discount_usd_per_second: dict = field(default_factory=dict)
+    price_usd_per_million_tokens: Optional[float] = None
+    list_price_before_discount_usd_per_million_tokens: Optional[float] = None
 
     def label(self, lang=None):
         from i18n import is_zh
@@ -94,7 +98,27 @@ class ModelSpec:
         """Regular prices shown as "原价" while a promo runs; {} otherwise."""
         if self.id == 'wan3.0-video' and wan_promo_active(today):
             return dict(WAN_LIST_USD_PER_SECOND)
+        if self.list_price_before_discount_usd_per_second:
+            return dict(self.list_price_before_discount_usd_per_second)
         return {}
+
+    def discount_percent(self):
+        """Integer percent off from token prices when present, else from per-second rates. 0 = no promo."""
+        if (isinstance(self.price_usd_per_million_tokens, (int, float))
+                and isinstance(self.list_price_before_discount_usd_per_million_tokens, (int, float))):
+            now = float(self.price_usd_per_million_tokens)
+            before = float(self.list_price_before_discount_usd_per_million_tokens)
+            if before > now > 0:
+                return int(round((1 - now / before) * 100))
+        before_map = self.list_price_before_discount_usd_per_second or {}
+        best = 0
+        for key, now in self.list_price_usd_per_second.items():
+            before = before_map.get(key)
+            if isinstance(now, (int, float)) and isinstance(before, (int, float)) and before > now > 0:
+                pct = int(round((1 - now / before) * 100))
+                if pct > best:
+                    best = pct
+        return best
 
 
 def _wan_size(resolution):
@@ -221,6 +245,24 @@ MODELS = {
         model_page_url='https://powertokens.ai/models/wan3.0-video-prime?' + UTM,
         model_page_url_zh='https://powertokens.ai/zh-Hans/models/wan3.0-video-prime?' + UTM,
     ),
+    'dreamina-seedance-2-0-260128': ModelSpec(
+        id='dreamina-seedance-2-0-260128',
+        display_name='Seedance 2.0',
+        display_name_zh='Seedance 2.0',
+        short_name='seedance-20',
+        description_en='Seedance 2.0 is the full-quality model for text-to-video, image-to-video, and multimodal reference, with native audio. Clips are 4–15 seconds at 480p, 720p, 1080p, or 4K.',
+        description_zh='Seedance 2.0 为完整画质版本：支持文生、图生与多模态参考，带原生音频。时长 4–15 秒，支持 480p、720p、1080p 与 4K。',
+        family='seedance',
+        durations=tuple(range(4, 16)),
+        resolutions=('480p', '720p', '1080p', '4k'),
+        ratios=('16:9', '9:16', '1:1', '4:3', '3:4', '21:9', 'adaptive'),
+        # Without-video ≈$/s from model page 2026-10-21 (480/720/1080/4K).
+        list_price_usd_per_second={'480p': 0.069, '720p': 0.152, '1080p': 0.375, '4k': 0.778},
+        docs_url='https://docs.powertokens.ai/en/zmodelVideo/byteplus/dreamina-seedance-2-0-text-to-video?' + UTM,
+        docs_url_zh='https://docs.powertokens.ai/zh-Hans/zmodelVideo/byteplus/dreamina-seedance-2-0-text-to-video?' + UTM,
+        model_page_url='https://powertokens.ai/models/dreamina-seedance-2-0-260128?' + UTM,
+        model_page_url_zh='https://powertokens.ai/zh-Hans/models/dreamina-seedance-2-0-260128?' + UTM,
+    ),
     'dreamina-seedance-2-0-fast-260128': ModelSpec(
         id='dreamina-seedance-2-0-fast-260128',
         display_name='Seedance 2.0 Fast',
@@ -232,11 +274,36 @@ MODELS = {
         durations=tuple(range(4, 16)),  # docs [4,15]; OpenAPI enum gaps 13–14 noted in research
         resolutions=('480p', '720p'),
         ratios=('16:9', '9:16', '1:1', '4:3', '3:4', '21:9', 'adaptive'),
-        list_price_usd_per_second={'480p': 0.121, '720p': 0.121},
+        # Sale $0.061/s (was $0.121) — 50% OFF on model page 2026-10-21.
+        list_price_usd_per_second={'480p': 0.061, '720p': 0.061},
+        list_price_before_discount_usd_per_second={'480p': 0.121, '720p': 0.121},
+        price_usd_per_million_tokens=2.8,
+        list_price_before_discount_usd_per_million_tokens=5.6,
         docs_url='https://docs.powertokens.ai/en/zmodelVideo/byteplus/dreamina-seedance-2-0-fast-text-to-video?' + UTM,
         docs_url_zh='https://docs.powertokens.ai/zh-Hans/zmodelVideo/byteplus/dreamina-seedance-2-0-fast-text-to-video?' + UTM,
         model_page_url='https://powertokens.ai/models/dreamina-seedance-2-0-fast-260128?' + UTM,
         model_page_url_zh='https://powertokens.ai/zh-Hans/models/dreamina-seedance-2-0-fast-260128?' + UTM,
+    ),
+    'dreamina-seedance-2-0-mini-260615': ModelSpec(
+        id='dreamina-seedance-2-0-mini-260615',
+        display_name='Seedance 2.0 Mini',
+        display_name_zh='Seedance 2.0 Mini',
+        short_name='seedance-20-mini',
+        description_en='Seedance 2.0 Mini prioritizes lower cost and faster turnaround for high-volume clips: text-to-video, image-to-video, and multimodal reference, with native audio. Clips are 4–15 seconds and top out at 720p (no 1080p).',
+        description_zh='Seedance 2.0 Mini 侧重更低成本与更快出片，适合大批量内容：支持文生、图生与多模态参考，带原生音频。时长 4–15 秒，最高 720p（不支持 1080p）。',
+        family='seedance',
+        durations=tuple(range(4, 16)),
+        resolutions=('480p', '720p'),
+        ratios=('16:9', '9:16', '1:1', '4:3', '3:4', '21:9', 'adaptive'),
+        # Sale $0.031/s (was $0.076) — 60% OFF on model page 2026-10-21.
+        list_price_usd_per_second={'480p': 0.031, '720p': 0.031},
+        list_price_before_discount_usd_per_second={'480p': 0.076, '720p': 0.076},
+        price_usd_per_million_tokens=1.4,
+        list_price_before_discount_usd_per_million_tokens=3.5,
+        docs_url='https://docs.powertokens.ai/en/zmodelVideo/byteplus/dreamina-seedance-2-0-mini-text-to-video?' + UTM,
+        docs_url_zh='https://docs.powertokens.ai/zh-Hans/zmodelVideo/byteplus/dreamina-seedance-2-0-mini-text-to-video?' + UTM,
+        model_page_url='https://powertokens.ai/models/dreamina-seedance-2-0-mini-260615?' + UTM,
+        model_page_url_zh='https://powertokens.ai/zh-Hans/models/dreamina-seedance-2-0-mini-260615?' + UTM,
     ),
     'dreamina-seedance-2-5-260628': ModelSpec(
         id='dreamina-seedance-2-5-260628',
@@ -282,7 +349,9 @@ DEFAULT_MODEL_ID = 'wan3.0-video'
 MODEL_ORDER = (
     'wan3.0-video',
     'wan3.0-video-prime',
+    'dreamina-seedance-2-0-260128',
     'dreamina-seedance-2-0-fast-260128',
+    'dreamina-seedance-2-0-mini-260615',
     'dreamina-seedance-2-5-260628',
     'kling-v3',
 )
@@ -302,6 +371,15 @@ MODEL_ALIASES = {
     'seedance 2.0 fast': 'dreamina-seedance-2-0-fast-260128',
     'seedance2.0fast': 'dreamina-seedance-2-0-fast-260128',
     'seedance fast': 'dreamina-seedance-2-0-fast-260128',
+    'dreamina-seedance-2-0-260128': 'dreamina-seedance-2-0-260128',
+    'seedance-2-0': 'dreamina-seedance-2-0-260128',
+    'seedance 2.0': 'dreamina-seedance-2-0-260128',
+    'seedance2.0': 'dreamina-seedance-2-0-260128',
+    'dreamina-seedance-2-0-mini-260615': 'dreamina-seedance-2-0-mini-260615',
+    'seedance-2-0-mini': 'dreamina-seedance-2-0-mini-260615',
+    'seedance 2.0 mini': 'dreamina-seedance-2-0-mini-260615',
+    'seedance2.0mini': 'dreamina-seedance-2-0-mini-260615',
+    'seedance mini': 'dreamina-seedance-2-0-mini-260615',
     'dreamina-seedance-2-5-260628': 'dreamina-seedance-2-5-260628',
     'seedance-2-5': 'dreamina-seedance-2-5-260628',
     'seedance 2.5': 'dreamina-seedance-2-5-260628',
@@ -345,12 +423,15 @@ def resolve_model_id(value, default=DEFAULT_MODEL_ID):
 
 
 def list_models():
-    return [MODELS[mid] for mid in MODEL_ORDER]
+    specs = [MODELS[mid] for mid in MODEL_ORDER]
+    promo = [s for s in specs if s.discount_percent() > 0]
+    rest = [s for s in specs if s.discount_percent() <= 0]
+    return promo + rest
 
 
 
 
-RES_RANK = {'480p': 480, '720p': 720, '1080p': 1080, '4k': 2160}
+RES_RANK = {'480p': 480, '540p': 540, '720p': 720, '768p': 768, '1080p': 1080, '2k': 1440, '4k': 2160}
 RATIO_ASPECT = {
     '16:9': 16 / 9, '9:16': 9 / 16, '1:1': 1.0, '4:3': 4 / 3, '3:4': 3 / 4,
     '21:9': 21 / 9, 'adaptive': None,
