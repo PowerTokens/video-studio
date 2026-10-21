@@ -10,13 +10,17 @@ PowerTokens Video Studio generates videos through the [PowerTokens](https://powe
 
 ### Supported models
 
-| Display name | Model ID | Docs / pricing |
-|---|---|---|
-| Wan 3.0 (default) | `wan3.0-video` | [model page](https://powertokens.ai/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/en/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
-| Wan 3.0 Prime | `wan3.0-video-prime` | [model page](https://powertokens.ai/models/wan3.0-video-prime?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/en/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
-| Seedance 2.0 Fast | `dreamina-seedance-2-0-fast-260128` | [model page](https://powertokens.ai/models/dreamina-seedance-2-0-fast-260128?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/en/zmodelVideo/byteplus/dreamina-seedance-2-0-fast-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
-| Seedance 2.5 | `dreamina-seedance-2-5-260628` | [model page](https://powertokens.ai/models/dreamina-seedance-2-5-260628?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/en/zmodelVideo/byteplus/dreamina-seedance-2-5-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
-| kling v3 | `kling-v3` | [model page](https://powertokens.ai/models/kling-v3?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/en/zmodelVideo/kling/kling-v3-text2video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Display name | Model ID | Promo / list (without video) | Docs / pricing |
+|---|---|---|---|
+| Wan 3.0 (default) | `wan3.0-video` | — | [model page](https://powertokens.ai/models/wan3.0-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/en/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Wan 3.0 Prime | `wan3.0-video-prime` | — | [model page](https://powertokens.ai/models/wan3.0-video-prime?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/en/zmodelVideo/ali/wan3.0-video-generation?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Seedance 2.0 | `dreamina-seedance-2-0-260128` | list ≈$0.069–$0.778/s by resolution | [model page](https://powertokens.ai/models/dreamina-seedance-2-0-260128?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/en/zmodelVideo/byteplus/dreamina-seedance-2-0-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Seedance 2.0 Fast | `dreamina-seedance-2-0-fast-260128` | **限时 −50%** · ~~$0.121~~ → **$0.061**/s · ~~$5.6~~ → **$2.8**/1M tokens | [model page](https://powertokens.ai/models/dreamina-seedance-2-0-fast-260128?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/en/zmodelVideo/byteplus/dreamina-seedance-2-0-fast-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Seedance 2.0 Mini | `dreamina-seedance-2-0-mini-260615` | **限时 −60%** · ~~$0.076~~ → **$0.031**/s · ~~$3.5~~ → **$1.4**/1M tokens | [model page](https://powertokens.ai/models/dreamina-seedance-2-0-mini-260615?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/en/zmodelVideo/byteplus/dreamina-seedance-2-0-mini-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| Seedance 2.5 | `dreamina-seedance-2-5-260628` | — | [model page](https://powertokens.ai/models/dreamina-seedance-2-5-260628?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/en/zmodelVideo/byteplus/dreamina-seedance-2-5-text-to-video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+| kling v3 | `kling-v3` | — | [model page](https://powertokens.ai/models/kling-v3?utm_source=github&utm_medium=oss&utm_campaign=video-studio) · [API](https://docs.powertokens.ai/en/zmodelVideo/kling/kling-v3-text2video?utm_source=github&utm_medium=oss&utm_campaign=video-studio) |
+
+> **Promo (checked 2026-10-21):** Seedance 2.0 Fast is **−50%** and Seedance 2.0 Mini is **−60%** on the PowerTokens model pages (sale rate with struck-through list). Other catalog models above are not on that promo. Estimates in the app match these sale rates; billing still follows your PowerTokens invoice.
 
 Pick a model in the desktop UI, pass `--model` on the CLI, set `model` on MCP tools, or add an optional `Model` column in batch spreadsheets. Allowed durations, resolutions and aspect ratios depend on the model; invalid combinations are rejected before anything is submitted.
 
@@ -27,7 +31,7 @@ Pick a model in the desktop UI, pass `--model` on the CLI, set `model` on MCP to
 - **Continue from previous clip:** optional Batch checkbox uses the previous row’s last frame as the next first frame (Seedance/Kling use embedded images; Wan data-URL support needs a live-key check). The Windows build bundles the frame tool (~70–80 MB).
 - **From script** (Batch tab only): paste a script/outline; free text model `glm-4.7-flash` (or `qwen3-max`) splits it into clip prompts for the preview table.
 - **Compare models**: send one prompt to 2–3 models (Compare tab, CLI `compare`, or MCP `compare_videos`), see side-by-side status and open the best file. Outputs land in a `compare/` subfolder as `name_model-short.mp4`.
-- **Model picker**: choose Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5 or kling v3. Duration / resolution / ratio controls update to what that model allows.
+- **Model picker**: choose Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0, Seedance 2.0 Fast (**−50%**), Seedance 2.0 Mini (**−60%**), Seedance 2.5 or kling v3. Duration / resolution / ratio controls update to what that model allows.
 - **Single video**: prompt, duration, resolution and ratio (limits depend on the model), optional first/last frame and reference image / video / audio URLs, seed (where supported). Duration and ratio are detected from the prompt in English or Chinese. Native audio is on when the model supports it.
 - **Batch from Excel / CSV**: one row per clip, English or Chinese column headers, optional `Model` column (blank = Wan 3.0). Old templates with only a `Prompt` or legacy `Wan 3.0 Prompt` column keep working. Bounded concurrency (1–8 generations, 1–4 downloads), per-row status colors and CSV export of results.
 - **Shared character settings for episodic series**: one cast description is added in front of every episode prompt, so characters stay consistent across rows.
@@ -279,7 +283,7 @@ Yes. On the [API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_med
 
 ### What is PowerTokens Video Studio?
 
-PowerTokens Video Studio **1.12** is a free, open-source (MIT) Windows desktop app, with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 Fast, Seedance 2.5, kling v3, and more, with batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
+PowerTokens Video Studio **1.12** is a free, open-source (MIT) Windows desktop app, with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
 
 ### Can I batch-generate videos from a spreadsheet?
 
