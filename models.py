@@ -210,6 +210,127 @@ def build_kling_request(spec, prompt, duration, resolution, ratio, media=None, s
     return body
 
 
+def _h3_resolution(resolution):
+    r = str(resolution).strip().lower()
+    if r == '2k':
+        return '2K'
+    if r in ('768p', '768'):
+        return '768P'
+    if r in ('480p', '480'):
+        return '480P'
+    return r.upper() if r.endswith('p') else r
+
+
+def _hailuo_size(resolution):
+    r = str(resolution).strip().lower()
+    if r in ('768', '768p'):
+        return '768P'
+    if r in ('1080', '1080p'):
+        return '1080P'
+    return r.upper()
+
+
+def _vidu_resolution(resolution):
+    r = str(resolution).strip().lower()
+    if r == '2k':
+        return '2K'
+    if r == '4k':
+        return '4K'
+    return r
+
+
+# Flat per-clip prices for Hailuo 2.3 (model page 2026-10-21). Not $/s.
+HAILUO_FLAT_USD = {
+    ('768p', 6): 0.266,
+    ('768p', 10): 0.532,
+    ('1080p', 6): 0.466,
+}
+
+
+def build_h3_request(spec, prompt, duration, resolution, ratio, media=None, seed=''):
+    """MiniMax-H3 via POST /minimax/v2/video_generation (T2V content array)."""
+    media = media or []
+    text = prompt.strip()
+    if not text:
+        raise ValueError('empty')
+    # T2V for Studio MVP: reject media for now (I2V/R2V can land later).
+    if media:
+        raise ValueError('h3_media')
+    body = dict(
+        model=spec.id,
+        content=[{'type': 'text', 'text': text}],
+        resolution=_h3_resolution(resolution),
+        duration=int(duration),
+        ratio=ratio,
+    )
+    return body
+
+
+def build_hailuo_request(spec, prompt, duration, resolution, ratio, media=None, seed=''):
+    """Hailuo 2.3 T2V via unified POST /v1/videos (model/prompt/seconds/size)."""
+    media = media or []
+    if media:
+        raise ValueError('hailuo_media')
+    text = prompt.strip()
+    if not text:
+        raise ValueError('empty')
+    size = _hailuo_size(resolution)
+    seconds = str(int(duration))
+    if size == '1080P' and seconds != '6':
+        raise ValueError('hailuo_1080_duration')
+    return dict(
+        model=spec.id,
+        prompt=text,
+        seconds=seconds,
+        size=size,
+    )
+
+
+def build_vidu_request(spec, prompt, duration, resolution, ratio, media=None, seed=''):
+    """Vidu Q4 preview: I2V (first_frame) or R2V (reference_image); no pure T2V."""
+    media = media or []
+    text = prompt.strip()
+    first = [m['url'] for m in media if m['type'] == 'first_frame']
+    last = [m['url'] for m in media if m['type'] == 'last_frame']
+    refs = [m['url'] for m in media if m['type'] == 'reference_image']
+    audios = [m['url'] for m in media if m['type'] == 'reference_audio']
+    other = [m for m in media if m['type'] not in (
+        'first_frame', 'last_frame', 'reference_image', 'reference_audio')]
+    if other or last:
+        raise ValueError('vidu_media')
+    if first and refs:
+        raise ValueError('vidu_media')
+    if not first and not refs:
+        raise ValueError('vidu_need_image')
+    res = _vidu_resolution(resolution)
+    body = dict(
+        model=spec.id,
+        duration=int(duration),
+        resolution=res,
+        audio=True if spec.generate_audio_default else False,
+    )
+    if text:
+        body['prompt'] = text
+    if str(seed).strip():
+        body['seed'] = int(seed)
+    if first:
+        body['images'] = first[:1]
+        body['_submit_path'] = '/vidu/ent/v2/img2video'
+        body['_poll_kind'] = 'vidu'
+        return body
+    # reference-to-video
+    if not text:
+        raise ValueError('empty')
+    body['images'] = refs[:15]
+    if audios:
+        body['sounds'] = audios[:3]
+    body['aspect_ratio'] = ratio
+    body['_submit_path'] = '/vidu/ent/v2/reference2video'
+    body['_poll_kind'] = 'vidu'
+    return body
+
+
+
 MODELS = {
     'wan3.0-video': ModelSpec(
         id='wan3.0-video',
@@ -322,6 +443,72 @@ MODELS = {
         model_page_url='https://powertokens.ai/models/dreamina-seedance-2-5-260628?' + UTM,
         model_page_url_zh='https://powertokens.ai/zh-Hans/models/dreamina-seedance-2-5-260628?' + UTM,
     ),
+    'MiniMax-H3': ModelSpec(
+        id='MiniMax-H3',
+        display_name='MiniMax H3',
+        display_name_zh='MiniMax H3',
+        short_name='minimax-h3',
+        description_en='MiniMax H3 generates 4–15 second clips at 768p or 2K with text-to-video (Studio). Multimodal reference and image conditioning are available on the API; this build focuses on text-to-video.',
+        description_zh='MiniMax H3 支持 4–15 秒、768p 或 2K 的文生视频（Studio 当前）。API 另有图生与多模态参考；本版优先文生。',
+        family='h3',
+        durations=tuple(range(4, 16)),
+        resolutions=('768p', '2k'),
+        ratios=('21:9', '16:9', '4:3', '1:1', '3:4', '9:16'),
+        # Output $/s from model page 2026-10-21 (768P $0.08, 2K $0.13).
+        list_price_usd_per_second={'768p': 0.08, '2k': 0.13},
+        docs_url='https://docs.powertokens.ai/en/zmodelVideo/minimax/minimax-h3/text-to-video?' + UTM,
+        docs_url_zh='https://docs.powertokens.ai/zh-Hans/zmodelVideo/minimax/minimax-h3/text-to-video?' + UTM,
+        model_page_url='https://powertokens.ai/models/MiniMax-H3?' + UTM,
+        model_page_url_zh='https://powertokens.ai/zh-Hans/models/MiniMax-H3?' + UTM,
+        default_resolution='768p',
+        submit_path='/minimax/v2/video_generation',
+        poll_kind='h3',
+    ),
+    'MiniMax-Hailuo-2.3': ModelSpec(
+        id='MiniMax-Hailuo-2.3',
+        display_name='Hailuo 2.3',
+        display_name_zh='Hailuo 2.3',
+        short_name='hailuo-23',
+        description_en='Hailuo 2.3 text-to-video at 768p or 1080p with fixed 6 or 10 second clips (1080p is 6 seconds only). Priced per clip on PowerTokens.',
+        description_zh='Hailuo 2.3 文生视频，支持 768p / 1080p，时长固定 6 或 10 秒（1080p 仅 6 秒）。PowerTokens 按条计费。',
+        family='hailuo',
+        durations=(6, 10),
+        resolutions=('768p', '1080p'),
+        ratios=('16:9',),
+        # Effective $/s for 6s baseline (exact flat totals used in estimate_cost).
+        list_price_usd_per_second={'768p': 0.044, '1080p': 0.078},
+        docs_url='https://docs.powertokens.ai/en/zmodelVideo/minimax/minimax-hailuo-2.3-text-to-video?' + UTM,
+        docs_url_zh='https://docs.powertokens.ai/zh-Hans/zmodelVideo/minimax/minimax-hailuo-2.3-text-to-video?' + UTM,
+        model_page_url='https://powertokens.ai/models/MiniMax-Hailuo-2.3?' + UTM,
+        model_page_url_zh='https://powertokens.ai/zh-Hans/models/MiniMax-Hailuo-2.3?' + UTM,
+        default_duration=6,
+        default_resolution='768p',
+        supports_seed=False,
+    ),
+    'viduq4-preview': ModelSpec(
+        id='viduq4-preview',
+        display_name='Vidu Q4 Preview',
+        display_name_zh='Vidu Q4 Preview',
+        short_name='viduq4',
+        description_en='Vidu Q4 Preview (I2V / reference-to-video only — no text-only). Clips 3–16 seconds at 540p–4K with optional native audio. Attach a first frame or reference images to generate.',
+        description_zh='Vidu Q4 Preview（仅图生 / 参考生，不支持纯文生）。时长 3–16 秒，540p–4K，可选原生音频。请上传首帧或参考图后再生成。',
+        family='vidu',
+        durations=tuple(range(3, 17)),
+        resolutions=('540p', '720p', '1080p', '2k', '4k'),
+        ratios=('16:9', '9:16', '1:1', '3:4', '4:3'),
+        # Peak (non off-peak) $/s from model page 2026-10-21.
+        list_price_usd_per_second={
+            '540p': 0.045, '720p': 0.095, '1080p': 0.120, '2k': 0.190, '4k': 0.390,
+        },
+        docs_url='https://docs.powertokens.ai/en/zmodelVideo/vidu/viduq4-preview-image-to-video?' + UTM,
+        docs_url_zh='https://docs.powertokens.ai/zh-Hans/zmodelVideo/vidu/viduq4-preview-image-to-video?' + UTM,
+        model_page_url='https://powertokens.ai/models/viduq4-preview?' + UTM,
+        model_page_url_zh='https://powertokens.ai/zh-Hans/models/viduq4-preview?' + UTM,
+        default_duration=5,
+        default_resolution='720p',
+        submit_path='/vidu/ent/v2/img2video',
+        poll_kind='vidu',
+    ),
     'kling-v3': ModelSpec(
         id='kling-v3',
         display_name='kling v3',
@@ -353,6 +540,9 @@ MODEL_ORDER = (
     'dreamina-seedance-2-0-fast-260128',
     'dreamina-seedance-2-0-mini-260615',
     'dreamina-seedance-2-5-260628',
+    'MiniMax-H3',
+    'MiniMax-Hailuo-2.3',
+    'viduq4-preview',
     'kling-v3',
 )
 
@@ -384,6 +574,19 @@ MODEL_ALIASES = {
     'seedance-2-5': 'dreamina-seedance-2-5-260628',
     'seedance 2.5': 'dreamina-seedance-2-5-260628',
     'seedance2.5': 'dreamina-seedance-2-5-260628',
+    'minimax-h3': 'MiniMax-H3',
+    'minimax h3': 'MiniMax-H3',
+    'h3': 'MiniMax-H3',
+    'MiniMax-H3': 'MiniMax-H3',
+    'minimax-hailuo-2.3': 'MiniMax-Hailuo-2.3',
+    'hailuo-2.3': 'MiniMax-Hailuo-2.3',
+    'hailuo 2.3': 'MiniMax-Hailuo-2.3',
+    'hailuo': 'MiniMax-Hailuo-2.3',
+    'MiniMax-Hailuo-2.3': 'MiniMax-Hailuo-2.3',
+    'viduq4-preview': 'viduq4-preview',
+    'viduq4': 'viduq4-preview',
+    'vidu q4': 'viduq4-preview',
+    'vidu q4 preview': 'viduq4-preview',
     'kling-v3': 'kling-v3',
     'kling v3': 'kling-v3',
     'klingv3': 'kling-v3',
@@ -395,6 +598,9 @@ BUILDERS = {
     'wan': build_wan_request,
     'seedance': build_seedance_request,
     'kling': build_kling_request,
+    'h3': build_h3_request,
+    'hailuo': build_hailuo_request,
+    'vidu': build_vidu_request,
 }
 
 
@@ -440,10 +646,12 @@ RATIO_ASPECT = {
 
 def normalize_resolution(value):
     value = str(value or '').strip().lower().replace(' ', '')
-    if value in ('720', '1080', '480'):
+    if value in ('720', '1080', '480', '540', '768'):
         value += 'p'
     if value in ('2160p', '2160'):
         value = '4k'
+    if value in ('1440p', '1440'):
+        value = '2k'
     return value
 
 
@@ -605,10 +813,7 @@ def validate_params(spec, duration, resolution, ratio, prompt='', media=None, se
         raise TaskError(t('duration_int'), 'PARAM')
     if duration not in spec.durations:
         raise TaskError(t('duration_not_allowed', spec.label(), spec.durations[0], spec.durations[-1]), 'PARAM')
-    resolution = str(resolution).strip().lower()
-    if resolution in ('720', '1080', '480', '4k'):
-        if resolution != '4k':
-            resolution += 'p'
+    resolution = normalize_resolution(resolution)
     if resolution not in spec.resolutions:
         raise TaskError(t('resolution_not_allowed', spec.label(), ', '.join(spec.resolutions)), 'PARAM')
     ratio = str(ratio).replace('：', ':').replace(' ', '').strip() or spec.default_ratio
@@ -620,7 +825,14 @@ def validate_params(spec, duration, resolution, ratio, prompt='', media=None, se
         'wan': ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio', 'file', 'link'),
         'seedance': ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio'),
         'kling': ('first_frame', 'last_frame'),
+        'h3': (),
+        'hailuo': (),
+        'vidu': ('first_frame', 'reference_image', 'reference_audio'),
     }[spec.family]
+    if spec.family == 'hailuo' and resolution == '1080p' and duration != 6:
+        raise TaskError(t('hailuo_1080_only_6s', spec.label()), 'PARAM')
+    if spec.family == 'vidu' and not media:
+        raise TaskError(t('vidu_need_image', spec.label()), 'PARAM')
     import urllib.parse
     for item in media:
         url = item.get('url') or ''
@@ -667,16 +879,27 @@ def build_request(model_id, prompt, duration=5, resolution='720p', ratio='16:9',
             raise TaskError(t('seed_not_supported', spec.label()), 'PARAM')
         if code == 'empty':
             raise TaskError(t('need_prompt_or_media'), 'PARAM')
+        if code in ('h3_media', 'hailuo_media'):
+            raise TaskError(t('model_t2v_only', spec.label()), 'PARAM')
+        if code == 'hailuo_1080_duration':
+            raise TaskError(t('hailuo_1080_only_6s', spec.label()), 'PARAM')
+        if code == 'vidu_need_image':
+            raise TaskError(t('vidu_need_image', spec.label()), 'PARAM')
+        if code == 'vidu_media':
+            raise TaskError(t('vidu_media_limited', spec.label()), 'PARAM')
         raise TaskError(t('choose_valid_params'), 'PARAM')
     return body
 
 
 def estimate_cost(duration, resolution, model_id=None, prices=None, today=None):
     spec = get_model(model_id or DEFAULT_MODEL_ID)
+    resolution = normalize_resolution(resolution)
+    if spec.family == 'hailuo':
+        key = (resolution, int(duration))
+        if key not in HAILUO_FLAT_USD:
+            raise ValueError(t('resolution_unsupported'))
+        return HAILUO_FLAT_USD[key]
     prices = spec.current_prices(today) if prices is None else prices
-    resolution = str(resolution).strip().lower()
-    if resolution in ('720', '1080', '480'):
-        resolution += 'p'
     if resolution not in prices:
         raise ValueError(t('resolution_unsupported'))
     return round(int(duration) * prices[resolution], 3)
@@ -687,6 +910,10 @@ def poll_url(api_base, task_id, poll_kind='unified'):
         return api_base + '/kling/v1/videos/text2video/' + task_id
     if poll_kind == 'kling_i2v':
         return api_base + '/kling/v1/videos/image2video/' + task_id
+    if poll_kind == 'h3':
+        return api_base + '/minimax/v2/query/video_generation/' + task_id
+    if poll_kind == 'vidu':
+        return api_base + '/vidu/ent/v2/tasks/' + task_id + '/creations'
     return api_base + '/v1/videos/' + task_id
 
 
@@ -695,15 +922,23 @@ def submit_url(api_base, request):
     if path:
         return api_base + path
     spec = MODELS.get(request.get('model') or request.get('model_name') or DEFAULT_MODEL_ID)
-    if spec and spec.family == 'kling':
+    if spec and spec.family in ('kling', 'h3', 'vidu'):
         return api_base + spec.submit_path
     return api_base + '/v1/videos'
 
 
 def extract_task_id(body, family='wan'):
+    body = body if isinstance(body, dict) else {}
     if family == 'kling':
         data = body.get('data') if isinstance(body.get('data'), dict) else {}
         task_id = data.get('task_id') or body.get('task_id') or body.get('id')
+    elif family == 'h3':
+        output = body.get('output') if isinstance(body.get('output'), dict) else {}
+        task_id = body.get('task_id') or output.get('task_id') or body.get('id')
+        if task_id is not None:
+            task_id = str(task_id)
+    elif family == 'vidu':
+        task_id = body.get('task_id') or body.get('id')
     else:
         task_id = body.get('id') or body.get('task_id')
     return task_id if isinstance(task_id, str) and task_id else None
@@ -711,6 +946,7 @@ def extract_task_id(body, family='wan'):
 
 def normalize_status(body, family='wan'):
     """Return (status_lower, progress_or_None, video_url_or_empty)."""
+    body = body if isinstance(body, dict) else {}
     if family == 'kling':
         data = body.get('data') if isinstance(body.get('data'), dict) else body
         raw = str(data.get('task_status') or '').strip().lower()
@@ -727,6 +963,44 @@ def normalize_status(body, family='wan'):
         videos = result.get('videos') if isinstance(result.get('videos'), list) else []
         if videos and isinstance(videos[0], dict):
             candidate = videos[0].get('url') or videos[0].get('watermark_url') or ''
+            if isinstance(candidate, str) and candidate.startswith('https://'):
+                url = candidate
+        return status, None, url
+    if family == 'h3':
+        task = body.get('task') if isinstance(body.get('task'), dict) else body
+        raw = str(task.get('status') or '').strip().lower()
+        mapping = {
+            'pending': 'queued',
+            'queueing': 'queued',
+            'processing': 'in_progress',
+            'running': 'in_progress',
+            'succeed': 'succeeded',
+            'success': 'succeeded',
+            'succeeded': 'succeeded',
+            'failed': 'failed',
+        }
+        status = mapping.get(raw, raw)
+        url = ''
+        content = task.get('content') if isinstance(task.get('content'), dict) else {}
+        candidate = content.get('url') or task.get('video_url') or ''
+        if isinstance(candidate, str) and candidate.startswith('https://'):
+            url = candidate
+        return status, None, url
+    if family == 'vidu':
+        raw = str(body.get('state') or body.get('status') or '').strip().lower()
+        mapping = {
+            'created': 'queued',
+            'queueing': 'queued',
+            'processing': 'in_progress',
+            'success': 'succeeded',
+            'succeeded': 'succeeded',
+            'failed': 'failed',
+        }
+        status = mapping.get(raw, raw)
+        url = ''
+        creations = body.get('creations') if isinstance(body.get('creations'), list) else []
+        if creations and isinstance(creations[0], dict):
+            candidate = creations[0].get('url') or ''
             if isinstance(candidate, str) and candidate.startswith('https://'):
                 url = candidate
         return status, None, url
