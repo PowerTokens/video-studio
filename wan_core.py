@@ -626,7 +626,7 @@ class Client:
                 candidates = []
                 if cached_video_url:
                     candidates.append(cached_video_url)
-                if family != 'kling':
+                if family not in ('kling', 'h3', 'vidu'):
                     content_url = url + '/content'
                     if (ready or code == 403 or expired or terminal or query_errors >= 3) and content_url not in candidates:
                         candidates.append(content_url)

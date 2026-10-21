@@ -27,6 +27,9 @@ class RegistryTests(unittest.TestCase):
         self.assertNotIn('kling-v3-omni', ids)
         self.assertNotIn('viduq3-turbo', ids)
         self.assertNotIn('viduq3-pro', ids)
+        self.assertIn('MiniMax-H3', ids)
+        self.assertIn('MiniMax-Hailuo-2.3', ids)
+        self.assertIn('viduq4-preview', ids)
 
     def test_seedance_promo_badges(self):
         fast = models.get_model('dreamina-seedance-2-0-fast-260128')
@@ -205,6 +208,57 @@ class BatchModelColumnTests(unittest.TestCase):
                         ['一只猫', '5', '720p'])
         self.assertEqual(job['model'], 'wan3.0-video')
         self.assertEqual(job['payload']['model'], 'wan3.0-video')
+
+
+    def test_h3_t2v_request(self):
+        body = w.payload('space opera', 5, '768p', '16:9', model='MiniMax-H3')
+        self.assertEqual(body['model'], 'MiniMax-H3')
+        self.assertEqual(body['resolution'], '768P')
+        self.assertEqual(body['duration'], 5)
+        self.assertEqual(body['content'][0]['text'], 'space opera')
+        self.assertEqual(models.submit_url('https://api.powertokens.ai', dict(body)),
+                         'https://api.powertokens.ai/minimax/v2/video_generation')
+        with self.assertRaises(w.TaskError):
+            w.payload('x', 5, '768p', '16:9',
+                      media=[{'type': 'first_frame', 'url': 'https://example.com/a.png'}],
+                      model='MiniMax-H3')
+
+    def test_hailuo_t2v_and_flat_estimate(self):
+        body = w.payload('rain street', 6, '768p', '16:9', model='MiniMax-Hailuo-2.3')
+        self.assertEqual(body['model'], 'MiniMax-Hailuo-2.3')
+        self.assertEqual(body['seconds'], '6')
+        self.assertEqual(body['size'], '768P')
+        self.assertNotIn('ratio', body)
+        self.assertEqual(w.estimate_cost(6, '768p', model_id='MiniMax-Hailuo-2.3'), 0.266)
+        self.assertEqual(w.estimate_cost(10, '768p', model_id='MiniMax-Hailuo-2.3'), 0.532)
+        self.assertEqual(w.estimate_cost(6, '1080p', model_id='MiniMax-Hailuo-2.3'), 0.466)
+        with self.assertRaises(w.TaskError):
+            w.payload('x', 10, '1080p', '16:9', model='MiniMax-Hailuo-2.3')
+
+    def test_vidu_q4_i2v_and_poll(self):
+        body = w.payload('walk', 5, '720p', '16:9',
+                         media=[{'type': 'first_frame', 'url': 'https://example.com/a.png'}],
+                         model='viduq4-preview')
+        self.assertEqual(body['model'], 'viduq4-preview')
+        self.assertEqual(body['images'], ['https://example.com/a.png'])
+        self.assertEqual(body['_submit_path'], '/vidu/ent/v2/img2video')
+        self.assertEqual(body['_poll_kind'], 'vidu')
+        self.assertEqual(models.poll_url('https://api.powertokens.ai', 'tid', 'vidu'),
+                         'https://api.powertokens.ai/vidu/ent/v2/tasks/tid/creations')
+        with self.assertRaises(w.TaskError):
+            w.payload('walk', 5, '720p', '16:9', model='viduq4-preview')
+        status, prog, url = models.normalize_status(
+            {'state': 'success', 'creations': [{'url': 'https://cdn.example.com/v.mp4'}]}, 'vidu')
+        self.assertEqual(status, 'succeeded')
+        self.assertEqual(url, 'https://cdn.example.com/v.mp4')
+
+    def test_h3_normalize_and_extract(self):
+        tid = models.extract_task_id({'task_id': '424'}, 'h3')
+        self.assertEqual(tid, '424')
+        status, _, url = models.normalize_status(
+            {'task': {'status': 'succeeded', 'content': {'url': 'https://cdn.example.com/h.mp4'}}}, 'h3')
+        self.assertEqual(status, 'succeeded')
+        self.assertEqual(url, 'https://cdn.example.com/h.mp4')
 
 
 class SnapTests(unittest.TestCase):
