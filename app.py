@@ -563,11 +563,18 @@ class App:
         labels = []
         for spec in list_models():
             label_text = spec.label()
+            pct = spec.discount_percent()
+            if pct:
+                label_text = '%s (-%s%%)' % (label_text, pct)
             self._model_labels[label_text] = spec.id
             labels.append(label_text)
         self.model_combo.configure(values=labels)
         current = get_model(self.model_id.get())
-        self.model_label.set(current.label())
+        current_label = current.label()
+        pct = current.discount_percent()
+        if pct:
+            current_label = '%s (-%s%%)' % (current_label, pct)
+        self.model_label.set(current_label)
         self._update_model_description()
 
     def _on_model_picked(self):
