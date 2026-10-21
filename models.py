@@ -803,6 +803,28 @@ def format_adjust_summary(changes, lang=None):
             parts.append(str(new))
     return ' / '.join(parts)
 
+
+ALLOWED_MEDIA_BY_FAMILY = {
+    'wan': ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio', 'file', 'link'),
+    'seedance': ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio'),
+    'kling': ('first_frame', 'last_frame'),
+    'h3': (),
+    'hailuo': (),
+    'vidu': ('first_frame', 'reference_image', 'reference_audio'),
+}
+
+
+def allowed_media_types(family):
+    """Media item types accepted by a model family (empty = text-to-video only)."""
+    return ALLOWED_MEDIA_BY_FAMILY.get(family, ())
+
+
+def model_allows_first_frame(spec_or_family):
+    """True when the model can take a first-frame / I2V image input."""
+    family = spec_or_family if isinstance(spec_or_family, str) else getattr(spec_or_family, 'family', '')
+    return 'first_frame' in allowed_media_types(family)
+
+
 def validate_params(spec, duration, resolution, ratio, prompt='', media=None, seed=''):
     """Raise TaskError-compatible ValueError with friendly message, or return cleaned values."""
     from wan_core import TaskError
@@ -821,14 +843,7 @@ def validate_params(spec, duration, resolution, ratio, prompt='', media=None, se
         raise TaskError(t('ratio_not_allowed', spec.label(), ', '.join(spec.ratios)), 'PARAM')
     if not prompt.strip() and not media:
         raise TaskError(t('need_prompt_or_media'), 'PARAM')
-    allowed_media = {
-        'wan': ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio', 'file', 'link'),
-        'seedance': ('first_frame', 'last_frame', 'reference_image', 'reference_video', 'reference_audio'),
-        'kling': ('first_frame', 'last_frame'),
-        'h3': (),
-        'hailuo': (),
-        'vidu': ('first_frame', 'reference_image', 'reference_audio'),
-    }[spec.family]
+    allowed_media = allowed_media_types(spec.family)
     if spec.family == 'hailuo' and resolution == '1080p' and duration != 6:
         raise TaskError(t('hailuo_1080_only_6s', spec.label()), 'PARAM')
     if spec.family == 'vidu' and not media:

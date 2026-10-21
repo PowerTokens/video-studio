@@ -123,6 +123,71 @@ def extract_last_frame(video_path, out_path=None):
     return extract_chain_frame(video_path, out_path)
 
 
+
+def encode_local_image_as_data_url(path):
+    """Load a local image, re-encode JPEG ≤ MAX_FRAME_BYTES, return a data URL.
+
+    Mirrors the web prepareImage path: longest side down to 2048/1536/1280 with
+    falling JPEG quality. Requires Pillow for resize; without it, only files
+    already ≤ MAX_FRAME_BYTES are accepted as-is.
+    """
+    import io
+    path = Path(path)
+    if not path.is_file():
+        raise TaskError(t('first_frame_bad_image'), 'PARAM')
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        raw = path.read_bytes()
+        if len(raw) > MAX_FRAME_BYTES:
+            raise TaskError(t('first_frame_too_large'), 'PARAM')
+        head = raw[:16]
+        if head.startswith(b'\x89PNG\r\n\x1a\n'):
+            mime = 'image/png'
+        elif head[:6] in (b'GIF87a', b'GIF89a'):
+            mime = 'image/gif'
+        elif head.startswith(b'\xff\xd8'):
+            mime = 'image/jpeg'
+        elif head.startswith(b'RIFF') and b'WEBP' in raw[:16]:
+            mime = 'image/webp'
+        else:
+            raise TaskError(t('first_frame_bad_image'), 'PARAM')
+        return 'data:%s;base64,%s' % (mime, base64.b64encode(raw).decode('ascii'))
+
+    attempts = [(2048, 90), (2048, 80), (1536, 80), (1280, 75)]
+    resample = getattr(getattr(Image, 'Resampling', Image), 'LANCZOS', Image.LANCZOS)
+    try:
+        with Image.open(path) as im:
+            im = ImageOps.exif_transpose(im)
+            if im.mode in ('RGBA', 'LA'):
+                background = Image.new('RGB', im.size, (255, 255, 255))
+                background.paste(im, mask=im.split()[-1])
+                im = background
+            elif im.mode == 'P':
+                im = im.convert('RGBA')
+                background = Image.new('RGB', im.size, (255, 255, 255))
+                background.paste(im, mask=im.split()[-1])
+                im = background
+            elif im.mode != 'RGB':
+                im = im.convert('RGB')
+            for max_side, quality in attempts:
+                scale = min(1.0, float(max_side) / float(max(im.size)))
+                size = im.size if scale >= 1.0 else (
+                    max(1, int(round(im.size[0] * scale))),
+                    max(1, int(round(im.size[1] * scale))))
+                frame = im if size == im.size else im.resize(size, resample)
+                buf = io.BytesIO()
+                frame.save(buf, format='JPEG', quality=quality, optimize=True)
+                data = buf.getvalue()
+                if len(data) <= MAX_FRAME_BYTES:
+                    return 'data:image/jpeg;base64,%s' % base64.b64encode(data).decode('ascii')
+    except TaskError:
+        raise
+    except Exception as exc:
+        raise TaskError(t('first_frame_bad_image'), 'PARAM') from exc
+    raise TaskError(t('first_frame_too_large'), 'PARAM')
+
+
 def data_url_for_image(path, mime='image/jpeg'):
     raw = Path(path).read_bytes()
     return 'data:%s;base64,%s' % (mime, base64.b64encode(raw).decode('ascii'))

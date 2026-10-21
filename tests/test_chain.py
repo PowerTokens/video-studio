@@ -215,3 +215,23 @@ class FfmpegDiscoveryTests(unittest.TestCase):
         sys.modules.pop('imageio_ffmpeg', None)
         with patch('builtins.__import__', side_effect=fake), patch('shutil.which', return_value='/usr/bin/ffmpeg'):
             self.assertEqual(fu.find_ffmpeg(), '/usr/bin/ffmpeg')
+
+
+class EncodeLocalImageTests(unittest.TestCase):
+    def test_encode_png_to_jpeg_data_url(self):
+        from PIL import Image
+        folder = Path(tempfile.mkdtemp())
+        img = folder / 'shot.png'
+        Image.new('RGB', (64, 48), (12, 34, 56)).save(img)
+        url = fu.encode_local_image_as_data_url(img)
+        self.assertTrue(url.startswith('data:image/jpeg;base64,'))
+        models.validate_params(
+            models.get_model('wan3.0-video'), 5, '720p', '16:9',
+            prompt='hi', media=[{'type': 'first_frame', 'url': url}])
+
+    def test_model_allows_first_frame_families(self):
+        self.assertTrue(models.model_allows_first_frame('wan'))
+        self.assertTrue(models.model_allows_first_frame('vidu'))
+        self.assertFalse(models.model_allows_first_frame('h3'))
+        self.assertFalse(models.model_allows_first_frame('hailuo'))
+        self.assertEqual(models.allowed_media_types('h3'), ())
