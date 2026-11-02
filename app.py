@@ -34,11 +34,21 @@ KEY_QUOTA_TIP_URL_EN = 'https://powertokens.ai/api-keys?utm_source=videostudio&u
 
 
 def key_quota_tip_url():
-    return KEY_QUOTA_TIP_URL if is_zh() else KEY_QUOTA_TIP_URL_EN
+    url = KEY_QUOTA_TIP_URL if is_zh() else KEY_QUOTA_TIP_URL_EN
+    try:
+        import utm_attr
+        return utm_attr.append_to_url(url, content='app.signup')
+    except Exception:
+        return url
 
 
 def official_key_url():
-    return OFFICIAL_KEY_URL if is_zh() else OFFICIAL_KEY_URL_EN
+    url = OFFICIAL_KEY_URL if is_zh() else OFFICIAL_KEY_URL_EN
+    try:
+        import utm_attr
+        return utm_attr.append_to_url(url, content='app.signup')
+    except Exception:
+        return url
 
 
 def protect(raw, decrypt=False):
@@ -321,7 +331,13 @@ class App:
 
     def _onboard_open_signup(self):
         import webbrowser
-        webbrowser.open(t('onboard_signup_url'))
+        _signup = t('onboard_signup_url')
+        try:
+            import utm_attr
+            _signup = utm_attr.append_to_url(_signup, content='app.signup')
+        except Exception:
+            pass
+        webbrowser.open(_signup)
 
 
     def build_create(self, frame):
