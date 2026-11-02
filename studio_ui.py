@@ -50,7 +50,7 @@ def apply_theme(root):
     style.configure('TLabel', background=WHITE, foreground=INK)
     style.configure('Muted.TLabel', foreground=MUTED)
     style.configure('Page.TLabel', background=PAGE, foreground=MUTED)
-    style.configure('Brand.TLabel', font=(FONT, 21, 'bold'))
+    style.configure('Brand.TLabel', font=(FONT, 18, 'bold'))
     style.configure('Heading.TLabel', background=PAGE, font=(FONT, 17, 'bold'))
     style.configure('CardTitle.TLabel', font=(FONT, 11, 'bold'))
     style.configure('Badge.TLabel', foreground='#328f80', background=PALE, padding=(12, 6))
@@ -175,7 +175,10 @@ class Card(tk.Canvas):
 
 
 class Columns(ttk.Frame):
-    """Stack cards on smaller windows / higher display scaling."""
+    """Stack cards on smaller windows / higher display scaling.
+
+    Generate uses weights=(3, 2) so the right rail is not optically skinny.
+    """
     def __init__(self, parent, scale=1, weights=(2, 1)):
         super().__init__(parent, style='Page.TFrame')
         self.left = ttk.Frame(self, style='Page.TFrame')

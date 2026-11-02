@@ -104,44 +104,49 @@ class App:
         root = self.root
         shell = self.shell = ttk.Frame(root, style='Page.TFrame')
         shell.pack(fill='both', expand=True)
-        header = ttk.Frame(shell, padding=(28, 20, 28, 20))
+        header = ttk.Frame(shell, padding=(28, 18, 28, 14))
         header.pack(fill='x')
-        # Keep the long name on its own line on smaller displays.
-        brand = ttk.Frame(header)
+        # One balanced bar: brand block (left) ↔ lang/tips + account cluster (right).
+        bar = ttk.Frame(header)
+        bar.pack(fill='x')
+        brand_block = ttk.Frame(bar)
+        brand_block.pack(side='left', fill='x', expand=True)
+        brand = ttk.Frame(brand_block)
         brand.pack(fill='x')
         if self.logo_image is not None:
             self.logo_label = ttk.Label(brand, image=self.logo_image)
             self.logo_label.pack(side='left', padx=(0, 12))
         ttk.Label(brand, text=APP_NAME, style='Brand.TLabel').pack(side='left')
-        # Language dropdown (OS/browser detect → English default; persist after user choice).
-        switch = ttk.Frame(brand)
-        switch.pack(side='right')
+        ttk.Label(brand_block, text=subtitle(), style='Muted.TLabel').pack(anchor='w', pady=(4, 0))
+
+        toolbar = ttk.Frame(bar)
+        toolbar.pack(side='right')
+        # Language dropdown (OS detect → English default; persist after user choice).
         self.lang_var = tk.StringVar(value=LANGUAGE_NAMES.get(get_language(), 'English'))
         self.lang_combo = ttk.Combobox(
-            switch, textvariable=self.lang_var, state='readonly', width=12,
+            toolbar, textvariable=self.lang_var, state='readonly', width=12,
             values=[LANGUAGE_NAMES[code] for code in LANGUAGES])
         self.lang_combo.pack(side='left')
         self.lang_combo.bind('<<ComboboxSelected>>', self._on_lang_picked)
         self.lang_buttons = {}  # kept for older tests / capture_state compatibility
-        self.help_tips_btn = ttk.Button(switch, text=t('onboard_help'), style='Link.TButton',
+        self.help_tips_btn = ttk.Button(toolbar, text=t('onboard_help'), style='Link.TButton',
                                         command=self.show_onboarding)
-        self.help_tips_btn.pack(side='left', padx=(12, 0))
-        header_row = ttk.Frame(header)
-        header_row.pack(fill='x', pady=(8, 0))
-        ttk.Label(header_row, text=subtitle(), style='Muted.TLabel').pack(side='left')
+        self.help_tips_btn.pack(side='left', padx=(10, 14))
+
         self.key_badge = tk.StringVar(value=t('badge_no_key'))
         self.oauth_account_var = tk.StringVar(value='')
         self.oauth_credits_var = tk.StringVar(value='')
-        # Right side packs right-to-left: login/logout first, then credits, account, key traffic-light.
-        self.header_oauth_btn = ttk.Button(header_row, text=t('oauth_login'), style='Accent.TButton',
+        # Account cluster packs right-to-left so visual L→R is name · credits · pill · login/out.
+        self.header_oauth_btn = ttk.Button(toolbar, text=t('oauth_login'), style='Accent.TButton',
                                            command=self.start_oauth_login)
         self.header_oauth_btn.pack(side='right')
-        self.header_logout_btn = ttk.Button(header_row, text=t('oauth_logout'), style='Link.TButton',
+        self.header_logout_btn = ttk.Button(toolbar, text=t('oauth_logout'), style='Link.TButton',
                                             command=self.logout_oauth)
-        self.oauth_credits_label = ttk.Label(header_row, textvariable=self.oauth_credits_var, style='CreditsChip.TLabel')
-        self.oauth_account_label = ttk.Label(header_row, textvariable=self.oauth_account_var, style='UserChip.TLabel')
-        self.header_key_pill = KeyStatusPill(header_row, chrome=WHITE)
-        self.header_key_pill.pack(side='right', padx=12)
+        self.oauth_credits_label = ttk.Label(toolbar, textvariable=self.oauth_credits_var, style='CreditsChip.TLabel')
+        self.oauth_account_label = ttk.Label(toolbar, textvariable=self.oauth_account_var, style='UserChip.TLabel')
+        self.header_key_pill = KeyStatusPill(toolbar, chrome=WHITE)
+        self.header_key_pill.pack(side='right', padx=(0, 10))
+        self._header_toolbar = toolbar
         self._refresh_oauth_header()
         tabs = ttk.Notebook(shell)
         tabs.pack(fill='both', expand=True)
@@ -324,7 +329,7 @@ class App:
         self.onboard_card = None
         self._build_onboarding(frame)
         heading(frame, t('gen_title'), t('gen_desc'))
-        columns = Columns(frame, self.scale)
+        columns = Columns(frame, self.scale, weights=(3, 2))
         columns.pack(fill='x')
         prompt_box = card(columns.left, t('prompt_card'))
         self.prompt = text_area(prompt_box, height=2, undo=True)
