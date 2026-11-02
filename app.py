@@ -14,9 +14,9 @@ import webbrowser
 
 from i18n import (LANGUAGES, LANGUAGE_NAMES, get_language, is_zh, load_settings, save_language,
                   save_setting, set_language, t)
-from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE, INK, LINE, ACCENT, LOGO_FILE,
+from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE, PAGE, INK, LINE, ACCENT, LOGO_FILE,
                        apply_theme, label, heading, card, Columns, Flow, ScrollPage, text_area,
-                       load_image, header_logo_file)
+                       load_image, header_logo_file, KeyStatusPill)
 from input_helpers import parse_keys, infer_prompt
 from batch_ui import BatchTab
 from compare_ui import CompareTab
@@ -91,6 +91,7 @@ class App:
         self.oauth_session = None
         self.oauth_busy = False
         self.key_verify_busy = False
+        self.key_status_kind = 'soft'  # soft|ok|warn|bad — traffic-light
         self.build_ui()
         self.load_keys()
         self._load_oauth_session()
@@ -131,7 +132,7 @@ class App:
         self.key_badge = tk.StringVar(value=t('badge_no_key'))
         self.oauth_account_var = tk.StringVar(value='')
         self.oauth_credits_var = tk.StringVar(value='')
-        # Right side packs right-to-left: login/logout first, then credits, account, key badge.
+        # Right side packs right-to-left: login/logout first, then credits, account, key traffic-light.
         self.header_oauth_btn = ttk.Button(header_row, text=t('oauth_login'), style='Accent.TButton',
                                            command=self.start_oauth_login)
         self.header_oauth_btn.pack(side='right')
@@ -139,7 +140,8 @@ class App:
                                             command=self.logout_oauth)
         self.oauth_credits_label = ttk.Label(header_row, textvariable=self.oauth_credits_var, style='Badge.TLabel')
         self.oauth_account_label = ttk.Label(header_row, textvariable=self.oauth_account_var, style='Badge.TLabel')
-        ttk.Label(header_row, textvariable=self.key_badge, style='Badge.TLabel').pack(side='right', padx=12)
+        self.header_key_pill = KeyStatusPill(header_row, chrome=WHITE)
+        self.header_key_pill.pack(side='right', padx=12)
         self._refresh_oauth_header()
         tabs = ttk.Notebook(shell)
         tabs.pack(fill='both', expand=True)
@@ -643,6 +645,9 @@ class App:
 
     def build_keys(self, frame):
         heading(frame, t('keys_title'), t('keys_desc'))
+        # Traffic-light status (same states as web API Key tab pill).
+        self.keys_key_pill = KeyStatusPill(frame, chrome=PAGE)
+        self.keys_key_pill.pack(anchor='w', pady=(0, 12))
         columns = Columns(frame, self.scale)
         columns.pack(fill='x')
 
@@ -681,6 +686,9 @@ class App:
         self.add_keys_btn.pack(side='left')
         ttk.Button(add_actions, text=t('get_btn'), style='Link.TButton',
                    command=self.open_official_keys).pack(side='left', padx=(12, 0))
+        self.keys_verify_pill = KeyStatusPill(add, textvariable=None, chrome=WHITE)
+        self.keys_verify_pill.pack(anchor='w', pady=(12, 0))
+        self.keys_verify_pill.set_state('soft', text=t('key_status_signin'), tooltip=t('key_chip_none'))
         pool = card(self.keys_advanced_body, t('pool_card'), t('pool_card_desc'))
         self.key_count = tk.StringVar(value=t('key_count', 0, count=0))
         label(pool, variable=self.key_count, style='Badge.TLabel').pack(anchor='w', pady=(0, 8))
@@ -1081,12 +1089,67 @@ class App:
         if folder:
             self.output.set(folder)
 
+    def _refresh_key_status(self, kind=None):
+        """Drive header + Keys-tab traffic lights (soft/ok/warn/bad), matching web."""
+        if kind is None:
+            if getattr(self, 'key_verify_busy', False):
+                kind = 'warn'
+            elif not self.keys:
+                kind = 'soft'
+            elif self.key_status_kind == 'bad':
+                kind = 'bad'
+            else:
+                kind = 'ok'
+        self.key_status_kind = kind
+        if kind == 'ok':
+            short = t('key_status_ok')
+            tip = t('key_chip_ok')
+            # StringVar keeps the count badge for language-switch / pool tests.
+            self.key_badge.set(t('badge_keys', len(self.keys), count=len(self.keys)) if self.keys else short)
+            pill_text = short
+        elif kind == 'warn':
+            short = t('key_status_verifying') if getattr(self, 'key_verify_busy', False) else t('key_status_check')
+            tip = t('key_chip_verifying') if getattr(self, 'key_verify_busy', False) else t('key_chip_auth')
+            self.key_badge.set(short)
+            pill_text = short
+        elif kind == 'bad':
+            short = t('key_status_check')
+            tip = t('key_chip_auth')
+            self.key_badge.set(short)
+            pill_text = short
+        else:
+            short = t('key_status_signin')
+            tip = t('key_chip_none')
+            self.key_badge.set(t('badge_no_key'))
+            pill_text = short
+        for pill in (getattr(self, 'header_key_pill', None), getattr(self, 'keys_key_pill', None)):
+            if pill is None:
+                continue
+            try:
+                pill.set_state(kind, text=pill_text, tooltip=tip)
+            except tk.TclError:
+                pass
+        verify_pill = getattr(self, 'keys_verify_pill', None)
+        if verify_pill is not None:
+            try:
+                verify_pill.set_state(kind, text=pill_text, tooltip=tip)
+            except tk.TclError:
+                pass
+
     def sync_keys(self):
         self.key_list.delete(0, 'end')
         for i, key in enumerate(self.keys):
             self.key_list.insert('end', '%d. ****%s' % (i + 1, key[-4:]))
         self.key_count.set(t('key_count', len(self.keys), count=len(self.keys)))
-        self.key_badge.set(t('badge_keys', len(self.keys), count=len(self.keys)) if self.keys else t('badge_no_key'))
+        if self.key_status_kind == 'bad':
+            # Keep red after a failed verify until a successful save clears it
+            # (even when the pool is still empty — invalid paste must stay red).
+            pass
+        elif self.keys:
+            self.key_status_kind = 'ok'
+        else:
+            self.key_status_kind = 'soft'
+        self._refresh_key_status(self.key_status_kind)
         if self.keys:
             self.key_list.selection_set(0)
 
@@ -1097,6 +1160,10 @@ class App:
                 self.add_keys_btn.configure(text=t('key_verifying'), state='disabled')
             else:
                 self.add_keys_btn.configure(text=t('add_btn'), state='normal')
+        if busy:
+            self.key_status_kind = 'warn'
+            self._refresh_key_status('warn')
+        # When clearing busy, _keys_verify_done (or caller) sets the final kind.
 
     def _verify_fail_message(self, result):
         kind = (result or {}).get('kind')
@@ -1151,10 +1218,12 @@ class App:
         if ok_keys:
             self.keys = list(dict.fromkeys(list(self.keys) + ok_keys))
             self.key_input.set('')
+            self.key_status_kind = 'ok'
             self.sync_keys()
             self.save_keys()
             hints = ', '.join('…' + k[-4:] for k in ok_keys)
             self.status.set(t('key_verify_ok', hints) + ' · ' + t('keys_added_status', len(self.keys), count=len(self.keys)))
+            self._refresh_key_status('ok')
         if fails:
             # Reject invalid keys — never write them. Surface the first failure clearly.
             first = fails[0]
@@ -1162,8 +1231,14 @@ class App:
             if len(fails) > 1:
                 msg = t('key_verify_fail_multi', len(fails), msg)
             self.status.set(msg)
+            # Red light even when some other keys already saved — highlight the failure.
+            if not ok_keys:
+                self.key_status_kind = 'bad'
+                self._refresh_key_status('bad')
             messagebox.showerror(t('key_verify_title'), msg)
         elif not ok_keys:
+            self.key_status_kind = 'bad'
+            self._refresh_key_status('bad')
             self.status.set(t('key_verify_fail'))
 
     def remove_key(self):
