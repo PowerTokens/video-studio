@@ -14,9 +14,9 @@ import webbrowser
 
 from i18n import (LANGUAGES, LANGUAGE_NAMES, get_language, is_zh, load_settings, save_language,
                   save_setting, set_language, t)
-from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE, INK, LINE, ACCENT, LOGO_FILE,
+from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE, PAGE, INK, LINE, ACCENT, LOGO_FILE,
                        apply_theme, label, heading, card, Columns, Flow, ScrollPage, text_area,
-                       load_image, header_logo_file)
+                       load_image, header_logo_file, KeyStatusPill)
 from input_helpers import parse_keys, infer_prompt
 from batch_ui import BatchTab
 from compare_ui import CompareTab
@@ -24,7 +24,8 @@ from models import (DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id, 
                    format_adjust_notice, model_allows_first_frame, allowed_media_types)
 from frame_util import encode_local_image_as_data_url
 from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices, list_prices,
-                      TaskError, atomic_json, estimate_cost, fingerprint, payload)
+                      TaskError, atomic_json, estimate_cost, fingerprint, payload, verify_key)
+import oauth_desktop
 
 OFFICIAL_KEY_URL = 'https://powertokens.ai/zh-Hans/api-keys?' + UTM
 OFFICIAL_KEY_URL_EN = 'https://powertokens.ai/api-keys?' + UTM
@@ -87,8 +88,13 @@ class App:
         height = min(int(920 * self.scale), root.winfo_screenheight() - 90)
         root.geometry('%dx%d' % (width, height))
         root.minsize(min(860, width), min(620, height))
+        self.oauth_session = None
+        self.oauth_busy = False
+        self.key_verify_busy = False
+        self.key_status_kind = 'soft'  # soft|ok|warn|bad — traffic-light
         self.build_ui()
         self.load_keys()
+        self._load_oauth_session()
         self.refresh_history()
         root.after(150, self.drain)
         root.protocol('WM_DELETE_WINDOW', self.close)
@@ -98,35 +104,50 @@ class App:
         root = self.root
         shell = self.shell = ttk.Frame(root, style='Page.TFrame')
         shell.pack(fill='both', expand=True)
-        header = ttk.Frame(shell, padding=(28, 20, 28, 20))
+        header = ttk.Frame(shell, padding=(28, 18, 28, 14))
         header.pack(fill='x')
-        # Keep the long name on its own line on smaller displays.
-        brand = ttk.Frame(header)
+        # One balanced bar: brand block (left) ↔ lang/tips + account cluster (right).
+        bar = ttk.Frame(header)
+        bar.pack(fill='x')
+        brand_block = ttk.Frame(bar)
+        brand_block.pack(side='left', fill='x', expand=True)
+        brand = ttk.Frame(brand_block)
         brand.pack(fill='x')
         if self.logo_image is not None:
             self.logo_label = ttk.Label(brand, image=self.logo_image)
             self.logo_label.pack(side='left', padx=(0, 12))
         ttk.Label(brand, text=APP_NAME, style='Brand.TLabel').pack(side='left')
-        # 中文 / English switch, top right. Applies immediately (the window is rebuilt in place).
-        switch = ttk.Frame(brand)
-        switch.pack(side='right')
-        self.lang_buttons = {}
-        for code in LANGUAGES:
-            button = ttk.Button(switch, text=LANGUAGE_NAMES[code], takefocus=0,
-                                style='LangActive.TButton' if code == get_language() else 'Lang.TButton',
-                                command=lambda code=code: self.switch_language(code))
-            button.pack(side='left')
-            self.lang_buttons[code] = button
-        self.help_tips_btn = ttk.Button(switch, text=t('onboard_help'), style='Link.TButton',
+        ttk.Label(brand_block, text=subtitle(), style='Muted.TLabel').pack(anchor='w', pady=(4, 0))
+
+        toolbar = ttk.Frame(bar)
+        toolbar.pack(side='right')
+        # Language dropdown (OS detect → English default; persist after user choice).
+        self.lang_var = tk.StringVar(value=LANGUAGE_NAMES.get(get_language(), 'English'))
+        self.lang_combo = ttk.Combobox(
+            toolbar, textvariable=self.lang_var, state='readonly', width=12,
+            values=[LANGUAGE_NAMES[code] for code in LANGUAGES])
+        self.lang_combo.pack(side='left')
+        self.lang_combo.bind('<<ComboboxSelected>>', self._on_lang_picked)
+        self.lang_buttons = {}  # kept for older tests / capture_state compatibility
+        self.help_tips_btn = ttk.Button(toolbar, text=t('onboard_help'), style='Link.TButton',
                                         command=self.show_onboarding)
-        self.help_tips_btn.pack(side='left', padx=(12, 0))
-        header_row = ttk.Frame(header)
-        header_row.pack(fill='x', pady=(8, 0))
-        ttk.Label(header_row, text=subtitle(), style='Muted.TLabel').pack(side='left')
+        self.help_tips_btn.pack(side='left', padx=(10, 14))
+
         self.key_badge = tk.StringVar(value=t('badge_no_key'))
-        ttk.Button(header_row, text=t('header_get_key'), style='Link.TButton',
-                   command=self.open_official_keys).pack(side='right')
-        ttk.Label(header_row, textvariable=self.key_badge, style='Badge.TLabel').pack(side='right', padx=12)
+        self.oauth_account_var = tk.StringVar(value='')
+        self.oauth_credits_var = tk.StringVar(value='')
+        # Account cluster packs right-to-left so visual L→R is name · credits · pill · login/out.
+        self.header_oauth_btn = ttk.Button(toolbar, text=t('oauth_login'), style='Accent.TButton',
+                                           command=self.start_oauth_login)
+        self.header_oauth_btn.pack(side='right')
+        self.header_logout_btn = ttk.Button(toolbar, text=t('oauth_logout'), style='Link.TButton',
+                                            command=self.logout_oauth)
+        self.oauth_credits_label = ttk.Label(toolbar, textvariable=self.oauth_credits_var, style='CreditsChip.TLabel')
+        self.oauth_account_label = ttk.Label(toolbar, textvariable=self.oauth_account_var, style='UserChip.TLabel')
+        self.header_key_pill = KeyStatusPill(toolbar, chrome=WHITE)
+        self.header_key_pill.pack(side='right', padx=(0, 10))
+        self._header_toolbar = toolbar
+        self._refresh_oauth_header()
         tabs = ttk.Notebook(shell)
         tabs.pack(fill='both', expand=True)
         pages = [ScrollPage(tabs) for _ in range(5)]
@@ -140,6 +161,12 @@ class App:
         self.build_keys(pages[4].body)
         self.status = tk.StringVar(value=t('status_ready'))
         label(shell, variable=self.status, style='Page.TLabel').pack(fill='x', padx=28, pady=(8, 12))
+
+    def _on_lang_picked(self, *_):
+        name = (self.lang_var.get() if hasattr(self, 'lang_var') else '') or ''
+        code = next((c for c, n in LANGUAGE_NAMES.items() if n == name), None)
+        if code:
+            self.switch_language(code)
 
     def switch_language(self, lang):
         """Switch the UI language now and remember it in settings.json."""
@@ -229,6 +256,7 @@ class App:
         self.refresh_history()
         self.status.set(t('status_idle') if self.keys else t('status_ready'))
         self.tabs.select(state['tab'])
+        self._refresh_oauth_header()
 
     def _onboarding_pending(self):
         return not bool(load_settings().get('onboarding_dismissed'))
@@ -248,8 +276,8 @@ class App:
             label(box, t(key)).pack(fill='x', pady=(0, 4))
         actions = Flow(box)
         actions.pack(fill='x', pady=(8, 0))
+        ttk.Button(actions, text=t('onboard_get_key'), style='Accent.TButton', command=self.start_oauth_login)
         ttk.Button(actions, text=t('onboard_goto_keys'), command=self._onboard_goto_keys)
-        ttk.Button(actions, text=t('onboard_get_key'), style='Link.TButton', command=self._onboard_open_signup)
         ttk.Button(actions, text=t('onboard_dismiss'), command=self.dismiss_onboarding)
         actions.schedule()
 
@@ -301,7 +329,7 @@ class App:
         self.onboard_card = None
         self._build_onboarding(frame)
         heading(frame, t('gen_title'), t('gen_desc'))
-        columns = Columns(frame, self.scale)
+        columns = Columns(frame, self.scale, weights=(3, 2))
         columns.pack(fill='x')
         prompt_box = card(columns.left, t('prompt_card'))
         self.prompt = text_area(prompt_box, height=2, undo=True)
@@ -628,9 +656,33 @@ class App:
 
     def build_keys(self, frame):
         heading(frame, t('keys_title'), t('keys_desc'))
+        # Traffic-light status (same states as web API Key tab pill).
+        self.keys_key_pill = KeyStatusPill(frame, chrome=PAGE)
+        self.keys_key_pill.pack(anchor='w', pady=(0, 12))
         columns = Columns(frame, self.scale)
         columns.pack(fill='x')
-        add = card(columns.left, t('add_card'), t('add_card_desc'))
+
+        oauth = card(columns.left, t('oauth_card'), t('oauth_card_desc'))
+        label(oauth, t('oauth_for_beginners'), style='Badge.TLabel').pack(anchor='w', pady=(0, 10))
+        self.keys_oauth_status = tk.StringVar(value='')
+        self.keys_oauth_status_label = label(oauth, variable=self.keys_oauth_status)
+        self.keys_oauth_status_label.pack(fill='x', pady=(0, 8))
+        self.keys_oauth_hint = label(oauth, t('oauth_use_header'), style='Muted.TLabel')
+        self.keys_oauth_hint.pack(anchor='w', pady=(0, 4))
+        self.keys_oauth_login_btn = ttk.Button(oauth, text=t('oauth_login'), style='Accent.TButton',
+                                               command=self.start_oauth_login)
+        # Not packed: header owns the primary Sign-in CTA (dedupe).
+        self.keys_oauth_logout_btn = ttk.Button(oauth, text=t('oauth_logout'), style='Link.TButton',
+                                                command=self.logout_oauth)
+        # Shown when signed in; packed by _refresh_oauth_header.
+
+        self.keys_advanced_open = tk.BooleanVar(value=False)
+        self.keys_advanced_toggle = ttk.Button(columns.left, text=t('oauth_advanced_show'), style='Link.TButton',
+                                               command=self._toggle_keys_advanced)
+        self.keys_advanced_toggle.pack(anchor='w', pady=(12, 0))
+        self.keys_advanced_body = ttk.Frame(columns.left)
+
+        add = card(self.keys_advanced_body, t('add_card'), t('add_card_desc'))
         self.key_input = tk.StringVar()
         key_row = ttk.Frame(add)
         key_row.pack(fill='x', pady=(0, 10))
@@ -641,8 +693,16 @@ class App:
                         command=lambda: self.key_entry.configure(show='' if self.show_key.get() else '•')).pack(side='left', padx=(10, 0))
         self.key_entry.bind('<Return>', lambda event: self.add_keys())
         label(add, t('paste_hint')).pack(fill='x', pady=(0, 12))
-        ttk.Button(add, text=t('add_btn'), style='Accent.TButton', command=self.add_keys).pack(anchor='w')
-        pool = card(columns.left, t('pool_card'), t('pool_card_desc'))
+        add_actions = ttk.Frame(add)
+        add_actions.pack(fill='x')
+        self.add_keys_btn = ttk.Button(add_actions, text=t('add_btn'), style='Accent.TButton', command=self.add_keys)
+        self.add_keys_btn.pack(side='left')
+        ttk.Button(add_actions, text=t('get_btn'), style='Link.TButton',
+                   command=self.open_official_keys).pack(side='left', padx=(12, 0))
+        self.keys_verify_pill = KeyStatusPill(add, textvariable=None, chrome=WHITE)
+        self.keys_verify_pill.pack(anchor='w', pady=(12, 0))
+        self.keys_verify_pill.set_state('soft', text=t('key_status_signin'), tooltip=t('key_chip_none'))
+        pool = card(self.keys_advanced_body, t('pool_card'), t('pool_card_desc'))
         self.key_count = tk.StringVar(value=t('key_count', 0, count=0))
         label(pool, variable=self.key_count, style='Badge.TLabel').pack(anchor='w', pady=(0, 8))
         # Tip sits under the pool header so it wraps inside the card and stays visible.
@@ -668,10 +728,12 @@ class App:
         self.key_list.configure(yscrollcommand=scroll.set)
         ttk.Button(pool, text=t('remove_key'), command=self.remove_key).pack(anchor='w', pady=(12, 0))
         label(pool, t('pool_note')).pack(fill='x', pady=(10, 0))
+
+        # Site key management is a secondary link (same as web Advanced), not a competing CTA.
         get = card(columns.right, t('get_card'), t('get_card_desc'))
         self.promo_label = label(get, promotion_text(), style='Badge.TLabel')
-        self.get_key_btn = ttk.Button(get, text=t('get_btn'), style='Accent.TButton', command=self.open_official_keys)
-        self.get_key_btn.pack(fill='x')
+        self.get_key_btn = ttk.Button(get, text=t('get_btn'), style='Link.TButton', command=self.open_official_keys)
+        self.get_key_btn.pack(anchor='w')
         self.refresh_promo()
         label(get, t('get_note')).pack(fill='x', pady=(12, 0))
         save = card(columns.right, t('local_card'))
@@ -681,6 +743,7 @@ class App:
         label(save, t('remember_note')).pack(fill='x')
         ttk.Separator(save).pack(fill='x', pady=16)
         label(save, t('no_repeat_note')).pack(fill='x')
+        self._refresh_oauth_header()
 
     def prompt_changed(self, event=None):
         if not self.prompt.edit_modified():
@@ -824,6 +887,209 @@ class App:
         except (ValueError, KeyError, TaskError):
             self.cost.set(t('cost_invalid'))
 
+
+    def _toggle_keys_advanced(self):
+        if not hasattr(self, 'keys_advanced_body'):
+            return
+        if self.keys_advanced_open.get():
+            self.keys_advanced_body.pack_forget()
+            self.keys_advanced_open.set(False)
+            self.keys_advanced_toggle.configure(text=t('oauth_advanced_show'))
+        else:
+            self.keys_advanced_body.pack(fill='x', pady=(8, 0))
+            self.keys_advanced_open.set(True)
+            self.keys_advanced_toggle.configure(text=t('oauth_advanced_hide'))
+
+    def _load_oauth_session(self):
+        """Restore a non-expired OAuth session (token + display profile, no API key)."""
+        self.oauth_session = oauth_desktop.load_session()
+        self._refresh_oauth_header()
+
+    def _oauth_profile(self):
+        session = self.oauth_session or {}
+        profile = session.get('profile') if isinstance(session, dict) else None
+        return profile if isinstance(profile, dict) else {}
+
+    def _is_oauth_logged_in(self):
+        session = self.oauth_session
+        if not session or not session.get('access_token'):
+            return False
+        expires_at = session.get('expires_at')
+        if expires_at is not None:
+            try:
+                import time as _time
+                if _time.time() > float(expires_at):
+                    return False
+            except (TypeError, ValueError):
+                return False
+        return True
+
+    def _refresh_oauth_header(self):
+        logged_in = self._is_oauth_logged_in()
+        profile = self._oauth_profile() if logged_in else {}
+        name = (profile.get('name') or profile.get('email') or '').strip()
+        credits = profile.get('credits')
+        if hasattr(self, 'oauth_account_var'):
+            # Name-only chip; credits live on the credits chip (official console pattern).
+            if logged_in:
+                self.oauth_account_var.set(name or 'PowerTokens')
+            else:
+                self.oauth_account_var.set('')
+        if hasattr(self, 'oauth_credits_var'):
+            if logged_in and credits is not None:
+                self.oauth_credits_var.set(t('oauth_credits', credits))
+            else:
+                self.oauth_credits_var.set('')
+        # Header buttons
+        if hasattr(self, 'header_oauth_btn'):
+            try:
+                if logged_in:
+                    self.header_oauth_btn.pack_forget()
+                else:
+                    if self.oauth_busy:
+                        self.header_oauth_btn.configure(text=t('oauth_busy'), state='disabled')
+                    else:
+                        self.header_oauth_btn.configure(text=t('oauth_login'), state='normal')
+                    if not self.header_oauth_btn.winfo_manager():
+                        self.header_oauth_btn.pack(side='right')
+            except tk.TclError:
+                pass
+        if hasattr(self, 'header_logout_btn'):
+            try:
+                if logged_in:
+                    if not self.header_logout_btn.winfo_manager():
+                        self.header_logout_btn.pack(side='right')
+                else:
+                    self.header_logout_btn.pack_forget()
+            except tk.TclError:
+                pass
+        if hasattr(self, 'oauth_credits_label'):
+            try:
+                if logged_in and credits is not None:
+                    if not self.oauth_credits_label.winfo_manager():
+                        self.oauth_credits_label.pack(side='right', padx=(0, 8))
+                else:
+                    self.oauth_credits_label.pack_forget()
+            except tk.TclError:
+                pass
+        if hasattr(self, 'oauth_account_label'):
+            try:
+                if logged_in and name:
+                    if not self.oauth_account_label.winfo_manager():
+                        self.oauth_account_label.pack(side='right', padx=(0, 8))
+                else:
+                    self.oauth_account_label.pack_forget()
+            except tk.TclError:
+                pass
+        # Keys tab OAuth card
+        if hasattr(self, 'keys_oauth_status'):
+            if self.oauth_busy:
+                self.keys_oauth_status.set(t('oauth_busy'))
+            elif logged_in:
+                parts = [t('oauth_signed_in', name or 'PowerTokens')]
+                if credits is not None:
+                    parts.append(t('oauth_credits', credits))
+                self.keys_oauth_status.set(' · '.join(parts))
+            else:
+                self.keys_oauth_status.set('')
+        if hasattr(self, 'keys_oauth_login_btn'):
+            # Deduped: primary Sign in lives in the header account cluster.
+            try:
+                self.keys_oauth_login_btn.pack_forget()
+            except tk.TclError:
+                pass
+        if hasattr(self, 'keys_oauth_hint'):
+            try:
+                if logged_in or self.oauth_busy:
+                    self.keys_oauth_hint.pack_forget()
+                else:
+                    self.keys_oauth_hint.configure(text=t('oauth_use_header'))
+                    if not self.keys_oauth_hint.winfo_manager():
+                        self.keys_oauth_hint.pack(anchor='w', pady=(0, 4))
+            except tk.TclError:
+                pass
+        if hasattr(self, 'keys_oauth_logout_btn'):
+            try:
+                if logged_in:
+                    if not self.keys_oauth_logout_btn.winfo_manager():
+                        self.keys_oauth_logout_btn.pack(anchor='w', pady=(8, 0))
+                else:
+                    self.keys_oauth_logout_btn.pack_forget()
+            except tk.TclError:
+                pass
+
+    def start_oauth_login(self):
+        if self.oauth_busy:
+            return
+        self.oauth_busy = True
+        self._refresh_oauth_header()
+        self.status.set(t('oauth_busy'))
+
+        def worker():
+            try:
+                result = oauth_desktop.login()
+                self.events.put(('oauth_ok', result))
+            except oauth_desktop.OAuthError as exc:
+                self.events.put(('oauth_fail', '%s|%s' % (exc.code, str(exc))))
+            except Exception as exc:
+                self.events.put(('oauth_fail', 'error|%s' % exc))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_oauth_result(self, result):
+        self.oauth_busy = False
+        oauth_desktop.save_session(result)
+        self.oauth_session = oauth_desktop.load_session() or {
+            'access_token': result.get('access_token'),
+            'expires_at': result.get('expires_at'),
+            'profile': oauth_desktop.profile_from_userinfo(result.get('userinfo') or {}),
+        }
+        key = result.get('key') or oauth_desktop.normalize_api_key((result.get('userinfo') or {}).get('key'))
+        key_applied = False
+        if key:
+            # OAuth userinfo key is already authenticated — apply without GET /v1/models
+            # (matches web: no extra validate friction on the Sign-in path).
+            self.keys = list(dict.fromkeys([key] + list(self.keys)))
+            # Beginner path: persist via existing DPAPI remember toggle on Windows.
+            if os.name == 'nt' and hasattr(self, 'remember') and not self.remember.get():
+                self.remember.set(True)
+            self.sync_keys()
+            self.save_keys()
+            key_applied = True
+        self._refresh_oauth_header()
+        try:
+            self.tabs.select(0)  # Generate tab
+        except tk.TclError:
+            pass
+        if key_applied:
+            self.status.set(t('oauth_ok'))
+            messagebox.showinfo(t('oauth_login'), t('oauth_ok'))
+        else:
+            self.status.set(t('oauth_ok_nokey'))
+            messagebox.showinfo(t('oauth_login'), t('oauth_ok_nokey'))
+            try:
+                self.tabs.select(4)
+                if hasattr(self, 'keys_advanced_open') and not self.keys_advanced_open.get():
+                    self._toggle_keys_advanced()
+            except tk.TclError:
+                pass
+
+    def _oauth_fail(self, payload):
+        self.oauth_busy = False
+        self._refresh_oauth_header()
+        code, _, detail = str(payload).partition('|')
+        msg = detail or code
+        self.status.set(t('oauth_fail', msg))
+        messagebox.showerror(t('oauth_login'), t('oauth_fail', msg))
+
+    def logout_oauth(self):
+        if self.oauth_busy:
+            return
+        oauth_desktop.logout()
+        self.oauth_session = None
+        self._refresh_oauth_header()
+        self.status.set(t('oauth_logged_out'))
+
     def open_key_quota_tip(self):
         url = key_quota_tip_url()
         try:
@@ -844,26 +1110,157 @@ class App:
         if folder:
             self.output.set(folder)
 
+    def _refresh_key_status(self, kind=None):
+        """Drive header + Keys-tab traffic lights (soft/ok/warn/bad), matching web."""
+        if kind is None:
+            if getattr(self, 'key_verify_busy', False):
+                kind = 'warn'
+            elif not self.keys:
+                kind = 'soft'
+            elif self.key_status_kind == 'bad':
+                kind = 'bad'
+            else:
+                kind = 'ok'
+        self.key_status_kind = kind
+        if kind == 'ok':
+            short = t('key_status_ok')
+            tip = t('key_chip_ok')
+            # StringVar keeps the count badge for language-switch / pool tests.
+            self.key_badge.set(t('badge_keys', len(self.keys), count=len(self.keys)) if self.keys else short)
+            pill_text = short
+        elif kind == 'warn':
+            short = t('key_status_verifying') if getattr(self, 'key_verify_busy', False) else t('key_status_check')
+            tip = t('key_chip_verifying') if getattr(self, 'key_verify_busy', False) else t('key_chip_auth')
+            self.key_badge.set(short)
+            pill_text = short
+        elif kind == 'bad':
+            short = t('key_status_check')
+            tip = t('key_chip_auth')
+            self.key_badge.set(short)
+            pill_text = short
+        else:
+            short = t('key_status_signin')
+            tip = t('key_chip_none')
+            self.key_badge.set(t('badge_no_key'))
+            pill_text = short
+        for pill in (getattr(self, 'header_key_pill', None), getattr(self, 'keys_key_pill', None)):
+            if pill is None:
+                continue
+            try:
+                pill.set_state(kind, text=pill_text, tooltip=tip)
+            except tk.TclError:
+                pass
+        verify_pill = getattr(self, 'keys_verify_pill', None)
+        if verify_pill is not None:
+            try:
+                verify_pill.set_state(kind, text=pill_text, tooltip=tip)
+            except tk.TclError:
+                pass
+
     def sync_keys(self):
         self.key_list.delete(0, 'end')
         for i, key in enumerate(self.keys):
             self.key_list.insert('end', '%d. ****%s' % (i + 1, key[-4:]))
         self.key_count.set(t('key_count', len(self.keys), count=len(self.keys)))
-        self.key_badge.set(t('badge_keys', len(self.keys), count=len(self.keys)) if self.keys else t('badge_no_key'))
+        if self.key_status_kind == 'bad':
+            # Keep red after a failed verify until a successful save clears it
+            # (even when the pool is still empty — invalid paste must stay red).
+            pass
+        elif self.keys:
+            self.key_status_kind = 'ok'
+        else:
+            self.key_status_kind = 'soft'
+        self._refresh_key_status(self.key_status_kind)
         if self.keys:
             self.key_list.selection_set(0)
 
+    def _set_key_verify_busy(self, busy):
+        self.key_verify_busy = bool(busy)
+        if hasattr(self, 'add_keys_btn'):
+            if busy:
+                self.add_keys_btn.configure(text=t('key_verifying'), state='disabled')
+            else:
+                self.add_keys_btn.configure(text=t('add_btn'), state='normal')
+        if busy:
+            self.key_status_kind = 'warn'
+            self._refresh_key_status('warn')
+        # When clearing busy, _keys_verify_done (or caller) sets the final kind.
+
+    def _verify_fail_message(self, result):
+        kind = (result or {}).get('kind')
+        if kind == 'NETWORK':
+            return t('key_verify_fail_network')
+        if kind == 'QUOTA':
+            return t('key_verify_fail_quota')
+        if kind == 'AUTH':
+            return t('key_verify_fail_auth')
+        detail = str((result or {}).get('detail') or '').strip()
+        if detail:
+            return t('key_verify_fail_detail', detail)
+        return t('key_verify_fail')
+
     def add_keys(self):
+        """Advanced paste: live-verify (GET /v1/models) before writing the pool — same as web."""
+        if getattr(self, 'key_verify_busy', False):
+            return
         try:
             keys = parse_keys(self.key_input.get())
         except ValueError as exc:
             messagebox.showerror(t('key_format_title'), str(exc))
             return
-        self.keys = list(dict.fromkeys(self.keys + keys))
-        self.key_input.set('')
-        self.status.set(t('keys_added_status', len(self.keys), count=len(self.keys)))
-        self.sync_keys()
-        self.save_keys()
+        pending = [k for k in keys if k not in self.keys]
+        if not pending:
+            self.key_input.set('')
+            self.status.set(t('keys_added_status', len(self.keys), count=len(self.keys)))
+            return
+        self._set_key_verify_busy(True)
+        self.status.set(t('key_verifying'))
+
+        def worker():
+            ok_keys = []
+            fails = []
+            for key in pending:
+                try:
+                    result = verify_key(key)
+                except Exception as exc:
+                    result = {'ok': False, 'kind': 'NETWORK', 'detail': str(exc), 'http': None}
+                if result.get('ok'):
+                    ok_keys.append(key)
+                else:
+                    fails.append({'key': key, 'result': result})
+            self.events.put(('keys_verify_done', {'ok': ok_keys, 'fails': fails}))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _keys_verify_done(self, payload):
+        self._set_key_verify_busy(False)
+        ok_keys = list((payload or {}).get('ok') or [])
+        fails = list((payload or {}).get('fails') or [])
+        if ok_keys:
+            self.keys = list(dict.fromkeys(list(self.keys) + ok_keys))
+            self.key_input.set('')
+            self.key_status_kind = 'ok'
+            self.sync_keys()
+            self.save_keys()
+            hints = ', '.join('…' + k[-4:] for k in ok_keys)
+            self.status.set(t('key_verify_ok', hints) + ' · ' + t('keys_added_status', len(self.keys), count=len(self.keys)))
+            self._refresh_key_status('ok')
+        if fails:
+            # Reject invalid keys — never write them. Surface the first failure clearly.
+            first = fails[0]
+            msg = self._verify_fail_message(first.get('result'))
+            if len(fails) > 1:
+                msg = t('key_verify_fail_multi', len(fails), msg)
+            self.status.set(msg)
+            # Red light even when some other keys already saved — highlight the failure.
+            if not ok_keys:
+                self.key_status_kind = 'bad'
+                self._refresh_key_status('bad')
+            messagebox.showerror(t('key_verify_title'), msg)
+        elif not ok_keys:
+            self.key_status_kind = 'bad'
+            self._refresh_key_status('bad')
+            self.status.set(t('key_verify_fail'))
 
     def remove_key(self):
         selected = self.key_list.curselection()
@@ -1018,6 +1415,15 @@ class App:
         try:
             while True:
                 kind, text = self.events.get_nowait()
+                if kind == 'oauth_ok':
+                    self._apply_oauth_result(text)
+                    continue
+                if kind == 'oauth_fail':
+                    self._oauth_fail(text)
+                    continue
+                if kind == 'keys_verify_done':
+                    self._keys_verify_done(text)
+                    continue
                 if kind == 'batch_update':
                     self.batch.update_job(text)
                     continue

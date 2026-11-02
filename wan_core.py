@@ -158,6 +158,34 @@ def api(method, url, key, payload=None, timeout=30):
         return code, {}
 
 
+def verify_key(key, timeout=15):
+    """Live-check a key the same way as the web `verifyKey` / CLI `verify`.
+
+    GET /v1/models with Bearer. Returns {ok, kind, detail, http}.
+    ok only when HTTP 200. Never raises. Does not save the key.
+    """
+    if not key:
+        return {'ok': False, 'kind': 'AUTH', 'detail': '', 'http': None}
+    code, body = api('GET', API_BASE + '/v1/models', key, timeout=timeout)
+    if code is None:
+        return {'ok': False, 'kind': 'NETWORK', 'detail': '', 'http': None}
+    if code == 200:
+        return {'ok': True, 'kind': None, 'detail': '', 'http': 200}
+    kind = category(code, body or {})
+    if kind not in ('AUTH', 'QUOTA', 'NOT_ALLOWED', 'RATE_LIMIT'):
+        kind = 'UNKNOWN'
+    detail = ''
+    if isinstance(body, dict):
+        err = body.get('error')
+        if isinstance(err, dict):
+            detail = str(err.get('message') or err.get('code') or '')
+        elif isinstance(err, str):
+            detail = err
+        else:
+            detail = str(body.get('message') or '')
+    return {'ok': False, 'kind': kind, 'detail': detail, 'http': code}
+
+
 def category(code, body):
     """Classify API errors for key rotation. QUOTA/AUTH/NOT_ALLOWED exhaust; RATE_LIMIT is temporary."""
     text = json.dumps(body, ensure_ascii=False).lower()

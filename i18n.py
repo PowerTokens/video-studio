@@ -1,14 +1,15 @@
-"""Tiny i18n layer: Chinese (zh) and English (en) UI strings, t(key) lookup, persisted choice.
+"""Tiny i18n layer: zh / en / es / pt UI strings, t(key) lookup, persisted choice.
 
 Chinese strings are the original v1.10 wording. English strings are written for the English UI,
-not translated word for word. A value may be a (singular, plural) tuple; pass count= to t().
+not translated word for word. Spanish and Portuguese overlay English for chrome strings and
+fall back to English for the rest. A value may be a (singular, plural) tuple; pass count= to t().
 """
 import json
 import os
 from pathlib import Path
 
-LANGUAGES = ('zh', 'en')
-LANGUAGE_NAMES = {'zh': '中文', 'en': 'English'}
+LANGUAGES = ('zh', 'en', 'es', 'pt')
+LANGUAGE_NAMES = {'zh': '中文', 'en': 'English', 'es': 'Español', 'pt': 'Português'}
 # Same folder as wan_core.DATA_DIR; kept here so i18n has no imports from the app.
 SETTINGS_PATH = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / '.local' / 'share'))) / 'PowerTokensWan' / 'settings.json'
 
@@ -16,9 +17,20 @@ ZH = {
     # Header, window and tabs
     'subtitle': '多模型 AI 视频生成',
     'promo': 'Wan 3.0 限时折扣至 10 月 7 日',
-    'badge_no_key': '尚未添加 API Key',
+    'badge_no_key': '登录后自动填入 Key',
     'badge_keys': '已添加 %d 个 Key',
-    'header_get_key': '获取 API Key ↗',
+    # Traffic-light pill (match web key-status-*)
+    'key_status_ok': '状态正常',
+    'key_status_signin': '去登录',
+    'key_status_check': '要检查',
+    'key_status_quota': '需充值',
+    'key_status_verifying': '校验中',
+    'key_chip_ok': 'Key 可用，可以生成',
+    'key_chip_none': '登录后自动填入 Key',
+    'key_chip_auth': 'Key 无效或已过期',
+    'key_chip_quota': '余额或额度不足',
+    'key_chip_verifying': '正在校验 Key…',
+    'header_get_key': '登录 PowerTokens',
     'tab_generate': '生成视频',
     'tab_batch': '批量导入',
     'tab_history': '任务记录 / 恢复',
@@ -57,7 +69,7 @@ ZH = {
     'cli_compare_help': '同一提示词对比 2–3 个模型',
     'cli_compare_models_help': '逗号分隔的模型 ID 或显示名（2–3 个）',
     'mcp_compare': '同一提示词提交给 2–3 个模型进行对比；每个结果单独保存任务并可恢复。models 为逗号分隔的模型 ID。',
-    'status_ready': '就绪 · 请先在「API Key」页添加 Key',
+    'status_ready': '就绪 · 请先登录 PowerTokens（或到「API Key」页粘贴 Key）',
     'status_idle': '就绪',
     'lang_saved_title': '语言设置已保存',
     'lang_saved_busy': '当前有任务在处理，界面语言将在下次启动时切换。',
@@ -141,21 +153,21 @@ ZH = {
     'no_task_id': '未获得 ID',
     # API Key tab
     'keys_title': 'API Key 管理',
-    'keys_desc': '添加多个 Key 供视频任务使用；Key 池仅以掩码显示。',
-    'add_card': '添加 API Key',
-    'add_card_desc': '一次可粘贴多个 Key，用空格、逗号或分号分隔。',
+    'keys_desc': '大多数人登录一次即可：默认 Key 与积分会自动填入。若已有 sk- Key 或需要多把 Key，请展开下方「高级」。',
+    'add_card': '高级：粘贴 API Key',
+    'add_card_desc': '适合已在官网管理多把 Key、共用电脑，或不想登录、只用现有 Key 的情况。粘贴后点「校验并保存」；通过才会写入 Key 池。一次可粘贴多个，用空格、逗号或分号分隔。',
     'show_key': '显示',
-    'paste_hint': '直接粘贴从 PowerTokens 官网复制的 Key 即可',
-    'add_btn': '添加到 Key 池',
+    'paste_hint': '校验通过后 Key 只保存在本机；无效 Key 不会写入。',
+    'add_btn': '校验并保存',
     'pool_card': 'Key 池',
     'pool_card_desc': '生成按顺序使用 Key；只有提交被明确拒绝时才换下一个。',
     'key_count': '共 %d 个 Key',
     'remove_key': '移除选中 Key',
     'pool_note': '不会因状态接口的 403 或网络故障自动删除 Key。',
-    'get_card': '获取 Key',
-    'get_card_desc': '还没有 Key？去 PowerTokens 注册即可使用。支持 Wan、Seedance、Kling 等多种视频模型。',
-    'get_btn': '注册 / 获取 API Key ↗',
-    'get_note': '打开 PowerTokens 官网 API Key 页面',
+    'get_card': '高级：在官网管理 Key',
+    'get_card_desc': '推荐先登录。若你已在官网创建多个 Key，可到「高级」里粘贴，或在官网管理额度与有效期。',
+    'get_btn': '管理额度和有效期 →',
+    'get_note': '新手不必使用本区；登录左侧即可自动填入 Key 与积分。',
     'local_card': '本机保存',
     'remember': '在这台电脑记住 Key',
     'dpapi_badge': 'Windows 账户加密',
@@ -163,12 +175,21 @@ ZH = {
     'no_repeat_note': '任务已提交、网络超时或提交结果不明确时，不会自动重复生成。',
     'remember_windows_only': '记住 Key 功能仅支持 Windows；其他系统可临时使用 Key。',
     'key_format_title': 'Key 格式',
-    'keys_added_status': '已添加 Key，当前池中共 %d 个；可前往生成视频。',
+    'keys_added_status': '已写入 Key 池（共 %d 个）；可前往生成视频。',
+    'key_verifying': '校验中…',
+    'key_verify_ok': '校验通过（%s）',
+    'key_verify_fail': '校验失败，请确认访问码后重试。',
+    'key_verify_fail_auth': 'Key 无效或已过期，请确认后重试。',
+    'key_verify_fail_quota': '校验时额度不足（Key 未写入）。请充值或换一把 Key。',
+    'key_verify_fail_network': '无法连接校验接口，请检查网络后重试。',
+    'key_verify_fail_detail': '校验失败：%s',
+    'key_verify_fail_multi': '%d 个 Key 未通过校验。%s',
+    'key_verify_title': 'Key 校验',
     'save_failed_title': '保存失败',
     'save_failed_body': '无法保存或清除 Key 文件。当前 Key 仍可在本次运行使用；请检查数据目录权限。',
     'load_failed_title': '无法读取已保存 Key',
     'load_failed_body': '请在 API Key 页重新添加。加密 Key 只能由原 Windows 账户读取。',
-    'need_key': '请先在 API Key 页添加 Key',
+    'need_key': '请先登录 PowerTokens（顶栏），Key 会自动填入；也可到「API Key」页粘贴现有 Key。',
     'check_input': '请检查输入',
     'select_task_title': '选择任务',
     'select_task_body': '请先选中一个任务。',
@@ -239,12 +260,29 @@ ZH = {
     'chain_frame_too_large': '截取的画面文件过大，请改用更短时长或更低分辨率后再试。',
     'chain_wan_data_url_note': 'Wan 文档要求公网图片 URL；当前尝试用内嵌图片提交，需用真实 Key 验证。',
     'chain_unsupported': '该模型不支持首帧图生视频，已跳过接上一段。',
+    'oauth_login': '登录 PowerTokens',
+    'oauth_use_header': '请使用顶栏的「登录 PowerTokens」',
+    'oauth_logout': '退出登录',
+    'oauth_for_beginners': '适合大多数用户',
+    'oauth_card': '登录 — Key 与积分自动填入',
+    'oauth_card_desc': '推荐路径：用 PowerTokens 账号登录一次。默认 API Key 会写入本机 Key 池，并显示昵称与积分，不必再复制粘贴。',
+    'oauth_signed_in': '已登录 · %s',
+    'oauth_credits': '积分 %s',
+    'oauth_busy': '正在打开浏览器登录…',
+    'oauth_ok': '登录成功，已自动填入 API Key',
+    'oauth_ok_nokey': '登录成功（未返回默认 Key，请到本页「高级」区粘贴）',
+    'oauth_fail': '登录失败：%s',
+    'oauth_logged_out': '已退出登录（已保存的 Key 仍保留）',
+    'oauth_expired': '登录已过期，请重新登录（已保存的 Key 仍可使用）',
+    'oauth_advanced_show': '展开高级：粘贴自己的 API Key',
+    'oauth_advanced_hide': '收起高级粘贴',
+    'badge_credits': '积分 %s',
     'onboard_title': '三步开始',
-    'onboard_step1': '① 在「API Key」页添加 PowerTokens Key',
+    'onboard_step1': '① 点击顶栏「登录 PowerTokens」，Key 与积分会自动填入（不必粘贴）',
     'onboard_step2': '② 用自然语言写一段视频描述',
     'onboard_step3': '③ 点击「生成视频」',
-    'onboard_get_key': '获取 API Key',
-    'onboard_goto_keys': '去添加 Key',
+    'onboard_get_key': '登录 PowerTokens',
+    'onboard_goto_keys': '去登录 / 添加 Key',
     'onboard_dismiss': '知道了，不再显示',
     'onboard_help': '使用提示',
     'onboard_signup_url': 'https://powertokens.ai/zh-Hans/api-keys?utm_source=videostudio&utm_medium=app&utm_campaign=video-studio',
@@ -475,9 +513,20 @@ EN = {
     # Header, window and tabs
     'subtitle': 'Multi-model AI video generation',
     'promo': 'Wan 3.0 limited-time discount until Oct 7',
-    'badge_no_key': 'No API key yet',
+    'badge_no_key': 'Sign in to get a key',
     'badge_keys': ('%d key added', '%d keys added'),
-    'header_get_key': 'Get an API key ↗',
+    # Traffic-light pill (match web key-status-*)
+    'key_status_ok': 'Ready',
+    'key_status_signin': 'Sign in',
+    'key_status_check': 'Needs check',
+    'key_status_quota': 'Top up',
+    'key_status_verifying': 'Verifying',
+    'key_chip_ok': 'Key ready — you can generate',
+    'key_chip_none': 'Sign in to get a key',
+    'key_chip_auth': 'Key invalid or expired',
+    'key_chip_quota': 'Balance or quota too low',
+    'key_chip_verifying': 'Verifying key…',
+    'header_get_key': 'Sign in with PowerTokens',
     'tab_generate': 'Generate video',
     'tab_batch': 'Batch import',
     'tab_history': 'History / Resume',
@@ -516,7 +565,7 @@ EN = {
     'cli_compare_help': 'Compare one prompt across 2–3 models',
     'cli_compare_models_help': 'Comma-separated model IDs or display names (2–3)',
     'mcp_compare': 'Submit one prompt to 2–3 models for comparison; each result is a separate resumable task. models is a comma-separated list of model IDs.',
-    'status_ready': 'Ready · Add your API key on the API Key tab to get started',
+    'status_ready': 'Ready · Sign in with PowerTokens (or paste a key on the API Key tab)',
     'status_idle': 'Ready',
     'lang_saved_title': 'Language saved',
     'lang_saved_busy': 'Tasks are running, so the new language applies the next time you open the app.',
@@ -600,21 +649,21 @@ EN = {
     'no_task_id': 'No ID yet',
     # API Key tab
     'keys_title': 'API Keys',
-    'keys_desc': 'Add one or more keys for your video tasks. Keys are always shown masked.',
-    'add_card': 'Add an API key',
-    'add_card_desc': 'Paste one or more keys, separated by spaces, commas or semicolons.',
+    'keys_desc': 'Most people just sign in once — the default key and credits fill in automatically. If you already have an sk- key or need several keys, open Advanced below.',
+    'add_card': 'Advanced: paste an API key',
+    'add_card_desc': 'For keys you already manage on the dashboard, shared machines, or when you prefer not to sign in. Tap Verify & save — only valid keys are stored. Paste one or more keys, separated by spaces, commas or semicolons.',
     'show_key': 'Show',
-    'paste_hint': 'Paste your key exactly as copied from PowerTokens.',
-    'add_btn': 'Add to key pool',
+    'paste_hint': 'After a successful verify the key stays on this PC only; invalid keys are not saved.',
+    'add_btn': 'Verify & save',
     'pool_card': 'Key pool',
     'pool_card_desc': 'Keys are used in order; the next one is tried only if a submission is explicitly rejected.',
     'key_count': ('%d key', '%d keys'),
     'remove_key': 'Remove selected key',
     'pool_note': 'Keys are never removed automatically because of a 403 or a network error.',
-    'get_card': 'Get a key',
-    'get_card_desc': 'No key yet? Sign up at PowerTokens to get one. Supports Wan, Seedance, Kling and more.',
-    'get_btn': 'Sign up / Get an API key ↗',
-    'get_note': 'Opens the API Keys page on powertokens.ai',
+    'get_card': 'Advanced: manage keys on the site',
+    'get_card_desc': 'Prefer Sign in. If you already manage several keys on the dashboard, paste them under Advanced, or open the site to set limits and expiry.',
+    'get_btn': 'Manage limits and expiry →',
+    'get_note': 'Beginners can skip this — Sign in on the left is enough to fill in your key and credits.',
     'local_card': 'Save on this PC',
     'remember': 'Remember keys on this PC',
     'dpapi_badge': 'Windows account encryption',
@@ -622,12 +671,21 @@ EN = {
     'no_repeat_note': 'Submitted, timed-out or unclear requests are never regenerated automatically, so you are not charged twice.',
     'remember_windows_only': 'Saving keys requires Windows. On other systems, keys work for the current session.',
     'key_format_title': 'Key format',
-    'keys_added_status': ('Key added. %d key in the pool, ready to generate.', 'Key added. %d keys in the pool, ready to generate.'),
+    'keys_added_status': ('Key saved. %d key in the pool, ready to generate.', 'Key saved. %d keys in the pool, ready to generate.'),
+    'key_verifying': 'Verifying…',
+    'key_verify_ok': 'Verified (%s)',
+    'key_verify_fail': 'Could not verify. Check the access code and try again.',
+    'key_verify_fail_auth': 'The key is invalid or expired. Check it and try again.',
+    'key_verify_fail_quota': 'Quota too low during verify (key was not saved). Top up or try another key.',
+    'key_verify_fail_network': 'Could not reach the verify endpoint. Check your network and try again.',
+    'key_verify_fail_detail': 'Could not verify: %s',
+    'key_verify_fail_multi': '%d keys failed verify. %s',
+    'key_verify_title': 'Key verification',
     'save_failed_title': 'Could not save',
     'save_failed_body': 'Could not save or clear the key file. Your keys still work for this session; please check permissions on the data folder.',
     'load_failed_title': 'Saved keys could not be read',
     'load_failed_body': 'Please add them again on the API Key tab. Encrypted keys can only be read by the Windows account that saved them.',
-    'need_key': 'Add an API key on the API Key tab first.',
+    'need_key': 'Sign in with PowerTokens first (header) — your key fills in automatically. To paste an existing key, open the API Key tab.',
     'check_input': 'Please check your input',
     'select_task_title': 'Select a task',
     'select_task_body': 'Select a task first.',
@@ -698,12 +756,29 @@ EN = {
     'chain_frame_too_large': 'The captured frame is too large. Try a shorter clip or a lower resolution.',
     'chain_wan_data_url_note': 'Wan docs ask for a public image URL; trying an embedded image (verify with a live key).',
     'chain_unsupported': 'This model does not support first-frame image-to-video; chain skipped for this row.',
+    'oauth_login': 'Sign in with PowerTokens',
+    'oauth_use_header': 'Use Sign in with PowerTokens in the header',
+    'oauth_logout': 'Sign out',
+    'oauth_for_beginners': 'Recommended for most users',
+    'oauth_card': 'Sign in — key & credits fill in automatically',
+    'oauth_card_desc': 'Best for beginners: sign in with PowerTokens once. We save the default API key in the local key pool and show your name and credits. No copy-paste needed.',
+    'oauth_signed_in': 'Signed in · %s',
+    'oauth_credits': 'Credits %s',
+    'oauth_busy': 'Opening the browser to sign in…',
+    'oauth_ok': 'Signed in — API key saved automatically',
+    'oauth_ok_nokey': 'Signed in (no default key returned; paste one under Advanced on this tab)',
+    'oauth_fail': 'Sign-in failed: %s',
+    'oauth_logged_out': 'Signed out (saved keys are kept)',
+    'oauth_expired': 'Sign-in expired — please sign in again (saved keys still work)',
+    'oauth_advanced_show': 'Show advanced: paste your own API key',
+    'oauth_advanced_hide': 'Hide advanced paste',
+    'badge_credits': 'Credits %s',
     'onboard_title': 'Get started in 3 steps',
-    'onboard_step1': '1. Add a PowerTokens API key on the API Key tab',
+    'onboard_step1': '1. Click Sign in with PowerTokens (top right). Your API key and credits fill in automatically — no copy-paste needed.',
     'onboard_step2': '2. Describe the video in plain language',
     'onboard_step3': '3. Click Generate video',
-    'onboard_get_key': 'Get an API key',
-    'onboard_goto_keys': 'Add a key',
+    'onboard_get_key': 'Sign in with PowerTokens',
+    'onboard_goto_keys': 'Sign in / Add a key',
     'onboard_dismiss': 'Got it — don’t show again',
     'onboard_help': 'Tips',
     'onboard_signup_url': 'https://powertokens.ai/api-keys?utm_source=videostudio&utm_medium=app&utm_campaign=video-studio',
@@ -931,7 +1006,120 @@ EN = {
     'mcp_resume': 'Check and download an existing task with its original key; nothing new is submitted.',
 }
 
-STRINGS = {'zh': ZH, 'en': EN}
+
+# Spanish / Portuguese: start from English, overlay chrome UI strings.
+ES_OVERLAY = {
+    'subtitle': 'Generación de vídeo IA multi-modelo',
+    'badge_no_key': 'Inicia sesión para rellenar la clave',
+    'badge_keys': '%d claves añadidas',
+    'key_status_ok': 'Lista',
+    'key_status_signin': 'Iniciar sesión',
+    'key_status_check': 'Revisar',
+    'key_status_quota': 'Recargar',
+    'key_status_verifying': 'Verificando',
+    'key_chip_ok': 'Clave lista — puedes generar',
+    'key_chip_none': 'Inicia sesión para rellenar la clave',
+    'key_chip_auth': 'Clave inválida o caducada',
+    'key_chip_quota': 'Saldo o cuota insuficiente',
+    'key_chip_verifying': 'Verificando clave…',
+    'header_get_key': 'Iniciar sesión con PowerTokens',
+    'tab_generate': 'Generar vídeo',
+    'tab_batch': 'Importación por lotes',
+    'tab_history': 'Historial / Reanudar',
+    'tab_keys': 'API Key',
+    'tab_compare': 'Comparar modelos',
+    'status_ready': 'Listo · Inicia sesión con PowerTokens (o pega una clave en API Key)',
+    'status_idle': 'Listo',
+    'lang_saved_title': 'Idioma guardado',
+    'lang_saved_busy': 'Hay tareas en curso; el nuevo idioma se aplica al reiniciar la app.',
+    'official_site': 'Sitio PT',
+    'gen_title': 'Generar vídeo',
+    'gen_desc': 'Escribe la idea, ajusta parámetros y genera un vídeo con audio nativo.',
+    'keys_title': 'API Key',
+    'keys_desc': 'La mayoría solo inicia sesión una vez: la clave y los créditos se rellenan solos. Si ya tienes una sk- o necesitas varias, usa Avanzado abajo.',
+    'pool_card': 'Avanzado · Grupo de claves',
+    'pool_card_desc': 'Pega tus propias claves sk- aquí si ya las gestionas en el sitio.',
+    'oauth_login': 'Iniciar sesión con PowerTokens',
+    'oauth_logout': 'Cerrar sesión',
+    'oauth_use_header': 'Usa «Iniciar sesión con PowerTokens» en la cabecera',
+    'oauth_for_beginners': 'Recomendado para la mayoría',
+    'oauth_card': 'Inicia sesión — clave y créditos automáticos',
+    'oauth_card_desc': 'Inicia sesión una vez. Guardamos la clave por defecto y mostramos tu nombre y créditos.',
+    'oauth_signed_in': 'Sesión iniciada · %s',
+    'oauth_credits': 'Créditos %s',
+    'oauth_busy': 'Abriendo el inicio de sesión…',
+    'oauth_ok': 'Sesión iniciada — clave API guardada',
+    'oauth_ok_nokey': 'Sesión iniciada (sin clave por defecto; pégala en Avanzado)',
+    'oauth_fail': 'Error al iniciar sesión: %s',
+    'oauth_advanced_show': 'Mostrar pegado avanzado de clave',
+    'oauth_advanced_hide': 'Ocultar pegado avanzado de clave',
+    'onboard_help': 'Consejos',
+    'onboard_get_key': 'Iniciar sesión',
+    'generate_btn': 'Generar vídeo',
+    'add_btn': 'Verificar y guardar',
+    'show_key': 'Mostrar',
+    'paste_hint': 'Tras verificar, la clave solo permanece en este equipo; las inválidas no se guardan.',
+}
+
+PT_OVERLAY = {
+    'subtitle': 'Geração de vídeo IA multi-modelo',
+    'badge_no_key': 'Entre para preencher a chave',
+    'badge_keys': '%d chaves adicionadas',
+    'key_status_ok': 'Pronta',
+    'key_status_signin': 'Entrar',
+    'key_status_check': 'Verificar',
+    'key_status_quota': 'Recarregar',
+    'key_status_verifying': 'A verificar',
+    'key_chip_ok': 'Chave pronta — pode gerar',
+    'key_chip_none': 'Entre para preencher a chave',
+    'key_chip_auth': 'Chave inválida ou expirada',
+    'key_chip_quota': 'Saldo ou cota insuficiente',
+    'key_chip_verifying': 'A verificar chave…',
+    'header_get_key': 'Entrar com PowerTokens',
+    'tab_generate': 'Gerar vídeo',
+    'tab_batch': 'Importação em lote',
+    'tab_history': 'Histórico / Retomar',
+    'tab_keys': 'API Key',
+    'tab_compare': 'Comparar modelos',
+    'status_ready': 'Pronto · Entre com PowerTokens (ou cole uma chave em API Key)',
+    'status_idle': 'Pronto',
+    'lang_saved_title': 'Idioma guardado',
+    'lang_saved_busy': 'Há tarefas a decorrer; o novo idioma aplica-se ao reiniciar a app.',
+    'official_site': 'Site PT',
+    'gen_title': 'Gerar vídeo',
+    'gen_desc': 'Escreva a ideia, ajuste os parâmetros e gere um vídeo com áudio nativo.',
+    'keys_title': 'API Key',
+    'keys_desc': 'A maioria só entra uma vez: a chave e os créditos preenchem-se sozinhos. Se já tiver uma sk- ou precisar de várias, use Avançado abaixo.',
+    'pool_card': 'Avançado · Grupo de chaves',
+    'pool_card_desc': 'Cole as suas próprias chaves sk- aqui se já as gere no site.',
+    'oauth_login': 'Entrar com PowerTokens',
+    'oauth_logout': 'Terminar sessão',
+    'oauth_use_header': 'Use «Entrar com PowerTokens» no cabeçalho',
+    'oauth_for_beginners': 'Recomendado para a maioria',
+    'oauth_card': 'Entre — chave e créditos automáticos',
+    'oauth_card_desc': 'Entre uma vez. Guardamos a chave predefinida e mostramos o seu nome e créditos.',
+    'oauth_signed_in': 'Sessão iniciada · %s',
+    'oauth_credits': 'Créditos %s',
+    'oauth_busy': 'A abrir o início de sessão…',
+    'oauth_ok': 'Sessão iniciada — chave API guardada',
+    'oauth_ok_nokey': 'Sessão iniciada (sem chave predefinida; cole em Avançado)',
+    'oauth_fail': 'Falha ao entrar: %s',
+    'oauth_advanced_show': 'Mostrar colagem avançada de chave',
+    'oauth_advanced_hide': 'Ocultar colagem avançada de chave',
+    'onboard_help': 'Dicas',
+    'onboard_get_key': 'Entrar',
+    'generate_btn': 'Gerar vídeo',
+    'add_btn': 'Verificar e guardar',
+    'show_key': 'Mostrar',
+    'paste_hint': 'Após verificar, a chave fica só neste equipamento; inválidas não são guardadas.',
+}
+
+ES = dict(EN)
+ES.update(ES_OVERLAY)
+PT = dict(EN)
+PT.update(PT_OVERLAY)
+
+STRINGS = {'zh': ZH, 'en': EN, 'es': ES, 'pt': PT}
 _current = None
 
 
@@ -946,16 +1134,44 @@ def windows_ui_language():
         return None
 
 
+def _locale_to_language(tag):
+    """Map a BCP47 / Windows / POSIX language tag to a supported LANGUAGES code, else None."""
+    raw = str(tag or '').strip().lower().replace('_', '-')
+    if not raw:
+        return None
+    primary = raw.split('-', 1)[0]
+    if primary == 'zh' or raw.startswith('zh'):
+        return 'zh'
+    if primary == 'es':
+        return 'es'
+    if primary == 'pt':
+        return 'pt'
+    if primary == 'en':
+        return 'en'
+    return None
+
+
 def system_language():
-    """'zh' when the Windows display language (or the POSIX locale) is Chinese, else 'en'."""
+    """Detect OS UI language; unrecognized → English."""
     langid = windows_ui_language()
     if langid is not None:
-        # Primary language ID 0x04 = Chinese (Simplified and Traditional).
-        return 'zh' if langid & 0x3FF == 0x04 else 'en'
+        primary = langid & 0x3FF
+        # 0x04 Chinese, 0x0A Spanish, 0x16 Portuguese, else English (incl. 0x09).
+        if primary == 0x04:
+            return 'zh'
+        if primary == 0x0A:
+            return 'es'
+        if primary == 0x16:
+            return 'pt'
+        return 'en'
     for name in ('LC_ALL', 'LC_MESSAGES', 'LANG', 'LANGUAGE'):
         value = os.environ.get(name)
         if value:
-            return 'zh' if value.lower().startswith('zh') else 'en'
+            # LANGUAGE may be a colon-separated preference list.
+            for part in str(value).split(':'):
+                mapped = _locale_to_language(part.split('.')[0])
+                if mapped:
+                    return mapped
     return 'en'
 
 
@@ -1016,8 +1232,11 @@ def is_zh():
 
 
 def t(key, *args, count=None):
-    """Look up key in the current language (falls back to Chinese), then apply % args."""
-    value = STRINGS[get_language()].get(key)
+    """Look up key in the current language (falls back to English, then Chinese)."""
+    table = STRINGS.get(get_language()) or {}
+    value = table.get(key)
+    if value is None:
+        value = EN.get(key)
     if value is None:
         value = ZH[key]
     if isinstance(value, tuple) and count is not None:

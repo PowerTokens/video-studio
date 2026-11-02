@@ -29,6 +29,12 @@ MUTED = '#708194'
 LINE = '#dfe7ee'
 ACCENT = '#53b2a5'
 PALE = '#eaf6f2'
+# Key traffic-light (match web .key-status-dot-* / .key-status-pill)
+KEY_DOT_BAD = '#ff3b30'
+KEY_DOT_WARN = '#f59e0b'
+KEY_DOT_OK = '#22c55e'
+KEY_PILL_SOFT_BG = '#f7fcfa'
+KEY_PILL_SOFT_BORDER = '#c9e4dc'
 TAB_PADDING = (20, 12)  # Same for every notebook tab state.
 FONT = 'Microsoft YaHei UI' if sys.platform == 'win32' else 'PingFang SC'
 
@@ -44,10 +50,13 @@ def apply_theme(root):
     style.configure('TLabel', background=WHITE, foreground=INK)
     style.configure('Muted.TLabel', foreground=MUTED)
     style.configure('Page.TLabel', background=PAGE, foreground=MUTED)
-    style.configure('Brand.TLabel', font=(FONT, 21, 'bold'))
+    style.configure('Brand.TLabel', font=(FONT, 18, 'bold'))
     style.configure('Heading.TLabel', background=PAGE, font=(FONT, 17, 'bold'))
     style.configure('CardTitle.TLabel', font=(FONT, 11, 'bold'))
     style.configure('Badge.TLabel', foreground='#328f80', background=PALE, padding=(12, 6))
+    # Official-console-like chips: pill name + credits (match web .user-chip / .credits-chip).
+    style.configure('UserChip.TLabel', foreground='#2f4558', background='#f3f7f6', padding=(12, 6))
+    style.configure('CreditsChip.TLabel', foreground='#0e8f85', background='#eafaf7', padding=(12, 6))
     style.configure('TButton', background=WHITE, foreground='#4b6073',
                     bordercolor=LINE, lightcolor=WHITE, darkcolor=WHITE,
                     padding=(14, 8), relief='flat', focusthickness=1, focuscolor=ACCENT)
@@ -166,7 +175,10 @@ class Card(tk.Canvas):
 
 
 class Columns(ttk.Frame):
-    """Stack cards on smaller windows / higher display scaling."""
+    """Stack cards on smaller windows / higher display scaling.
+
+    Generate uses weights=(3, 2) so the right rail is not optically skinny.
+    """
     def __init__(self, parent, scale=1, weights=(2, 1)):
         super().__init__(parent, style='Page.TFrame')
         self.left = ttk.Frame(self, style='Page.TFrame')
@@ -249,6 +261,111 @@ class ScrollPage(ttk.Frame):
             self.canvas.yview_scroll(amount, 'units')
         except tk.TclError:
             return
+
+
+
+class KeyStatusPill(tk.Canvas):
+    """Web-matching API Key traffic light: dim red/yellow/green dots, one lit + label.
+
+    States mirror video-studio-web `.key-status-pill`:
+      soft  — no key yet (sign-in cue; accent soft)
+      ok    — key usable (green lit)
+      warn  — verifying / needs check / quota (yellow lit)
+      bad   — invalid or expired (red lit)
+    """
+    _PALETTE = {
+        'soft': dict(bg='#f7fcfa', border='#c9e4dc', fg='#268b7e', lit='warn', lit_color=ACCENT),
+        'ok': dict(bg='#ecfdf3', border='#86efac', fg='#15803d', lit='ok', lit_color=KEY_DOT_OK),
+        'warn': dict(bg='#fff7ed', border='#fcd34d', fg='#b45309', lit='warn', lit_color=KEY_DOT_WARN),
+        'bad': dict(bg='#ffe8e6', border='#ffc9c4', fg='#d70015', lit='bad', lit_color=KEY_DOT_BAD),
+    }
+    _DIM = {'bad': '#ffd0cc', 'warn': '#fde7b8', 'ok': '#c6f0d4'}
+    _ORDER = ('bad', 'warn', 'ok')
+
+    def __init__(self, parent, textvariable=None, chrome=None, **kwargs):
+        self._chrome = chrome if chrome is not None else PAGE
+        super().__init__(parent, height=26, highlightthickness=0, borderwidth=0,
+                         background=self._chrome, **kwargs)
+        self._state = 'soft'
+        self._textvariable = textvariable
+        self._text = ''
+        self._tooltip = ''
+        if textvariable is not None:
+            self._text = str(textvariable.get() or '')
+            textvariable.trace_add('write', lambda *_: self._on_var())
+        self.bind('<Configure>', lambda e: self._redraw())
+        self.after_idle(self._redraw)
+
+    def _on_var(self):
+        if self._textvariable is not None:
+            self._text = str(self._textvariable.get() or '')
+        self._redraw()
+
+    def set_text(self, text):
+        self._text = str(text or '')
+        if self._textvariable is not None:
+            if self._textvariable.get() != self._text:
+                self._textvariable.set(self._text)
+        self._redraw()
+
+    def set_state(self, state, text=None, tooltip=None):
+        if state not in self._PALETTE:
+            state = 'soft'
+        self._state = state
+        if text is not None:
+            self.set_text(text)
+        if tooltip is not None:
+            self._tooltip = tooltip
+        self._redraw()
+
+    def current_state(self):
+        return self._state
+
+    def _redraw(self, event=None):
+        try:
+            palette = self._PALETTE[self._state]
+            text = self._text or ''
+            # Measure label
+            font = (FONT, 9, 'bold')
+            self.delete('all')
+            # Temp text to measure
+            tid = self.create_text(0, 0, text=text, font=font, anchor='nw')
+            bbox = self.bbox(tid) or (0, 0, 40, 12)
+            self.delete(tid)
+            tw = max(36, bbox[2] - bbox[0])
+            th = max(12, bbox[3] - bbox[1])
+            pad_x, gap, r = 8, 4, 4
+            dots_w = 3 * (2 * r) + 2 * gap
+            total_w = pad_x + dots_w + 8 + tw + pad_x
+            total_h = max(24, th + 10)
+            self.configure(width=total_w, height=total_h, background=self._chrome)
+            # Rounded pill (approximate with smooth polygon)
+            w, h = total_w - 1, total_h - 1
+            rr = min(12, h // 2)
+            self.create_polygon(
+                rr, 0, w - rr, 0, w, 0, w, rr, w, h - rr, w, h, w - rr, h,
+                rr, h, 0, h, 0, h - rr, 0, rr, 0, 0,
+                smooth=True, fill=palette['bg'], outline=palette['border'], width=1)
+            # Dots
+            cx0 = pad_x + r
+            cy = total_h // 2
+            colors = {'bad': KEY_DOT_BAD, 'warn': KEY_DOT_WARN, 'ok': KEY_DOT_OK}
+            lit = palette['lit']
+            for i, name in enumerate(self._ORDER):
+                cx = cx0 + i * (2 * r + gap)
+                if name == lit:
+                    self.create_oval(cx - r - 2, cy - r - 2, cx + r + 2, cy + r + 2,
+                                     fill='', outline=palette['lit_color'], width=2)
+                    self.create_oval(cx - r, cy - r, cx + r, cy + r,
+                                     fill=palette['lit_color'], outline=palette['lit_color'])
+                else:
+                    self.create_oval(cx - r, cy - r, cx + r, cy + r,
+                                     fill=self._DIM[name], outline='#e5ebe8')
+            # Label
+            lx = pad_x + dots_w + 8
+            self.create_text(lx, cy, text=text, font=font, fill=palette['fg'], anchor='w')
+        except tk.TclError:
+            pass
 
 
 def text_area(parent, height=5, **kwargs):

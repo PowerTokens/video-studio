@@ -4,6 +4,9 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+- **Desktop OAuth sign-in (PKCE).** Header **Sign in with PowerTokens** opens the system browser (`powerbaze_desktop_v1`, loopback `http://127.0.0.1:53682/callback` with port-0 fallback). On success, userinfo default key goes into the existing key pool (Windows DPAPI remember auto-enabled), name + credits show in the header, and the app lands on **Generate**. API Key tab is OAuth-first with paste folded under Advanced. Access token ~1800s, no refresh — expired sessions clear the OAuth chip only; pasted keys stay. Prior art: web PRs #17–#21.
+- **Key verification matches web.** Advanced paste now **Verify & save** (live `GET /v1/models`) before writing the pool; invalid keys are rejected with clear errors. OAuth Sign-in still applies `userinfo.key` without an extra verify. The old accent **Get API Key** CTA is demoted to a secondary “manage limits” link so it no longer competes with Sign in.
+
 - **Seedance 2.0 + Mini in catalog** (merged via #3). Model picker includes Seedance 2.0, Seedance 2.0 Fast, and Seedance 2.0 Mini alongside 2.5.
 - **Docs: promo prices called out.** README (EN/ZH) and `使用说明.md` show Seedance 2.0 Fast **−50%** (~~$0.121~~ → $0.061/s) and Mini **−60%** (~~$0.076~~ → $0.031/s), checked 2026-10-21 against live model pages. No invented promos for other models.
 

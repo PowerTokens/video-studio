@@ -143,7 +143,7 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 
 1. 从 [Releases](../../releases/latest) 页面下载 `PowerTokensVideoStudio.exe`。
 2. 双击运行。EXE 没有代码签名，Windows SmartScreen 可能提示“Windows 已保护你的电脑”，点击「更多信息」→「仍要运行」。
-3. 在「API Key」页粘贴 PowerTokens Key，点击「添加到 Key 池」。
+3. 点击顶栏「登录 PowerTokens」，默认 API Key 与积分会自动填入。高级用户仍可在「API Key」页粘贴 Key。
 4. 在「生成视频」页填写提示词，或在「批量导入」页导入表格。
 
 附带三集示例表格：`短剧批量示例模板.xlsx` / `产品批量示例模板.xlsx`（英文：`short-drama-batch-template.xlsx` / `product-batch-template.xlsx`）。在「批量导入」页可分别保存「短剧示例模板」与「产品示例模板」。列：`标题`、`时长(秒)`、`分辨率`、`画面比例`、`提示词` / `Prompt`（仅提示词列必填；旧表头 `Wan 3.0 Prompt` 仍可用）。可选 `模型` / `Model` 列接受模型 ID 或显示名。
@@ -159,9 +159,9 @@ python pt_wan.py storyboard --script outline.txt --out rows.xlsx --duration 8 --
 
 `--model` 默认为 `wan3.0-video`。更多媒体参数见 `python pt_wan.py generate -h`。
 
-## 获取 API Key
+## 登录 / 获取 API Key
 
-在 [PowerTokens](https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio) 注册并创建 Key。工具内的「注册 / 获取 API Key」按钮会打开同一页面。
+大多数用户点击顶栏「登录 PowerTokens」（OAuth + PKCE）即可，默认 Key 与积分会自动填入。也可在 [PowerTokens API Keys](https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio) 创建 Key，并在「API Key」页 → 高级 中粘贴。
 
 ## 从源码运行
 

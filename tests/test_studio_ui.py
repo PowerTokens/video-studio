@@ -16,7 +16,7 @@ import re
 import app
 import batch_ui
 import wan_core
-from studio_ui import APP_NAME, VERSION, Columns, Card
+from studio_ui import APP_NAME, VERSION, Columns, Card, KeyStatusPill
 
 
 @unittest.skipUnless(os.name == 'nt' or os.environ.get('PT_GUI_TESTS') == '1',
@@ -70,6 +70,8 @@ class StudioUITests(unittest.TestCase):
                 self.root.update()
                 for widget in self.widgets(self.gui.pages[index]):
                     if isinstance(widget, Card):
+                        if not widget.winfo_ismapped():
+                            continue  # Collapsed Advanced (and similar) stay at width 1 until packed.
                         self.assertGreater(widget.winfo_width(), 150)
                         self.assertGreaterEqual(widget.winfo_height(), widget.body.winfo_reqheight() + 39,
                                                 (width, index, str(widget), widget.cget('height'),
@@ -100,16 +102,35 @@ class StudioUITests(unittest.TestCase):
             if isinstance(widget, (ttk.Label, ttk.Button)):
                 texts.append(str(widget.cget('text')))
         self.assertIn('任务仍在云端继续，可在任务记录里找回', texts)
-        self.assertIn('首帧 / 尾帧、参考素材与随机种子。链接需公网可访问；不需要可留空。', texts)
-        self.assertIn('直接粘贴从 PowerTokens 官网复制的 Key 即可', texts)
-        self.assertIn('还没有 Key？去 PowerTokens 注册即可使用。支持 Wan、Seedance、Kling 等多种视频模型。', texts)
+        self.assertIn('尾帧、参考素材与随机种子。链接需公网可访问；不需要可留空。', texts)
+        self.assertIn('校验通过后 Key 只保存在本机；无效 Key 不会写入。', texts)
+        self.assertIn('校验并保存', texts)
+        self.assertIn('管理额度和有效期 →', texts)
         self.assertIn('Wan 3.0 限时折扣至 10 月 7 日', texts)
         self.assertFalse(any('界面设计预览' in text for text in texts))
+        # Get-key CTA must not compete with Sign in (Link style, not Accent).
+        self.assertEqual(str(self.gui.get_key_btn.cget('style')), 'Link.TButton')
+        # Traffic-light soft (no key): red/yellow/green dots present, sign-in cue.
+        self.gui.keys = []
+        self.gui.key_status_kind = 'soft'
+        self.gui.sync_keys()
+        self.root.update()
+        self.assertTrue(hasattr(self.gui, 'header_key_pill'))
+        self.assertEqual(self.gui.header_key_pill.current_state(), 'soft')
+        self.assertEqual(self.gui.keys_key_pill.current_state(), 'soft')
         self.gui.key_input.set('sk-test-only-one, sk-test-only-two')
-        self.gui.add_keys()
+        with patch.object(app, 'verify_key', return_value={'ok': True, 'kind': None, 'detail': '', 'http': 200}):
+            self.gui.add_keys()
+            for _ in range(40):
+                self.gui.drain()
+                self.root.update()
+                if len(self.gui.keys) == 2 and not getattr(self.gui, 'key_verify_busy', False):
+                    break
         self.assertEqual(len(self.gui.keys), 2)
         self.assertEqual(self.gui.key_input.get(), '')
         self.assertEqual(self.gui.key_count.get(), '共 2 个 Key')
+        self.assertEqual(self.gui.header_key_pill.current_state(), 'ok')
+        self.assertEqual(self.gui.keys_verify_pill.current_state(), 'ok')
         self.assertNotIn('sk-test', ' '.join(self.gui.key_list.get(0, 'end')))
         self.gui.key_list.selection_clear(0, 'end')
         self.gui.key_list.selection_set(1)
@@ -117,6 +138,23 @@ class StudioUITests(unittest.TestCase):
         self.gui.remove_key()
         self.assertEqual(self.gui.keys, ['sk-test-only-one'])
         self.assertEqual(self.gui.key_count.get(), '共 1 个 Key')
+
+    def test_key_verify_failure_lights_red(self):
+        self.gui.key_input.set('sk-bad-key-xxxx')
+        with patch.object(app, 'verify_key', return_value={'ok': False, 'kind': 'AUTH', 'detail': '', 'http': 401}):
+            with patch.object(app.messagebox, 'showerror'):
+                self.gui.add_keys()
+                for _ in range(40):
+                    self.gui.drain()
+                    self.root.update()
+                    if not getattr(self.gui, 'key_verify_busy', False):
+                        break
+        self.assertEqual(self.gui.keys, [])
+        self.assertEqual(self.gui.header_key_pill.current_state(), 'bad')
+        self.assertEqual(self.gui.keys_verify_pill.current_state(), 'bad')
+        self.assertEqual(self.gui.key_badge.get(), '要检查')
+
+
 
 
 class ResourceTests(unittest.TestCase):
@@ -221,7 +259,13 @@ class LanguageSwitchTests(unittest.TestCase):
 
     def test_switch_to_english_and_back_keeps_everything(self):
         self.gui.key_input.set('sk-test-only-one')
-        self.gui.add_keys()
+        with patch.object(app, 'verify_key', return_value={'ok': True, 'kind': None, 'detail': '', 'http': 200}):
+            self.gui.add_keys()
+            for _ in range(40):
+                self.gui.drain()
+                self.root.update()
+                if self.gui.keys == ['sk-test-only-one'] and not getattr(self.gui, 'key_verify_busy', False):
+                    break
         self.gui.prompt.insert('1.0', 'Total length 12s, 9:16 vertical. 0-4s: hook; 4-12s: chase')
         self.gui.apply_prompt()
         self.gui.seed.set('42')
