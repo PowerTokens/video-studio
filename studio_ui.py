@@ -54,6 +54,9 @@ def apply_theme(root):
     style.configure('Heading.TLabel', background=PAGE, font=(FONT, 17, 'bold'))
     style.configure('CardTitle.TLabel', font=(FONT, 11, 'bold'))
     style.configure('Badge.TLabel', foreground='#328f80', background=PALE, padding=(12, 6))
+    # Official-console-like chips: pill name + credits (match web .user-chip / .credits-chip).
+    style.configure('UserChip.TLabel', foreground='#2f4558', background='#f3f7f6', padding=(12, 6))
+    style.configure('CreditsChip.TLabel', foreground='#0e8f85', background='#eafaf7', padding=(12, 6))
     style.configure('TButton', background=WHITE, foreground='#4b6073',
                     bordercolor=LINE, lightcolor=WHITE, darkcolor=WHITE,
                     padding=(14, 8), relief='flat', focusthickness=1, focuscolor=ACCENT)

@@ -113,16 +113,16 @@ class App:
             self.logo_label = ttk.Label(brand, image=self.logo_image)
             self.logo_label.pack(side='left', padx=(0, 12))
         ttk.Label(brand, text=APP_NAME, style='Brand.TLabel').pack(side='left')
-        # 中文 / English switch, top right. Applies immediately (the window is rebuilt in place).
+        # Language dropdown (OS/browser detect → English default; persist after user choice).
         switch = ttk.Frame(brand)
         switch.pack(side='right')
-        self.lang_buttons = {}
-        for code in LANGUAGES:
-            button = ttk.Button(switch, text=LANGUAGE_NAMES[code], takefocus=0,
-                                style='LangActive.TButton' if code == get_language() else 'Lang.TButton',
-                                command=lambda code=code: self.switch_language(code))
-            button.pack(side='left')
-            self.lang_buttons[code] = button
+        self.lang_var = tk.StringVar(value=LANGUAGE_NAMES.get(get_language(), 'English'))
+        self.lang_combo = ttk.Combobox(
+            switch, textvariable=self.lang_var, state='readonly', width=12,
+            values=[LANGUAGE_NAMES[code] for code in LANGUAGES])
+        self.lang_combo.pack(side='left')
+        self.lang_combo.bind('<<ComboboxSelected>>', self._on_lang_picked)
+        self.lang_buttons = {}  # kept for older tests / capture_state compatibility
         self.help_tips_btn = ttk.Button(switch, text=t('onboard_help'), style='Link.TButton',
                                         command=self.show_onboarding)
         self.help_tips_btn.pack(side='left', padx=(12, 0))
@@ -138,8 +138,8 @@ class App:
         self.header_oauth_btn.pack(side='right')
         self.header_logout_btn = ttk.Button(header_row, text=t('oauth_logout'), style='Link.TButton',
                                             command=self.logout_oauth)
-        self.oauth_credits_label = ttk.Label(header_row, textvariable=self.oauth_credits_var, style='Badge.TLabel')
-        self.oauth_account_label = ttk.Label(header_row, textvariable=self.oauth_account_var, style='Badge.TLabel')
+        self.oauth_credits_label = ttk.Label(header_row, textvariable=self.oauth_credits_var, style='CreditsChip.TLabel')
+        self.oauth_account_label = ttk.Label(header_row, textvariable=self.oauth_account_var, style='UserChip.TLabel')
         self.header_key_pill = KeyStatusPill(header_row, chrome=WHITE)
         self.header_key_pill.pack(side='right', padx=12)
         self._refresh_oauth_header()
@@ -156,6 +156,12 @@ class App:
         self.build_keys(pages[4].body)
         self.status = tk.StringVar(value=t('status_ready'))
         label(shell, variable=self.status, style='Page.TLabel').pack(fill='x', padx=28, pady=(8, 12))
+
+    def _on_lang_picked(self, *_):
+        name = (self.lang_var.get() if hasattr(self, 'lang_var') else '') or ''
+        code = next((c for c, n in LANGUAGE_NAMES.items() if n == name), None)
+        if code:
+            self.switch_language(code)
 
     def switch_language(self, lang):
         """Switch the UI language now and remember it in settings.json."""
@@ -656,9 +662,11 @@ class App:
         self.keys_oauth_status = tk.StringVar(value='')
         self.keys_oauth_status_label = label(oauth, variable=self.keys_oauth_status)
         self.keys_oauth_status_label.pack(fill='x', pady=(0, 8))
+        self.keys_oauth_hint = label(oauth, t('oauth_use_header'), style='Muted.TLabel')
+        self.keys_oauth_hint.pack(anchor='w', pady=(0, 4))
         self.keys_oauth_login_btn = ttk.Button(oauth, text=t('oauth_login'), style='Accent.TButton',
                                                command=self.start_oauth_login)
-        self.keys_oauth_login_btn.pack(anchor='w')
+        # Not packed: header owns the primary Sign-in CTA (dedupe).
         self.keys_oauth_logout_btn = ttk.Button(oauth, text=t('oauth_logout'), style='Link.TButton',
                                                 command=self.logout_oauth)
         # Shown when signed in; packed by _refresh_oauth_header.
@@ -917,8 +925,11 @@ class App:
         name = (profile.get('name') or profile.get('email') or '').strip()
         credits = profile.get('credits')
         if hasattr(self, 'oauth_account_var'):
-            self.oauth_account_var.set(t('oauth_signed_in', name) if logged_in and name else (
-                t('oauth_signed_in', 'PowerTokens') if logged_in else ''))
+            # Name-only chip; credits live on the credits chip (official console pattern).
+            if logged_in:
+                self.oauth_account_var.set(name or 'PowerTokens')
+            else:
+                self.oauth_account_var.set('')
         if hasattr(self, 'oauth_credits_var'):
             if logged_in and credits is not None:
                 self.oauth_credits_var.set(t('oauth_credits', credits))
@@ -977,14 +988,19 @@ class App:
             else:
                 self.keys_oauth_status.set('')
         if hasattr(self, 'keys_oauth_login_btn'):
+            # Deduped: primary Sign in lives in the header account cluster.
             try:
-                if logged_in:
-                    self.keys_oauth_login_btn.pack_forget()
+                self.keys_oauth_login_btn.pack_forget()
+            except tk.TclError:
+                pass
+        if hasattr(self, 'keys_oauth_hint'):
+            try:
+                if logged_in or self.oauth_busy:
+                    self.keys_oauth_hint.pack_forget()
                 else:
-                    state = 'disabled' if self.oauth_busy else 'normal'
-                    self.keys_oauth_login_btn.configure(state=state, text=t('oauth_busy') if self.oauth_busy else t('oauth_login'))
-                    if not self.keys_oauth_login_btn.winfo_manager():
-                        self.keys_oauth_login_btn.pack(anchor='w')
+                    self.keys_oauth_hint.configure(text=t('oauth_use_header'))
+                    if not self.keys_oauth_hint.winfo_manager():
+                        self.keys_oauth_hint.pack(anchor='w', pady=(0, 4))
             except tk.TclError:
                 pass
         if hasattr(self, 'keys_oauth_logout_btn'):

@@ -96,7 +96,8 @@ class LanguageChoiceTests(unittest.TestCase):
 
     def test_default_follows_windows_display_language(self):
         with patch.object(i18n, '_current', None):
-            for langid, expected in ((0x0804, 'zh'), (0x0404, 'zh'), (0x0409, 'en'), (0x0411, 'en')):
+            for langid, expected in ((0x0804, 'zh'), (0x0404, 'zh'), (0x0409, 'en'), (0x0411, 'en'),
+                                       (0x0C0A, 'es'), (0x0416, 'pt')):
                 with patch.object(i18n, 'windows_ui_language', return_value=langid):
                     self.assertEqual(i18n.system_language(), expected, hex(langid))
             with patch.object(i18n, 'windows_ui_language', return_value=None), \
@@ -115,6 +116,13 @@ class LanguageChoiceTests(unittest.TestCase):
     def test_rejects_unknown_language(self):
         with self.assertRaises(ValueError):
             i18n.set_language('fr')
+
+    def test_spanish_and_portuguese_chrome(self):
+        i18n.set_language('es')
+        self.assertEqual(i18n.t('tab_generate'), 'Generar vídeo')
+        self.assertIn('cabecera', i18n.t('oauth_use_header'))
+        i18n.set_language('pt')
+        self.assertEqual(i18n.t('oauth_login'), 'Entrar com PowerTokens')
 
 
 class PromoTests(English):

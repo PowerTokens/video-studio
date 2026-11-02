@@ -1,14 +1,15 @@
-"""Tiny i18n layer: Chinese (zh) and English (en) UI strings, t(key) lookup, persisted choice.
+"""Tiny i18n layer: zh / en / es / pt UI strings, t(key) lookup, persisted choice.
 
 Chinese strings are the original v1.10 wording. English strings are written for the English UI,
-not translated word for word. A value may be a (singular, plural) tuple; pass count= to t().
+not translated word for word. Spanish and Portuguese overlay English for chrome strings and
+fall back to English for the rest. A value may be a (singular, plural) tuple; pass count= to t().
 """
 import json
 import os
 from pathlib import Path
 
-LANGUAGES = ('zh', 'en')
-LANGUAGE_NAMES = {'zh': '中文', 'en': 'English'}
+LANGUAGES = ('zh', 'en', 'es', 'pt')
+LANGUAGE_NAMES = {'zh': '中文', 'en': 'English', 'es': 'Español', 'pt': 'Português'}
 # Same folder as wan_core.DATA_DIR; kept here so i18n has no imports from the app.
 SETTINGS_PATH = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / '.local' / 'share'))) / 'PowerTokensWan' / 'settings.json'
 
@@ -260,6 +261,7 @@ ZH = {
     'chain_wan_data_url_note': 'Wan 文档要求公网图片 URL；当前尝试用内嵌图片提交，需用真实 Key 验证。',
     'chain_unsupported': '该模型不支持首帧图生视频，已跳过接上一段。',
     'oauth_login': '登录 PowerTokens',
+    'oauth_use_header': '请使用顶栏的「登录 PowerTokens」',
     'oauth_logout': '退出登录',
     'oauth_for_beginners': '适合大多数用户',
     'oauth_card': '登录 — Key 与积分自动填入',
@@ -755,6 +757,7 @@ EN = {
     'chain_wan_data_url_note': 'Wan docs ask for a public image URL; trying an embedded image (verify with a live key).',
     'chain_unsupported': 'This model does not support first-frame image-to-video; chain skipped for this row.',
     'oauth_login': 'Sign in with PowerTokens',
+    'oauth_use_header': 'Use Sign in with PowerTokens in the header',
     'oauth_logout': 'Sign out',
     'oauth_for_beginners': 'Recommended for most users',
     'oauth_card': 'Sign in — key & credits fill in automatically',
@@ -1003,7 +1006,120 @@ EN = {
     'mcp_resume': 'Check and download an existing task with its original key; nothing new is submitted.',
 }
 
-STRINGS = {'zh': ZH, 'en': EN}
+
+# Spanish / Portuguese: start from English, overlay chrome UI strings.
+ES_OVERLAY = {
+    'subtitle': 'Generación de vídeo IA multi-modelo',
+    'badge_no_key': 'Inicia sesión para rellenar la clave',
+    'badge_keys': '%d claves añadidas',
+    'key_status_ok': 'Lista',
+    'key_status_signin': 'Iniciar sesión',
+    'key_status_check': 'Revisar',
+    'key_status_quota': 'Recargar',
+    'key_status_verifying': 'Verificando',
+    'key_chip_ok': 'Clave lista — puedes generar',
+    'key_chip_none': 'Inicia sesión para rellenar la clave',
+    'key_chip_auth': 'Clave inválida o caducada',
+    'key_chip_quota': 'Saldo o cuota insuficiente',
+    'key_chip_verifying': 'Verificando clave…',
+    'header_get_key': 'Iniciar sesión con PowerTokens',
+    'tab_generate': 'Generar vídeo',
+    'tab_batch': 'Importación por lotes',
+    'tab_history': 'Historial / Reanudar',
+    'tab_keys': 'API Key',
+    'tab_compare': 'Comparar modelos',
+    'status_ready': 'Listo · Inicia sesión con PowerTokens (o pega una clave en API Key)',
+    'status_idle': 'Listo',
+    'lang_saved_title': 'Idioma guardado',
+    'lang_saved_busy': 'Hay tareas en curso; el nuevo idioma se aplica al reiniciar la app.',
+    'official_site': 'Sitio PT',
+    'gen_title': 'Generar vídeo',
+    'gen_desc': 'Escribe la idea, ajusta parámetros y genera un vídeo con audio nativo.',
+    'keys_title': 'API Key',
+    'keys_desc': 'La mayoría solo inicia sesión una vez: la clave y los créditos se rellenan solos. Si ya tienes una sk- o necesitas varias, usa Avanzado abajo.',
+    'pool_card': 'Avanzado · Grupo de claves',
+    'pool_card_desc': 'Pega tus propias claves sk- aquí si ya las gestionas en el sitio.',
+    'oauth_login': 'Iniciar sesión con PowerTokens',
+    'oauth_logout': 'Cerrar sesión',
+    'oauth_use_header': 'Usa «Iniciar sesión con PowerTokens» en la cabecera',
+    'oauth_for_beginners': 'Recomendado para la mayoría',
+    'oauth_card': 'Inicia sesión — clave y créditos automáticos',
+    'oauth_card_desc': 'Inicia sesión una vez. Guardamos la clave por defecto y mostramos tu nombre y créditos.',
+    'oauth_signed_in': 'Sesión iniciada · %s',
+    'oauth_credits': 'Créditos %s',
+    'oauth_busy': 'Abriendo el inicio de sesión…',
+    'oauth_ok': 'Sesión iniciada — clave API guardada',
+    'oauth_ok_nokey': 'Sesión iniciada (sin clave por defecto; pégala en Avanzado)',
+    'oauth_fail': 'Error al iniciar sesión: %s',
+    'oauth_advanced_show': 'Mostrar pegado avanzado de clave',
+    'oauth_advanced_hide': 'Ocultar pegado avanzado de clave',
+    'onboard_help': 'Consejos',
+    'onboard_get_key': 'Iniciar sesión',
+    'generate_btn': 'Generar vídeo',
+    'add_btn': 'Verificar y guardar',
+    'show_key': 'Mostrar',
+    'paste_hint': 'Tras verificar, la clave solo permanece en este equipo; las inválidas no se guardan.',
+}
+
+PT_OVERLAY = {
+    'subtitle': 'Geração de vídeo IA multi-modelo',
+    'badge_no_key': 'Entre para preencher a chave',
+    'badge_keys': '%d chaves adicionadas',
+    'key_status_ok': 'Pronta',
+    'key_status_signin': 'Entrar',
+    'key_status_check': 'Verificar',
+    'key_status_quota': 'Recarregar',
+    'key_status_verifying': 'A verificar',
+    'key_chip_ok': 'Chave pronta — pode gerar',
+    'key_chip_none': 'Entre para preencher a chave',
+    'key_chip_auth': 'Chave inválida ou expirada',
+    'key_chip_quota': 'Saldo ou cota insuficiente',
+    'key_chip_verifying': 'A verificar chave…',
+    'header_get_key': 'Entrar com PowerTokens',
+    'tab_generate': 'Gerar vídeo',
+    'tab_batch': 'Importação em lote',
+    'tab_history': 'Histórico / Retomar',
+    'tab_keys': 'API Key',
+    'tab_compare': 'Comparar modelos',
+    'status_ready': 'Pronto · Entre com PowerTokens (ou cole uma chave em API Key)',
+    'status_idle': 'Pronto',
+    'lang_saved_title': 'Idioma guardado',
+    'lang_saved_busy': 'Há tarefas a decorrer; o novo idioma aplica-se ao reiniciar a app.',
+    'official_site': 'Site PT',
+    'gen_title': 'Gerar vídeo',
+    'gen_desc': 'Escreva a ideia, ajuste os parâmetros e gere um vídeo com áudio nativo.',
+    'keys_title': 'API Key',
+    'keys_desc': 'A maioria só entra uma vez: a chave e os créditos preenchem-se sozinhos. Se já tiver uma sk- ou precisar de várias, use Avançado abaixo.',
+    'pool_card': 'Avançado · Grupo de chaves',
+    'pool_card_desc': 'Cole as suas próprias chaves sk- aqui se já as gere no site.',
+    'oauth_login': 'Entrar com PowerTokens',
+    'oauth_logout': 'Terminar sessão',
+    'oauth_use_header': 'Use «Entrar com PowerTokens» no cabeçalho',
+    'oauth_for_beginners': 'Recomendado para a maioria',
+    'oauth_card': 'Entre — chave e créditos automáticos',
+    'oauth_card_desc': 'Entre uma vez. Guardamos a chave predefinida e mostramos o seu nome e créditos.',
+    'oauth_signed_in': 'Sessão iniciada · %s',
+    'oauth_credits': 'Créditos %s',
+    'oauth_busy': 'A abrir o início de sessão…',
+    'oauth_ok': 'Sessão iniciada — chave API guardada',
+    'oauth_ok_nokey': 'Sessão iniciada (sem chave predefinida; cole em Avançado)',
+    'oauth_fail': 'Falha ao entrar: %s',
+    'oauth_advanced_show': 'Mostrar colagem avançada de chave',
+    'oauth_advanced_hide': 'Ocultar colagem avançada de chave',
+    'onboard_help': 'Dicas',
+    'onboard_get_key': 'Entrar',
+    'generate_btn': 'Gerar vídeo',
+    'add_btn': 'Verificar e guardar',
+    'show_key': 'Mostrar',
+    'paste_hint': 'Após verificar, a chave fica só neste equipamento; inválidas não são guardadas.',
+}
+
+ES = dict(EN)
+ES.update(ES_OVERLAY)
+PT = dict(EN)
+PT.update(PT_OVERLAY)
+
+STRINGS = {'zh': ZH, 'en': EN, 'es': ES, 'pt': PT}
 _current = None
 
 
@@ -1018,16 +1134,44 @@ def windows_ui_language():
         return None
 
 
+def _locale_to_language(tag):
+    """Map a BCP47 / Windows / POSIX language tag to a supported LANGUAGES code, else None."""
+    raw = str(tag or '').strip().lower().replace('_', '-')
+    if not raw:
+        return None
+    primary = raw.split('-', 1)[0]
+    if primary == 'zh' or raw.startswith('zh'):
+        return 'zh'
+    if primary == 'es':
+        return 'es'
+    if primary == 'pt':
+        return 'pt'
+    if primary == 'en':
+        return 'en'
+    return None
+
+
 def system_language():
-    """'zh' when the Windows display language (or the POSIX locale) is Chinese, else 'en'."""
+    """Detect OS UI language; unrecognized → English."""
     langid = windows_ui_language()
     if langid is not None:
-        # Primary language ID 0x04 = Chinese (Simplified and Traditional).
-        return 'zh' if langid & 0x3FF == 0x04 else 'en'
+        primary = langid & 0x3FF
+        # 0x04 Chinese, 0x0A Spanish, 0x16 Portuguese, else English (incl. 0x09).
+        if primary == 0x04:
+            return 'zh'
+        if primary == 0x0A:
+            return 'es'
+        if primary == 0x16:
+            return 'pt'
+        return 'en'
     for name in ('LC_ALL', 'LC_MESSAGES', 'LANG', 'LANGUAGE'):
         value = os.environ.get(name)
         if value:
-            return 'zh' if value.lower().startswith('zh') else 'en'
+            # LANGUAGE may be a colon-separated preference list.
+            for part in str(value).split(':'):
+                mapped = _locale_to_language(part.split('.')[0])
+                if mapped:
+                    return mapped
     return 'en'
 
 
@@ -1088,8 +1232,11 @@ def is_zh():
 
 
 def t(key, *args, count=None):
-    """Look up key in the current language (falls back to Chinese), then apply % args."""
-    value = STRINGS[get_language()].get(key)
+    """Look up key in the current language (falls back to English, then Chinese)."""
+    table = STRINGS.get(get_language()) or {}
+    value = table.get(key)
+    if value is None:
+        value = EN.get(key)
     if value is None:
         value = ZH[key]
     if isinstance(value, tuple) and count is not None:
