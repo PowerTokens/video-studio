@@ -13,3 +13,10 @@ A full Windows build cannot be verified on Linux CI; confirm on a Windows machin
 ## Packaging check (Linux)
 
 `PyInstaller.utils.hooks.collect_all("imageio_ffmpeg")` / `collect_data_files("imageio_ffmpeg")` lists the ffmpeg binary under `imageio_ffmpeg/binaries/` (~76 MB on Linux wheels; Windows wheels are in the same ~70–80 MB range). A full Windows EXE build must still be run on Windows.
+
+## Follow-up: desktop download UTM jump (deferred)
+
+In-app and OAuth already send `utm_source=videostudio&utm_medium=app&utm_campaign=video-studio`
+(with `utm_content=app.oauth_authorize` on authorize). A powertokens.ai download jump page
+that 302s to the GitHub `.exe` with UTM is **not** built yet — track as a follow-up so
+Release/download attribution stops landing as unknown.

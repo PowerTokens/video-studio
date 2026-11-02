@@ -48,6 +48,25 @@ class AuthorizeUrlTests(unittest.TestCase):
         self.assertEqual(q['state'], 'abc')
         self.assertEqual(q['code_challenge'], 'challenge123')
         self.assertEqual(q['code_challenge_method'], 'S256')
+        # Required: last-touch UTM on authorize
+        self.assertEqual(q['utm_source'], 'videostudio')
+        self.assertEqual(q['utm_medium'], 'app')
+        self.assertEqual(q['utm_campaign'], 'video-studio')
+        self.assertEqual(q['utm_content'], 'app.oauth_authorize')
+
+    def test_authorize_uses_explicit_utm_override(self):
+        url = oauth_desktop.build_authorize_url(
+            'http://127.0.0.1:53682/callback', 'abc', 'challenge123',
+            utm={
+                'utm_source': 'github',
+                'utm_medium': 'release',
+                'utm_campaign': 'video-studio',
+                'utm_content': 'app.oauth_authorize',
+            })
+        q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))
+        self.assertEqual(q['utm_source'], 'github')
+        self.assertEqual(q['utm_medium'], 'release')
+        self.assertEqual(q['utm_content'], 'app.oauth_authorize')
 
 
 class LoopbackTests(unittest.TestCase):

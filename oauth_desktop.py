@@ -61,7 +61,9 @@ def make_state() -> str:
 
 
 def build_authorize_url(redirect_uri: str, state: str, code_challenge: str,
-                        client_id: str = CLIENT_ID, scope: str = SCOPE) -> str:
+                        client_id: str = CLIENT_ID, scope: str = SCOPE,
+                        utm: Optional[dict] = None) -> str:
+    """Authorize URL. Always appends last-touch UTM (required for backend attribution)."""
     params = {
         'client_id': client_id,
         'redirect_uri': redirect_uri,
@@ -71,6 +73,21 @@ def build_authorize_url(redirect_uri: str, state: str, code_challenge: str,
         'code_challenge': code_challenge,
         'code_challenge_method': 'S256',
     }
+    # Required: last-touch UTM so backend can attribute desktop OAuth.
+    try:
+        import utm_attr
+        utm_attr.capture_from_env()
+        track = utm if utm is not None else utm_attr.params_for(utm_attr.CONTENT_OAUTH)
+    except Exception:
+        track = {
+            'utm_source': 'videostudio',
+            'utm_medium': 'app',
+            'utm_campaign': 'video-studio',
+            'utm_content': 'app.oauth_authorize',
+        }
+    for k, v in track.items():
+        if v is not None and str(v) != '':
+            params[k] = str(v)
     return AUTHORIZE_URL + '?' + urllib.parse.urlencode(params)
 
 
