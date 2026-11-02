@@ -307,3 +307,29 @@ class KeyPoolTests(unittest.TestCase):
         self.assertEqual(api.call_args_list[1].args[2], 'key-a')  # same key, not key-b
         self.assertFalse(pool.is_exhausted('key-a'))
         self.assertFalse(pool.is_exhausted('key-b'))
+
+
+class VerifyKeyTests(unittest.TestCase):
+    def test_verify_key_ok_on_200(self):
+        with patch.object(w, 'api', return_value=(200, {'data': []})):
+            result = w.verify_key('sk-live')
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['http'], 200)
+
+    def test_verify_key_auth_on_401(self):
+        with patch.object(w, 'api', return_value=(401, {'error': {'message': 'invalid token'}})):
+            result = w.verify_key('sk-bad')
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['kind'], 'AUTH')
+
+    def test_verify_key_network(self):
+        with patch.object(w, 'api', return_value=(None, {})):
+            result = w.verify_key('sk-x')
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['kind'], 'NETWORK')
+
+    def test_verify_key_empty(self):
+        result = w.verify_key('')
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['kind'], 'AUTH')
+

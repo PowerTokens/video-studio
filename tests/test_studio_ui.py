@@ -100,13 +100,22 @@ class StudioUITests(unittest.TestCase):
             if isinstance(widget, (ttk.Label, ttk.Button)):
                 texts.append(str(widget.cget('text')))
         self.assertIn('任务仍在云端继续，可在任务记录里找回', texts)
-        self.assertIn('首帧 / 尾帧、参考素材与随机种子。链接需公网可访问；不需要可留空。', texts)
-        self.assertIn('直接粘贴从 PowerTokens 官网复制的 Key 即可', texts)
-        self.assertIn('还没有 Key？去 PowerTokens 注册即可使用。支持 Wan、Seedance、Kling 等多种视频模型。', texts)
+        self.assertIn('尾帧、参考素材与随机种子。链接需公网可访问；不需要可留空。', texts)
+        self.assertIn('校验通过后 Key 只保存在本机；无效 Key 不会写入。', texts)
+        self.assertIn('校验并保存', texts)
+        self.assertIn('管理额度和有效期 →', texts)
         self.assertIn('Wan 3.0 限时折扣至 10 月 7 日', texts)
         self.assertFalse(any('界面设计预览' in text for text in texts))
+        # Get-key CTA must not compete with Sign in (Link style, not Accent).
+        self.assertEqual(str(self.gui.get_key_btn.cget('style')), 'Link.TButton')
         self.gui.key_input.set('sk-test-only-one, sk-test-only-two')
-        self.gui.add_keys()
+        with patch.object(app, 'verify_key', return_value={'ok': True, 'kind': None, 'detail': '', 'http': 200}):
+            self.gui.add_keys()
+            for _ in range(40):
+                self.gui.drain()
+                self.root.update()
+                if len(self.gui.keys) == 2 and not getattr(self.gui, 'key_verify_busy', False):
+                    break
         self.assertEqual(len(self.gui.keys), 2)
         self.assertEqual(self.gui.key_input.get(), '')
         self.assertEqual(self.gui.key_count.get(), '共 2 个 Key')
@@ -221,7 +230,13 @@ class LanguageSwitchTests(unittest.TestCase):
 
     def test_switch_to_english_and_back_keeps_everything(self):
         self.gui.key_input.set('sk-test-only-one')
-        self.gui.add_keys()
+        with patch.object(app, 'verify_key', return_value={'ok': True, 'kind': None, 'detail': '', 'http': 200}):
+            self.gui.add_keys()
+            for _ in range(40):
+                self.gui.drain()
+                self.root.update()
+                if self.gui.keys == ['sk-test-only-one'] and not getattr(self.gui, 'key_verify_busy', False):
+                    break
         self.gui.prompt.insert('1.0', 'Total length 12s, 9:16 vertical. 0-4s: hook; 4-12s: chase')
         self.gui.apply_prompt()
         self.gui.seed.set('42')

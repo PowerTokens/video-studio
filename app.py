@@ -24,7 +24,7 @@ from models import (DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id, 
                    format_adjust_notice, model_allows_first_frame, allowed_media_types)
 from frame_util import encode_local_image_as_data_url
 from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices, list_prices,
-                      TaskError, atomic_json, estimate_cost, fingerprint, payload)
+                      TaskError, atomic_json, estimate_cost, fingerprint, payload, verify_key)
 import oauth_desktop
 
 OFFICIAL_KEY_URL = 'https://powertokens.ai/zh-Hans/api-keys?' + UTM
@@ -90,6 +90,7 @@ class App:
         root.minsize(min(860, width), min(620, height))
         self.oauth_session = None
         self.oauth_busy = False
+        self.key_verify_busy = False
         self.build_ui()
         self.load_keys()
         self._load_oauth_session()
@@ -674,7 +675,12 @@ class App:
                         command=lambda: self.key_entry.configure(show='' if self.show_key.get() else '•')).pack(side='left', padx=(10, 0))
         self.key_entry.bind('<Return>', lambda event: self.add_keys())
         label(add, t('paste_hint')).pack(fill='x', pady=(0, 12))
-        ttk.Button(add, text=t('add_btn'), style='Accent.TButton', command=self.add_keys).pack(anchor='w')
+        add_actions = ttk.Frame(add)
+        add_actions.pack(fill='x')
+        self.add_keys_btn = ttk.Button(add_actions, text=t('add_btn'), style='Accent.TButton', command=self.add_keys)
+        self.add_keys_btn.pack(side='left')
+        ttk.Button(add_actions, text=t('get_btn'), style='Link.TButton',
+                   command=self.open_official_keys).pack(side='left', padx=(12, 0))
         pool = card(self.keys_advanced_body, t('pool_card'), t('pool_card_desc'))
         self.key_count = tk.StringVar(value=t('key_count', 0, count=0))
         label(pool, variable=self.key_count, style='Badge.TLabel').pack(anchor='w', pady=(0, 8))
@@ -702,10 +708,11 @@ class App:
         ttk.Button(pool, text=t('remove_key'), command=self.remove_key).pack(anchor='w', pady=(12, 0))
         label(pool, t('pool_note')).pack(fill='x', pady=(10, 0))
 
+        # Site key management is a secondary link (same as web Advanced), not a competing CTA.
         get = card(columns.right, t('get_card'), t('get_card_desc'))
         self.promo_label = label(get, promotion_text(), style='Badge.TLabel')
-        self.get_key_btn = ttk.Button(get, text=t('get_btn'), style='Accent.TButton', command=self.open_official_keys)
-        self.get_key_btn.pack(fill='x')
+        self.get_key_btn = ttk.Button(get, text=t('get_btn'), style='Link.TButton', command=self.open_official_keys)
+        self.get_key_btn.pack(anchor='w')
         self.refresh_promo()
         label(get, t('get_note')).pack(fill='x', pady=(12, 0))
         save = card(columns.right, t('local_card'))
@@ -1011,7 +1018,8 @@ class App:
         key = result.get('key') or oauth_desktop.normalize_api_key((result.get('userinfo') or {}).get('key'))
         key_applied = False
         if key:
-            # Put the OAuth default key first so selected_key() / sync_keys pick it.
+            # OAuth userinfo key is already authenticated — apply without GET /v1/models
+            # (matches web: no extra validate friction on the Sign-in path).
             self.keys = list(dict.fromkeys([key] + list(self.keys)))
             # Beginner path: persist via existing DPAPI remember toggle on Windows.
             if os.name == 'nt' and hasattr(self, 'remember') and not self.remember.get():
@@ -1082,17 +1090,81 @@ class App:
         if self.keys:
             self.key_list.selection_set(0)
 
+    def _set_key_verify_busy(self, busy):
+        self.key_verify_busy = bool(busy)
+        if hasattr(self, 'add_keys_btn'):
+            if busy:
+                self.add_keys_btn.configure(text=t('key_verifying'), state='disabled')
+            else:
+                self.add_keys_btn.configure(text=t('add_btn'), state='normal')
+
+    def _verify_fail_message(self, result):
+        kind = (result or {}).get('kind')
+        if kind == 'NETWORK':
+            return t('key_verify_fail_network')
+        if kind == 'QUOTA':
+            return t('key_verify_fail_quota')
+        if kind == 'AUTH':
+            return t('key_verify_fail_auth')
+        detail = str((result or {}).get('detail') or '').strip()
+        if detail:
+            return t('key_verify_fail_detail', detail)
+        return t('key_verify_fail')
+
     def add_keys(self):
+        """Advanced paste: live-verify (GET /v1/models) before writing the pool — same as web."""
+        if getattr(self, 'key_verify_busy', False):
+            return
         try:
             keys = parse_keys(self.key_input.get())
         except ValueError as exc:
             messagebox.showerror(t('key_format_title'), str(exc))
             return
-        self.keys = list(dict.fromkeys(self.keys + keys))
-        self.key_input.set('')
-        self.status.set(t('keys_added_status', len(self.keys), count=len(self.keys)))
-        self.sync_keys()
-        self.save_keys()
+        pending = [k for k in keys if k not in self.keys]
+        if not pending:
+            self.key_input.set('')
+            self.status.set(t('keys_added_status', len(self.keys), count=len(self.keys)))
+            return
+        self._set_key_verify_busy(True)
+        self.status.set(t('key_verifying'))
+
+        def worker():
+            ok_keys = []
+            fails = []
+            for key in pending:
+                try:
+                    result = verify_key(key)
+                except Exception as exc:
+                    result = {'ok': False, 'kind': 'NETWORK', 'detail': str(exc), 'http': None}
+                if result.get('ok'):
+                    ok_keys.append(key)
+                else:
+                    fails.append({'key': key, 'result': result})
+            self.events.put(('keys_verify_done', {'ok': ok_keys, 'fails': fails}))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _keys_verify_done(self, payload):
+        self._set_key_verify_busy(False)
+        ok_keys = list((payload or {}).get('ok') or [])
+        fails = list((payload or {}).get('fails') or [])
+        if ok_keys:
+            self.keys = list(dict.fromkeys(list(self.keys) + ok_keys))
+            self.key_input.set('')
+            self.sync_keys()
+            self.save_keys()
+            hints = ', '.join('…' + k[-4:] for k in ok_keys)
+            self.status.set(t('key_verify_ok', hints) + ' · ' + t('keys_added_status', len(self.keys), count=len(self.keys)))
+        if fails:
+            # Reject invalid keys — never write them. Surface the first failure clearly.
+            first = fails[0]
+            msg = self._verify_fail_message(first.get('result'))
+            if len(fails) > 1:
+                msg = t('key_verify_fail_multi', len(fails), msg)
+            self.status.set(msg)
+            messagebox.showerror(t('key_verify_title'), msg)
+        elif not ok_keys:
+            self.status.set(t('key_verify_fail'))
 
     def remove_key(self):
         selected = self.key_list.curselection()
@@ -1252,6 +1324,9 @@ class App:
                     continue
                 if kind == 'oauth_fail':
                     self._oauth_fail(text)
+                    continue
+                if kind == 'keys_verify_done':
+                    self._keys_verify_done(text)
                     continue
                 if kind == 'batch_update':
                     self.batch.update_job(text)
