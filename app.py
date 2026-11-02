@@ -25,6 +25,7 @@ from models import (DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id, 
 from frame_util import encode_local_image_as_data_url
 from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices, list_prices,
                       TaskError, atomic_json, estimate_cost, fingerprint, payload)
+import oauth_desktop
 
 OFFICIAL_KEY_URL = 'https://powertokens.ai/zh-Hans/api-keys?' + UTM
 OFFICIAL_KEY_URL_EN = 'https://powertokens.ai/api-keys?' + UTM
@@ -87,8 +88,11 @@ class App:
         height = min(int(920 * self.scale), root.winfo_screenheight() - 90)
         root.geometry('%dx%d' % (width, height))
         root.minsize(min(860, width), min(620, height))
+        self.oauth_session = None
+        self.oauth_busy = False
         self.build_ui()
         self.load_keys()
+        self._load_oauth_session()
         self.refresh_history()
         root.after(150, self.drain)
         root.protocol('WM_DELETE_WINDOW', self.close)
@@ -124,9 +128,18 @@ class App:
         header_row.pack(fill='x', pady=(8, 0))
         ttk.Label(header_row, text=subtitle(), style='Muted.TLabel').pack(side='left')
         self.key_badge = tk.StringVar(value=t('badge_no_key'))
-        ttk.Button(header_row, text=t('header_get_key'), style='Link.TButton',
-                   command=self.open_official_keys).pack(side='right')
+        self.oauth_account_var = tk.StringVar(value='')
+        self.oauth_credits_var = tk.StringVar(value='')
+        # Right side packs right-to-left: login/logout first, then credits, account, key badge.
+        self.header_oauth_btn = ttk.Button(header_row, text=t('oauth_login'), style='Accent.TButton',
+                                           command=self.start_oauth_login)
+        self.header_oauth_btn.pack(side='right')
+        self.header_logout_btn = ttk.Button(header_row, text=t('oauth_logout'), style='Link.TButton',
+                                            command=self.logout_oauth)
+        self.oauth_credits_label = ttk.Label(header_row, textvariable=self.oauth_credits_var, style='Badge.TLabel')
+        self.oauth_account_label = ttk.Label(header_row, textvariable=self.oauth_account_var, style='Badge.TLabel')
         ttk.Label(header_row, textvariable=self.key_badge, style='Badge.TLabel').pack(side='right', padx=12)
+        self._refresh_oauth_header()
         tabs = ttk.Notebook(shell)
         tabs.pack(fill='both', expand=True)
         pages = [ScrollPage(tabs) for _ in range(5)]
@@ -229,6 +242,7 @@ class App:
         self.refresh_history()
         self.status.set(t('status_idle') if self.keys else t('status_ready'))
         self.tabs.select(state['tab'])
+        self._refresh_oauth_header()
 
     def _onboarding_pending(self):
         return not bool(load_settings().get('onboarding_dismissed'))
@@ -248,8 +262,8 @@ class App:
             label(box, t(key)).pack(fill='x', pady=(0, 4))
         actions = Flow(box)
         actions.pack(fill='x', pady=(8, 0))
+        ttk.Button(actions, text=t('onboard_get_key'), style='Accent.TButton', command=self.start_oauth_login)
         ttk.Button(actions, text=t('onboard_goto_keys'), command=self._onboard_goto_keys)
-        ttk.Button(actions, text=t('onboard_get_key'), style='Link.TButton', command=self._onboard_open_signup)
         ttk.Button(actions, text=t('onboard_dismiss'), command=self.dismiss_onboarding)
         actions.schedule()
 
@@ -630,7 +644,26 @@ class App:
         heading(frame, t('keys_title'), t('keys_desc'))
         columns = Columns(frame, self.scale)
         columns.pack(fill='x')
-        add = card(columns.left, t('add_card'), t('add_card_desc'))
+
+        oauth = card(columns.left, t('oauth_card'), t('oauth_card_desc'))
+        label(oauth, t('oauth_for_beginners'), style='Badge.TLabel').pack(anchor='w', pady=(0, 10))
+        self.keys_oauth_status = tk.StringVar(value='')
+        self.keys_oauth_status_label = label(oauth, variable=self.keys_oauth_status)
+        self.keys_oauth_status_label.pack(fill='x', pady=(0, 8))
+        self.keys_oauth_login_btn = ttk.Button(oauth, text=t('oauth_login'), style='Accent.TButton',
+                                               command=self.start_oauth_login)
+        self.keys_oauth_login_btn.pack(anchor='w')
+        self.keys_oauth_logout_btn = ttk.Button(oauth, text=t('oauth_logout'), style='Link.TButton',
+                                                command=self.logout_oauth)
+        # Shown when signed in; packed by _refresh_oauth_header.
+
+        self.keys_advanced_open = tk.BooleanVar(value=False)
+        self.keys_advanced_toggle = ttk.Button(columns.left, text=t('oauth_advanced_show'), style='Link.TButton',
+                                               command=self._toggle_keys_advanced)
+        self.keys_advanced_toggle.pack(anchor='w', pady=(12, 0))
+        self.keys_advanced_body = ttk.Frame(columns.left)
+
+        add = card(self.keys_advanced_body, t('add_card'), t('add_card_desc'))
         self.key_input = tk.StringVar()
         key_row = ttk.Frame(add)
         key_row.pack(fill='x', pady=(0, 10))
@@ -642,7 +675,7 @@ class App:
         self.key_entry.bind('<Return>', lambda event: self.add_keys())
         label(add, t('paste_hint')).pack(fill='x', pady=(0, 12))
         ttk.Button(add, text=t('add_btn'), style='Accent.TButton', command=self.add_keys).pack(anchor='w')
-        pool = card(columns.left, t('pool_card'), t('pool_card_desc'))
+        pool = card(self.keys_advanced_body, t('pool_card'), t('pool_card_desc'))
         self.key_count = tk.StringVar(value=t('key_count', 0, count=0))
         label(pool, variable=self.key_count, style='Badge.TLabel').pack(anchor='w', pady=(0, 8))
         # Tip sits under the pool header so it wraps inside the card and stays visible.
@@ -668,6 +701,7 @@ class App:
         self.key_list.configure(yscrollcommand=scroll.set)
         ttk.Button(pool, text=t('remove_key'), command=self.remove_key).pack(anchor='w', pady=(12, 0))
         label(pool, t('pool_note')).pack(fill='x', pady=(10, 0))
+
         get = card(columns.right, t('get_card'), t('get_card_desc'))
         self.promo_label = label(get, promotion_text(), style='Badge.TLabel')
         self.get_key_btn = ttk.Button(get, text=t('get_btn'), style='Accent.TButton', command=self.open_official_keys)
@@ -681,6 +715,7 @@ class App:
         label(save, t('remember_note')).pack(fill='x')
         ttk.Separator(save).pack(fill='x', pady=16)
         label(save, t('no_repeat_note')).pack(fill='x')
+        self._refresh_oauth_header()
 
     def prompt_changed(self, event=None):
         if not self.prompt.edit_modified():
@@ -823,6 +858,200 @@ class App:
             self.cost.set(text + t('cost_tail'))
         except (ValueError, KeyError, TaskError):
             self.cost.set(t('cost_invalid'))
+
+
+    def _toggle_keys_advanced(self):
+        if not hasattr(self, 'keys_advanced_body'):
+            return
+        if self.keys_advanced_open.get():
+            self.keys_advanced_body.pack_forget()
+            self.keys_advanced_open.set(False)
+            self.keys_advanced_toggle.configure(text=t('oauth_advanced_show'))
+        else:
+            self.keys_advanced_body.pack(fill='x', pady=(8, 0))
+            self.keys_advanced_open.set(True)
+            self.keys_advanced_toggle.configure(text=t('oauth_advanced_hide'))
+
+    def _load_oauth_session(self):
+        """Restore a non-expired OAuth session (token + display profile, no API key)."""
+        self.oauth_session = oauth_desktop.load_session()
+        self._refresh_oauth_header()
+
+    def _oauth_profile(self):
+        session = self.oauth_session or {}
+        profile = session.get('profile') if isinstance(session, dict) else None
+        return profile if isinstance(profile, dict) else {}
+
+    def _is_oauth_logged_in(self):
+        session = self.oauth_session
+        if not session or not session.get('access_token'):
+            return False
+        expires_at = session.get('expires_at')
+        if expires_at is not None:
+            try:
+                import time as _time
+                if _time.time() > float(expires_at):
+                    return False
+            except (TypeError, ValueError):
+                return False
+        return True
+
+    def _refresh_oauth_header(self):
+        logged_in = self._is_oauth_logged_in()
+        profile = self._oauth_profile() if logged_in else {}
+        name = (profile.get('name') or profile.get('email') or '').strip()
+        credits = profile.get('credits')
+        if hasattr(self, 'oauth_account_var'):
+            self.oauth_account_var.set(t('oauth_signed_in', name) if logged_in and name else (
+                t('oauth_signed_in', 'PowerTokens') if logged_in else ''))
+        if hasattr(self, 'oauth_credits_var'):
+            if logged_in and credits is not None:
+                self.oauth_credits_var.set(t('oauth_credits', credits))
+            else:
+                self.oauth_credits_var.set('')
+        # Header buttons
+        if hasattr(self, 'header_oauth_btn'):
+            try:
+                if logged_in:
+                    self.header_oauth_btn.pack_forget()
+                else:
+                    if self.oauth_busy:
+                        self.header_oauth_btn.configure(text=t('oauth_busy'), state='disabled')
+                    else:
+                        self.header_oauth_btn.configure(text=t('oauth_login'), state='normal')
+                    if not self.header_oauth_btn.winfo_manager():
+                        self.header_oauth_btn.pack(side='right')
+            except tk.TclError:
+                pass
+        if hasattr(self, 'header_logout_btn'):
+            try:
+                if logged_in:
+                    if not self.header_logout_btn.winfo_manager():
+                        self.header_logout_btn.pack(side='right')
+                else:
+                    self.header_logout_btn.pack_forget()
+            except tk.TclError:
+                pass
+        if hasattr(self, 'oauth_credits_label'):
+            try:
+                if logged_in and credits is not None:
+                    if not self.oauth_credits_label.winfo_manager():
+                        self.oauth_credits_label.pack(side='right', padx=(0, 8))
+                else:
+                    self.oauth_credits_label.pack_forget()
+            except tk.TclError:
+                pass
+        if hasattr(self, 'oauth_account_label'):
+            try:
+                if logged_in and name:
+                    if not self.oauth_account_label.winfo_manager():
+                        self.oauth_account_label.pack(side='right', padx=(0, 8))
+                else:
+                    self.oauth_account_label.pack_forget()
+            except tk.TclError:
+                pass
+        # Keys tab OAuth card
+        if hasattr(self, 'keys_oauth_status'):
+            if self.oauth_busy:
+                self.keys_oauth_status.set(t('oauth_busy'))
+            elif logged_in:
+                parts = [t('oauth_signed_in', name or 'PowerTokens')]
+                if credits is not None:
+                    parts.append(t('oauth_credits', credits))
+                self.keys_oauth_status.set(' · '.join(parts))
+            else:
+                self.keys_oauth_status.set('')
+        if hasattr(self, 'keys_oauth_login_btn'):
+            try:
+                if logged_in:
+                    self.keys_oauth_login_btn.pack_forget()
+                else:
+                    state = 'disabled' if self.oauth_busy else 'normal'
+                    self.keys_oauth_login_btn.configure(state=state, text=t('oauth_busy') if self.oauth_busy else t('oauth_login'))
+                    if not self.keys_oauth_login_btn.winfo_manager():
+                        self.keys_oauth_login_btn.pack(anchor='w')
+            except tk.TclError:
+                pass
+        if hasattr(self, 'keys_oauth_logout_btn'):
+            try:
+                if logged_in:
+                    if not self.keys_oauth_logout_btn.winfo_manager():
+                        self.keys_oauth_logout_btn.pack(anchor='w', pady=(8, 0))
+                else:
+                    self.keys_oauth_logout_btn.pack_forget()
+            except tk.TclError:
+                pass
+
+    def start_oauth_login(self):
+        if self.oauth_busy:
+            return
+        self.oauth_busy = True
+        self._refresh_oauth_header()
+        self.status.set(t('oauth_busy'))
+
+        def worker():
+            try:
+                result = oauth_desktop.login()
+                self.events.put(('oauth_ok', result))
+            except oauth_desktop.OAuthError as exc:
+                self.events.put(('oauth_fail', '%s|%s' % (exc.code, str(exc))))
+            except Exception as exc:
+                self.events.put(('oauth_fail', 'error|%s' % exc))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_oauth_result(self, result):
+        self.oauth_busy = False
+        oauth_desktop.save_session(result)
+        self.oauth_session = oauth_desktop.load_session() or {
+            'access_token': result.get('access_token'),
+            'expires_at': result.get('expires_at'),
+            'profile': oauth_desktop.profile_from_userinfo(result.get('userinfo') or {}),
+        }
+        key = result.get('key') or oauth_desktop.normalize_api_key((result.get('userinfo') or {}).get('key'))
+        key_applied = False
+        if key:
+            # Put the OAuth default key first so selected_key() / sync_keys pick it.
+            self.keys = list(dict.fromkeys([key] + list(self.keys)))
+            # Beginner path: persist via existing DPAPI remember toggle on Windows.
+            if os.name == 'nt' and hasattr(self, 'remember') and not self.remember.get():
+                self.remember.set(True)
+            self.sync_keys()
+            self.save_keys()
+            key_applied = True
+        self._refresh_oauth_header()
+        try:
+            self.tabs.select(0)  # Generate tab
+        except tk.TclError:
+            pass
+        if key_applied:
+            self.status.set(t('oauth_ok'))
+            messagebox.showinfo(t('oauth_login'), t('oauth_ok'))
+        else:
+            self.status.set(t('oauth_ok_nokey'))
+            messagebox.showinfo(t('oauth_login'), t('oauth_ok_nokey'))
+            try:
+                self.tabs.select(4)
+                if hasattr(self, 'keys_advanced_open') and not self.keys_advanced_open.get():
+                    self._toggle_keys_advanced()
+            except tk.TclError:
+                pass
+
+    def _oauth_fail(self, payload):
+        self.oauth_busy = False
+        self._refresh_oauth_header()
+        code, _, detail = str(payload).partition('|')
+        msg = detail or code
+        self.status.set(t('oauth_fail', msg))
+        messagebox.showerror(t('oauth_login'), t('oauth_fail', msg))
+
+    def logout_oauth(self):
+        if self.oauth_busy:
+            return
+        oauth_desktop.logout()
+        self.oauth_session = None
+        self._refresh_oauth_header()
+        self.status.set(t('oauth_logged_out'))
 
     def open_key_quota_tip(self):
         url = key_quota_tip_url()
@@ -1018,6 +1247,12 @@ class App:
         try:
             while True:
                 kind, text = self.events.get_nowait()
+                if kind == 'oauth_ok':
+                    self._apply_oauth_result(text)
+                    continue
+                if kind == 'oauth_fail':
+                    self._oauth_fail(text)
+                    continue
                 if kind == 'batch_update':
                     self.batch.update_job(text)
                     continue

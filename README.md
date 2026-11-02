@@ -145,7 +145,7 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 
 1. Download `PowerTokensVideoStudio.exe` from the [Releases](../../releases/latest) page.
 2. Double-click it. The EXE is not code-signed, so Windows SmartScreen may show "Windows protected your PC". Click **More info → Run anyway**.
-3. Open the **API Key** tab, paste your PowerTokens key and click **Add to key pool**.
+3. Click **Sign in with PowerTokens** (header). Your default API key and credits fill in automatically. Advanced users can still paste keys on the **API Key** tab.
 4. Write a prompt on the **Generate video** tab, or import a spreadsheet on the **Batch import** tab.
 
 A three-episode sample spreadsheet is included in short-drama (`short-drama-batch-template.xlsx` / `短剧批量示例模板.xlsx`) and product (`product-batch-template.xlsx` / `产品批量示例模板.xlsx`). In the app, **Save short-drama sample…** / **Save product sample…** on the Batch import tab. Columns: `Title`, `Duration (s)`, `Resolution`, `Aspect ratio`, `Prompt` (only the prompt column is required; legacy `Wan 3.0 Prompt` still works). An optional `Model` column accepts a model ID or display name.
@@ -161,9 +161,9 @@ python pt_wan.py storyboard --script outline.txt --out rows.xlsx --duration 8 --
 
 `--model` defaults to `wan3.0-video`. See `python pt_wan.py generate -h` for media options.
 
-## Get an API key
+## Sign in / Get an API key
 
-Sign up on [PowerTokens](https://powertokens.ai/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio) and create a key. The **Sign up / Get an API key** button in the app opens the same page.
+Most users click **Sign in with PowerTokens** in the app header (OAuth + PKCE). The default key and credits fill in automatically. You can still create or paste keys on [PowerTokens API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio) via the **API Key** tab → Advanced.
 
 ## Run from source
 
