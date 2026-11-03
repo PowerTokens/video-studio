@@ -38,3 +38,11 @@ Credits chip / recharge opens `https://powertokens.ai[/zh-Hans]/billing` with
 `utm_source=videostudio&utm_medium=app&utm_campaign=video-studio&utm_content=app.billing`.
 Product fields are **forced** even if last-touch was an ad; click ids still forward.
 OAuth authorize still uses last-touch (not forced).
+
+## Tag CI (`build-windows.yml`)
+
+Tag pushes (`v*`) and workflow_dispatch run tests after `pip install -r requirements.txt`
+(Pillow + imageio-ffmpeg), then PyInstaller with `--collect-all imageio_ffmpeg` (same as
+`Build-EXE.bat`). The older tag job that ran tests on a bare Python install failed once
+Pillow became required by chain tests.
+
