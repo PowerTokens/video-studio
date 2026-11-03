@@ -2,7 +2,7 @@
 
 ## Windows EXE (`Build-EXE.bat`)
 
-- Installs `requirements.txt` into `.build-venv` (includes `imageio-ffmpeg`).
+- Installs `requirements.txt` into `.build-venv` (includes `imageio-ffmpeg` and `pillow` for first-frame encode/resize).
 - PyInstaller flags:
   - `--collect-all imageio_ffmpeg` — packs the package and its `binaries/` folder (the platform `ffmpeg` executable ships as package data, not a DLL; `--collect-binaries` alone does not include it).
 - **Installer / EXE size:** bundling `imageio-ffmpeg` adds about **70–80 MB** (Windows x86_64 ffmpeg binary). Linux wheels measured ~76 MB for the same major version; Windows is in the same range.
