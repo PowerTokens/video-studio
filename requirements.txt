@@ -2,3 +2,5 @@
 # imageio-ffmpeg ships a platform ffmpeg binary (~70–80 MB on Windows) used for
 # “Continue from previous clip” frame extraction.
 imageio-ffmpeg>=0.5,<0.7
+# Optional at runtime for first-frame JPEG resize/encode; required by chain tests + EXE quality path.
+pillow>=10,<12
