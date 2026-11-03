@@ -1,6 +1,7 @@
 """First/last-touch UTM for Video Studio desktop.
 
-Backend attribution uses UTM only. In-app defaults:
+Backend attribution uses UTM only. In-app defaults (OAuth/signup use last-touch;
+billing forces product source/medium/campaign):
   utm_source=videostudio&utm_medium=app&utm_campaign=video-studio
 GitHub README/Release copy keeps github + oss|readme (not stored here).
 
@@ -33,6 +34,7 @@ DEFAULTS = {
 
 CONTENT_OAUTH = 'app.oauth_authorize'
 CONTENT_SIGNUP = 'app.signup'
+CONTENT_BILLING = 'app.billing'
 UTM_FILE = 'utm.json'
 
 
@@ -124,25 +126,51 @@ def last_touch(data_dir: Optional[Path] = None) -> dict[str, str]:
     return _merge_defaults(store.get('last') or {})
 
 
-def params_for(content: Optional[str] = None, data_dir: Optional[Path] = None) -> dict[str, str]:
+def params_for(
+    content: Optional[str] = None,
+    data_dir: Optional[Path] = None,
+    *,
+    force_product: bool = False,
+) -> dict[str, str]:
+    """Last-touch params (+ optional content).
+
+    force_product: for billing — keep click ids from last-touch but force
+    utm_source / utm_medium / utm_campaign to product DEFAULTS so recharge
+    attributes to Video Studio even after an ad last-touch.
+    """
     p = last_touch(data_dir)
+    if force_product:
+        p['utm_source'] = DEFAULTS['utm_source']
+        p['utm_medium'] = DEFAULTS['utm_medium']
+        p['utm_campaign'] = DEFAULTS['utm_campaign']
     if content:
         p['utm_content'] = str(content)
     return p
 
 
-def append_to_url(url: str, content: Optional[str] = None, data_dir: Optional[Path] = None) -> str:
+def append_to_url(
+    url: str,
+    content: Optional[str] = None,
+    data_dir: Optional[Path] = None,
+    *,
+    force_product: bool = False,
+) -> str:
     """Replace tracking query on url with last-touch (+ optional content)."""
     parts = urllib.parse.urlsplit(url)
     q = dict(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
     for k in TRACK_KEYS:
         q.pop(k, None)
-    q.update(params_for(content, data_dir))
+    q.update(params_for(content, data_dir, force_product=force_product))
     return urllib.parse.urlunsplit((
         parts.scheme, parts.netloc, parts.path,
         urllib.parse.urlencode(q), parts.fragment,
     ))
 
 
-def query_string(content: Optional[str] = None, data_dir: Optional[Path] = None) -> str:
-    return urllib.parse.urlencode(params_for(content, data_dir))
+def query_string(
+    content: Optional[str] = None,
+    data_dir: Optional[Path] = None,
+    *,
+    force_product: bool = False,
+) -> str:
+    return urllib.parse.urlencode(params_for(content, data_dir, force_product=force_product))

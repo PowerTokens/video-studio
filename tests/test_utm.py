@@ -30,5 +30,40 @@ class InAppUtmTests(unittest.TestCase):
         self.assertTrue(i18n.t('onboard_signup_url').startswith('https://powertokens.ai/api-keys?'))
 
 
+    def test_billing_url_force_product(self):
+        import tempfile
+        from pathlib import Path
+        import urllib.parse
+        import utm_attr
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            utm_attr.capture({
+                'utm_source': 'google',
+                'utm_medium': 'cpc',
+                'utm_campaign': 'ads',
+                'gclid': 'g.1',
+            }, data_dir=data_dir)
+            for lang, expect_path in (('zh', '/zh-Hans/billing'), ('en', '/billing')):
+                i18n.set_language(lang)
+                # Patch DATA_DIR via append path used by billing_url helper logic
+                base = app.BILLING_URL if lang == 'zh' else app.BILLING_URL_EN
+                self.assertTrue(base.endswith(expect_path), base)
+                url = utm_attr.append_to_url(
+                    base, content=utm_attr.CONTENT_BILLING, data_dir=data_dir, force_product=True,
+                )
+                q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))
+                self.assertEqual(q['utm_source'], 'videostudio')
+                self.assertEqual(q['utm_medium'], 'app')
+                self.assertEqual(q['utm_campaign'], 'video-studio')
+                self.assertEqual(q['utm_content'], 'app.billing')
+                self.assertEqual(q['gclid'], 'g.1')
+            # Live helper uses real DATA_DIR; still must force product defaults.
+            live = app.billing_url()
+            q2 = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(live).query))
+            self.assertEqual(q2['utm_source'], 'videostudio')
+            self.assertEqual(q2['utm_medium'], 'app')
+            self.assertEqual(q2['utm_campaign'], 'video-studio')
+            self.assertEqual(q2['utm_content'], 'app.billing')
+
 if __name__ == '__main__':
     unittest.main()

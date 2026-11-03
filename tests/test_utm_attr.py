@@ -71,5 +71,48 @@ class UtmAttrTests(unittest.TestCase):
         self.assertEqual(last['utm_medium'], 'referral')
 
 
+    def test_billing_force_product(self):
+        # Ad last-touch must not overwrite product fields on billing links.
+        utm_attr.capture({
+            'utm_source': 'google',
+            'utm_medium': 'cpc',
+            'utm_campaign': 'spring-sale',
+            'gclid': 'Cj0TEST',
+        }, data_dir=self.data_dir)
+        p = utm_attr.params_for(
+            utm_attr.CONTENT_BILLING,
+            data_dir=self.data_dir,
+            force_product=True,
+        )
+        self.assertEqual(p['utm_source'], 'videostudio')
+        self.assertEqual(p['utm_medium'], 'app')
+        self.assertEqual(p['utm_campaign'], 'video-studio')
+        self.assertEqual(p['utm_content'], 'app.billing')
+        self.assertEqual(p['gclid'], 'Cj0TEST')
+        # Without force_product, last-touch ad source remains (OAuth path).
+        oauth = utm_attr.params_for(utm_attr.CONTENT_OAUTH, data_dir=self.data_dir)
+        self.assertEqual(oauth['utm_source'], 'google')
+        self.assertEqual(oauth['utm_content'], 'app.oauth_authorize')
+
+    def test_append_billing_url_force_product(self):
+        utm_attr.capture({
+            'utm_source': 'newsletter',
+            'utm_medium': 'email',
+            'utm_campaign': 'launch',
+            'fbclid': 'fb.1',
+        }, data_dir=self.data_dir)
+        url = utm_attr.append_to_url(
+            'https://powertokens.ai/billing',
+            content=utm_attr.CONTENT_BILLING,
+            data_dir=self.data_dir,
+            force_product=True,
+        )
+        q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))
+        self.assertEqual(q['utm_source'], 'videostudio')
+        self.assertEqual(q['utm_medium'], 'app')
+        self.assertEqual(q['utm_campaign'], 'video-studio')
+        self.assertEqual(q['utm_content'], 'app.billing')
+        self.assertEqual(q['fbclid'], 'fb.1')
+
 if __name__ == '__main__':
     unittest.main()
