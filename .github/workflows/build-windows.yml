@@ -17,13 +17,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pyinstaller>=6,<7" -r requirements.txt
       - name: Run tests
-        run: python -m unittest discover -s tests
-      - name: Install PyInstaller
-        run: python -m pip install "pyinstaller>=6,<7"
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+        run: python -m unittest discover -s tests -v
       - name: Build executable
-        # *.xlsx bundles both sample spreadsheets (Chinese and English) for "Save sample template…".
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name PowerTokensVideoStudio --icon assets/logo.ico --add-data "assets;assets" --add-data "*.xlsx;." app.py
+        # Same flags as Build-EXE.bat / windows-exe.yml (bundles ffmpeg via imageio-ffmpeg).
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+        run: >
+          python -m PyInstaller --noconfirm --clean --onefile --windowed
+          --name PowerTokensVideoStudio --icon assets/logo.ico
+          --add-data "assets;assets" --add-data "*.xlsx;."
+          --collect-all imageio_ffmpeg app.py
       - name: Check bundled files
         shell: pwsh
         env:
@@ -33,7 +46,9 @@ jobs:
           if (-not (Select-String -Path bundle.txt -Encoding utf8 -Pattern 'short-drama-batch-template.xlsx' -Quiet)) { throw 'English template missing from EXE' }
           if ((Select-String -Path bundle.txt -Encoding utf8 -Pattern '\.xlsx').Count -lt 2) { throw 'Chinese template missing from EXE' }
           if (-not (Select-String -Path bundle.txt -Pattern 'logo.png' -Quiet)) { throw 'Logo missing from EXE' }
+          if (-not (Select-String -Path bundle.txt -Pattern 'imageio_ffmpeg' -Quiet)) { throw 'imageio_ffmpeg missing from EXE' }
           Get-FileHash dist/PowerTokensVideoStudio.exe -Algorithm SHA256 | Format-List
+          Get-Item dist/PowerTokensVideoStudio.exe | Format-List FullName, Length
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
