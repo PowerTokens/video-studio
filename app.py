@@ -836,26 +836,32 @@ class App:
             self.promo_label.pack_forget()
 
     def _refresh_model_combo(self):
-        self._model_labels = {}
-        labels = []
-        for spec in list_models():
-            label_text = spec.label()
-            pct = spec.discount_percent()
-            if pct:
-                label_text = '%s (-%s%%)' % (label_text, pct)
-            self._model_labels[label_text] = spec.id
-            labels.append(label_text)
-        self.model_combo.configure(values=labels)
+        # Clean labels + parallel discount % / ids (web cselect data-discount style).
+        specs = list(list_models())
+        labels = [spec.label() for spec in specs]
+        discounts = [int(spec.discount_percent() or 0) for spec in specs]
+        ids = [spec.id for spec in specs]
+        self._model_labels = {lab: mid for lab, mid in zip(labels, ids)}
+        self.model_combo.configure(values=labels, discounts=discounts, ids=ids)
         current = get_model(self.model_id.get())
+        # Prefer matching by id so a promo/label change does not desync the combo.
         current_label = current.label()
-        pct = current.discount_percent()
-        if pct:
-            current_label = '%s (-%s%%)' % (current_label, pct)
+        if current_label not in self._model_labels:
+            for lab, mid in self._model_labels.items():
+                if mid == current.id:
+                    current_label = lab
+                    break
         self.model_label.set(current_label)
         self._update_model_description()
 
     def _on_model_picked(self):
-        mid = self._model_labels.get(self.model_label.get(), DEFAULT_MODEL_ID)
+        mid = ''
+        if hasattr(self.model_combo, 'current_id'):
+            mid = self.model_combo.current_id() or ''
+        if not mid:
+            mid = self._model_labels.get(self.model_label.get(), '')
+        if not mid:
+            mid = DEFAULT_MODEL_ID
         self.model_id.set(mid)
         self._sync_model_widgets()
         self.update_cost()

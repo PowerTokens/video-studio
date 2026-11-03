@@ -691,6 +691,9 @@ class WebSelect(ttk.Frame):
     ttk.Combobox cannot draw a custom chevron or true border-radius; this Canvas
     trigger + Toplevel menu matches video-studio-web as closely as Tk allows.
     Drop-in enough for model pickers: textvariable, values, state, <<ComboboxSelected>>.
+    Optional parallel `discounts` (percent ints) draw the web `.discount-badge` soft-red
+    pill on the closed trigger and in the open menu. Optional `ids` keep selection
+    mapped by model id even when labels change.
     """
     _HEIGHT = 40
     _RADIUS = 8
@@ -700,13 +703,17 @@ class WebSelect(ttk.Frame):
     _OPEN_BG = '#f7fcfa'
     _MENU_BORDER = '#c5ddd6'
     _PALE = PALE
+    _DISCOUNT_BG = '#fde8e8'
+    _DISCOUNT_FG = '#b42318'
 
-    def __init__(self, parent, textvariable=None, values=(), state='readonly',
-                 command=None, width=None, **kwargs):
+    def __init__(self, parent, textvariable=None, values=(), discounts=None, ids=None,
+                 state='readonly', command=None, width=None, **kwargs):
         super().__init__(parent, **kwargs)
         self._textvariable = textvariable if textvariable is not None else tk.StringVar()
         self._owns_var = textvariable is None
         self._values = [str(v) for v in (values or ())]
+        self._discounts = self._coerce_discounts(discounts, len(self._values))
+        self._ids = self._coerce_ids(ids, len(self._values))
         self._state = 'disabled' if str(state) == 'disabled' else 'readonly'
         self._command = command
         self._listeners = []
@@ -726,13 +733,57 @@ class WebSelect(ttk.Frame):
         self._var_trace = self._textvariable.trace_add('write', lambda *_: self._redraw())
         self.after_idle(self._redraw)
 
+    @staticmethod
+    def _coerce_discounts(discounts, n):
+        if not n:
+            return []
+        if discounts is None:
+            return [0] * n
+        out = []
+        for i in range(n):
+            try:
+                raw = discounts[i]
+            except (TypeError, IndexError, KeyError):
+                raw = 0
+            try:
+                pct = int(raw or 0)
+            except (TypeError, ValueError):
+                pct = 0
+            out.append(max(0, pct))
+        return out
+
+    @staticmethod
+    def _coerce_ids(ids, n):
+        if not n:
+            return []
+        if ids is None:
+            return [''] * n
+        out = []
+        for i in range(n):
+            try:
+                raw = ids[i]
+            except (TypeError, IndexError, KeyError):
+                raw = ''
+            out.append(str(raw or ''))
+        return out
+
     def configure(self, cnf=None, **kwargs):
         if cnf and isinstance(cnf, dict):
             kwargs = {**cnf, **kwargs}
         redraw = False
-        if 'values' in kwargs:
+        values_set = 'values' in kwargs
+        if values_set:
             self._values = [str(v) for v in (kwargs.pop('values') or ())]
             redraw = True
+        if 'discounts' in kwargs:
+            self._discounts = self._coerce_discounts(kwargs.pop('discounts'), len(self._values))
+            redraw = True
+        elif values_set:
+            self._discounts = [0] * len(self._values)
+        if 'ids' in kwargs:
+            self._ids = self._coerce_ids(kwargs.pop('ids'), len(self._values))
+        elif values_set:
+            self._ids = [''] * len(self._values)
         if 'state' in kwargs:
             state = kwargs.pop('state')
             self._state = 'disabled' if str(state) == 'disabled' else 'readonly'
@@ -759,6 +810,10 @@ class WebSelect(ttk.Frame):
     def cget(self, key):
         if key == 'values':
             return tuple(self._values)
+        if key == 'discounts':
+            return tuple(self._discounts)
+        if key == 'ids':
+            return tuple(self._ids)
         if key == 'state':
             return self._state
         if key == 'textvariable':
@@ -780,6 +835,24 @@ class WebSelect(ttk.Frame):
                 return -1
         if 0 <= int(newindex) < len(self._values):
             self._pick(self._values[int(newindex)])
+
+    def current_id(self):
+        """Model id for the selected row when `ids` were provided; else ''."""
+        idx = self.current()
+        if 0 <= idx < len(self._ids):
+            return self._ids[idx]
+        return ''
+
+    def discount_for(self, label=None):
+        """Discount percent for label (default: current selection), or 0."""
+        text = self._textvariable.get() if label is None else str(label)
+        try:
+            idx = self._values.index(text)
+        except ValueError:
+            return 0
+        if 0 <= idx < len(self._discounts):
+            return int(self._discounts[idx] or 0)
+        return 0
 
     def get(self):
         return self._textvariable.get()
@@ -837,6 +910,60 @@ class WebSelect(ttk.Frame):
                 pass
         self._redraw()
 
+    def _badge_label(self, pct):
+        pct = int(pct or 0)
+        if pct <= 0:
+            return ''
+        try:
+            return t('discount_badge', pct)
+        except Exception:
+            return '-%d%%' % pct
+
+    def _measure_badge(self, canvas, pct):
+        text = self._badge_label(pct)
+        if not text:
+            return 0, 0, ''
+        font = (FONT, 8, 'bold')
+        tid = canvas.create_text(0, 0, text=text, font=font, anchor='nw')
+        bbox = canvas.bbox(tid) or (0, 0, 18, 10)
+        canvas.delete(tid)
+        pad_x, pad_y = 4, 1
+        bw = max(18, (bbox[2] - bbox[0]) + 2 * pad_x)
+        bh = max(16, (bbox[3] - bbox[1]) + 2 * pad_y)
+        return bw, bh, text
+
+    def _draw_badge_on_canvas(self, canvas, x, cy, pct):
+        """Draw soft-red discount pill; left edge at x, vertically centered on cy. Returns width."""
+        bw, bh, text = self._measure_badge(canvas, pct)
+        if not text:
+            return 0
+        y0 = cy - bh // 2
+        # 4px rounded soft-red pill (web .discount-badge)
+        r = 4
+        x0, x1 = x, x + bw
+        y1 = y0 + bh
+        fill, outline = self._DISCOUNT_BG, self._DISCOUNT_BG
+        canvas.create_oval(x0, y0, x0 + 2 * r, y0 + 2 * r, fill=fill, outline=outline, width=1)
+        canvas.create_oval(x1 - 2 * r, y0, x1, y0 + 2 * r, fill=fill, outline=outline, width=1)
+        canvas.create_oval(x0, y1 - 2 * r, x0 + 2 * r, y1, fill=fill, outline=outline, width=1)
+        canvas.create_oval(x1 - 2 * r, y1 - 2 * r, x1, y1, fill=fill, outline=outline, width=1)
+        canvas.create_rectangle(x0 + r, y0, x1 - r, y1, fill=fill, outline='')
+        canvas.create_rectangle(x0, y0 + r, x1, y1 - r, fill=fill, outline='')
+        canvas.create_text(x0 + bw // 2, cy, text=text, font=(FONT, 8, 'bold'),
+                           fill=self._DISCOUNT_FG, anchor='center')
+        return bw
+
+    def _badge_widget(self, parent, pct, background):
+        text = self._badge_label(pct)
+        if not text:
+            return None
+        lab = tk.Label(parent, text=text, background=self._DISCOUNT_BG,
+                       foreground=self._DISCOUNT_FG, font=(FONT, 8, 'bold'),
+                       padx=4, pady=1, borderwidth=0, highlightthickness=0)
+        # Approximate 4px radius via relief-less label on soft red; Tk can't clip corners.
+        lab.configure(background=self._DISCOUNT_BG)
+        return lab
+
     def _open_popup(self):
         self._close_popup()
         if not self._values:
@@ -868,31 +995,46 @@ class WebSelect(ttk.Frame):
         canvas.bind('<Configure>', sync_scroll)
 
         selected = self._textvariable.get()
-        for label in self._values:
-            row = tk.Frame(body, background=self._PALE if label == selected else WHITE)
+        for idx, label in enumerate(self._values):
+            pct = self._discounts[idx] if idx < len(self._discounts) else 0
+            row_bg = self._PALE if label == selected else WHITE
+            row = tk.Frame(body, background=row_bg)
             row.pack(fill='x', padx=6, pady=2)
             fg = self._ACCENT_TEXT if label == selected else INK
             font = (FONT, 10, 'bold') if label == selected else (FONT, 10)
-            lab = tk.Label(row, text=label, anchor='w', justify='left',
-                           background=row.cget('background'), foreground=fg,
-                           font=font, padx=10, pady=8)
-            lab.pack(fill='x')
+            inner = tk.Frame(row, background=row_bg)
+            inner.pack(fill='x', padx=10, pady=8)
+            # Badge sits immediately after the label (web .cselect-opt gap), not flush-right.
+            lab = tk.Label(inner, text=label, anchor='w', justify='left',
+                           background=row_bg, foreground=fg, font=font)
+            lab.pack(side='left')
+            badge = self._badge_widget(inner, pct, row_bg)
+            if badge is not None:
+                badge.pack(side='left', padx=(8, 0))
 
-            def enter(event, r=row, l=lab, sel=(label == selected)):
+            def enter(event, r=row, inn=inner, l=lab, b=badge, sel=(label == selected)):
                 if not sel:
-                    r.configure(background='#edf7f4')
-                    l.configure(background='#edf7f4', foreground=self._ACCENT_TEXT)
+                    for w in (r, inn, l):
+                        w.configure(background='#edf7f4')
+                    l.configure(foreground=self._ACCENT_TEXT)
+                    if b is not None:
+                        # Keep soft-red badge chrome on hover
+                        b.configure(background=self._DISCOUNT_BG, foreground=self._DISCOUNT_FG)
 
-            def leave(event, r=row, l=lab, sel=(label == selected)):
+            def leave(event, r=row, inn=inner, l=lab, b=badge, sel=(label == selected)):
                 bg = self._PALE if sel else WHITE
                 fg = self._ACCENT_TEXT if sel else INK
-                r.configure(background=bg)
-                l.configure(background=bg, foreground=fg)
+                for w in (r, inn, l):
+                    w.configure(background=bg)
+                l.configure(foreground=fg)
+                if b is not None:
+                    b.configure(background=self._DISCOUNT_BG, foreground=self._DISCOUNT_FG)
 
             def click(_event=None, value=label):
                 self._pick(value)
 
-            for widget in (row, lab):
+            widgets = [row, inner, lab] + ([badge] if badge is not None else [])
+            for widget in widgets:
                 widget.bind('<Enter>', enter)
                 widget.bind('<Leave>', leave)
                 widget.bind('<Button-1>', click)
@@ -959,11 +1101,14 @@ class WebSelect(ttk.Frame):
                 bg, border, fg, caret = WHITE, LINE, INK, self._ACCENT_TEXT
             _draw_round_rect(canvas, width, height, radius=self._RADIUS,
                              fill=bg, outline=border, border=1)
-            # Soft top hairline like web box-shadow: 0 1px 0 rgba(...)
             pad_x, caret_box = 12, 22
+            badge_gap = 6
+            pct = self.discount_for(text)
+            bw, bh, badge_text = self._measure_badge(canvas, pct)
+            badge_space = (bw + badge_gap) if badge_text else 0
             font = (FONT, 10)
-            # Measure + ellipsize
-            max_text_w = max(20, width - pad_x - caret_box - 8)
+            # Measure + ellipsize, leave room for badge + caret
+            max_text_w = max(20, width - pad_x - caret_box - 8 - badge_space)
             display = text
             tid = canvas.create_text(0, 0, text=display, font=font, anchor='nw')
             bbox = canvas.bbox(tid) or (0, 0, 10, 12)
@@ -977,6 +1122,13 @@ class WebSelect(ttk.Frame):
                 display = display + '…'
             cy = height // 2
             canvas.create_text(pad_x, cy, text=display, font=font, fill=fg, anchor='w')
+            if badge_text:
+                # Place badge just after visible label text (capped so it stays left of caret)
+                text_w = bbox[2] - bbox[0] if display else 0
+                badge_x = min(pad_x + text_w + badge_gap,
+                              width - caret_box - bw - 4)
+                badge_x = max(pad_x, badge_x)
+                self._draw_badge_on_canvas(canvas, badge_x, cy, pct)
             # Teal chevron (web .cselect-caret): two strokes forming >
             cx = width - 14
             if self._open:
