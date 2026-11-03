@@ -4,6 +4,8 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+- **Desktop Chat tab (对话).** New main tab next to Generate: talk with a text model to refine what to shoot, then **Fill Generate** (prefill the single-clip form) or **Split to batch** (reuse storyboard split into Batch preview). Six shared text models: `glm-4.7-flash` (free default), `seed-1-6-flash-250715`, `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`, `qwen3-max` (expensive optional). Batch **From script…** uses the same six options.
+
 ## [1.13](https://github.com/PowerTokens/video-studio/releases/tag/v1.13.0) - 2026-11-03
 
 - **Desktop OAuth sign-in (PKCE).** Header **Sign in with PowerTokens** opens the system browser (`powerbaze_desktop_v1`, loopback callback). On success, userinfo default key goes into the key pool, name + credits show in the header, and the app lands on **Generate**.

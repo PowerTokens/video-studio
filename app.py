@@ -19,6 +19,7 @@ from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE,
                        load_image, header_logo_file, KeyStatusPill)
 from input_helpers import parse_keys, infer_prompt
 from batch_ui import BatchTab
+from chat_ui import ChatTab
 from compare_ui import CompareTab
 from models import (DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id, snap_params,
                    format_adjust_notice, model_allows_first_frame, allowed_media_types)
@@ -181,15 +182,17 @@ class App:
         self._refresh_oauth_header()
         tabs = ttk.Notebook(shell)
         tabs.pack(fill='both', expand=True)
-        pages = [ScrollPage(tabs) for _ in range(5)]
-        for page, name in zip(pages, ('tab_generate', 'tab_compare', 'tab_batch', 'tab_history', 'tab_keys')):
+        pages = [ScrollPage(tabs) for _ in range(6)]
+        for page, name in zip(pages, (
+                'tab_generate', 'tab_chat', 'tab_compare', 'tab_batch', 'tab_history', 'tab_keys')):
             tabs.add(page, text=t(name))
         self.tabs, self.pages = tabs, pages
         self.build_create(pages[0].body)
-        self.compare = CompareTab(self, pages[1].body)
-        self.batch = BatchTab(self, pages[2].body)
-        self.build_history(pages[3].body)
-        self.build_keys(pages[4].body)
+        self.chat = ChatTab(self, pages[1].body)
+        self.compare = CompareTab(self, pages[2].body)
+        self.batch = BatchTab(self, pages[3].body)
+        self.build_history(pages[4].body)
+        self.build_keys(pages[5].body)
         self.status = tk.StringVar(value=t('status_ready'))
         label(shell, variable=self.status, style='Page.TLabel').pack(fill='x', padx=28, pady=(8, 12))
 
@@ -235,6 +238,7 @@ class App:
             key_input=self.key_input.get(), show_key=self.show_key.get(), remember=self.remember.get(),
             key_selection=self.key_list.curselection(), task_id=self.task_id.get(),
             video_link=self.video_link.get(), batch=self.batch.export_state(),
+            chat=self.chat.export_state() if hasattr(self, 'chat') else {},
             compare=self.compare.export_state() if hasattr(self, 'compare') else {})
 
     def restore_state(self, state):
@@ -281,6 +285,8 @@ class App:
         elif not state['auto']:
             self.prompt_hint.set(t('hint_off'))
         self.batch.restore_state(state['batch'])
+        if hasattr(self, 'chat'):
+            self.chat.restore_state(state.get('chat') or {})
         if hasattr(self, 'compare'):
             self.compare.import_state(state.get('compare') or {})
         self.update_cost()
@@ -346,7 +352,7 @@ class App:
 
     def _onboard_goto_keys(self):
         try:
-            self.tabs.select(4)  # API Key is last tab
+            self.tabs.select(5)  # API Key is last tab
         except tk.TclError:
             pass
 
@@ -1105,7 +1111,7 @@ class App:
             self.status.set(t('oauth_ok_nokey'))
             messagebox.showinfo(t('oauth_login'), t('oauth_ok_nokey'))
             try:
-                self.tabs.select(4)
+                self.tabs.select(5)
                 if hasattr(self, 'keys_advanced_open') and not self.keys_advanced_open.get():
                     self._toggle_keys_advanced()
             except tk.TclError:
@@ -1358,6 +1364,39 @@ class App:
                 messagebox.showwarning(t('load_failed_title'), t('load_failed_body'))
         self.sync_keys()
 
+    def apply_chat_plan(self, plan):
+        """Fill Generate form from a Chat plan and switch to the Generate tab."""
+        if not plan or not str(plan.get('prompt') or '').strip():
+            return
+        self.prompt.delete('1.0', 'end')
+        self.prompt.insert('1.0', str(plan['prompt']).strip())
+        self.prompt.edit_modified(False)
+        model = plan.get('model')
+        if model and hasattr(self, 'model_id'):
+            try:
+                mid = resolve_model_id(model)
+            except KeyError:
+                mid = None
+            if mid:
+                self.model_id.set(mid)
+                self._sync_model_widgets(preserve=True)
+        if plan.get('duration') is not None:
+            self.duration.set(str(plan['duration']))
+        if plan.get('resolution'):
+            self.resolution.set(str(plan['resolution']))
+        if plan.get('ratio'):
+            self.ratio.set(str(plan['ratio']))
+        # Snap to the selected model's allowed params.
+        if hasattr(self, '_sync_model_widgets'):
+            self._sync_model_widgets(preserve=True)
+        self.update_cost()
+        if self.auto_prompt.get():
+            self.apply_prompt()
+        try:
+            self.tabs.select(0)
+        except tk.TclError:
+            pass
+
     def selected_key(self):
         if not self.keys:
             raise TaskError(t('need_key'))
@@ -1459,7 +1498,7 @@ class App:
         if not self.bar.winfo_manager():
             self.bar.pack(fill='x', pady=(8, 0))
         self.bar.start(12)
-        tab_map = {'generate': 0, 'compare': 1, 'batch': 2, 'history': 3, 'keys': 4}
+        tab_map = {'generate': 0, 'chat': 1, 'compare': 2, 'batch': 3, 'history': 4, 'keys': 5}
         self.tabs.select(tab_map.get(prefer_tab, 0))
         self.status.set(t('working'))
         def worker():

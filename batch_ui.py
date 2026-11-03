@@ -463,7 +463,7 @@ class StoryboardDialog(tk.Toplevel):
         self.script.pack(fill='both', expand=True, pady=(4, 10))
 
         from models import DEFAULT_MODEL_ID, list_models
-        from storyboard import DEFAULT_TEXT_MODEL, TEXT_MODEL_QWEN, text_model_label, is_free_text_model
+        from storyboard import ALLOWED_TEXT_MODELS, DEFAULT_TEXT_MODEL, text_model_label, is_free_text_model
 
         grid = ttk.Frame(body)
         grid.pack(fill='x', pady=(0, 8))
@@ -483,10 +483,7 @@ class StoryboardDialog(tk.Toplevel):
             self._model_labels[lab] = spec.id
             labels.append(lab)
         self.video_label = tk.StringVar(value=labels[0] if labels else '')
-        self.text_choices = {
-            text_model_label(DEFAULT_TEXT_MODEL): DEFAULT_TEXT_MODEL,
-            text_model_label(TEXT_MODEL_QWEN): TEXT_MODEL_QWEN,
-        }
+        self.text_choices = {text_model_label(mid): mid for mid in ALLOWED_TEXT_MODELS}
         self.text_label = tk.StringVar(value=text_model_label(DEFAULT_TEXT_MODEL))
 
         fields = [
