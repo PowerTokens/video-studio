@@ -176,7 +176,7 @@ class App:
             pass
         self.oauth_account_label = ttk.Label(toolbar, textvariable=self.oauth_account_var, style='UserChip.TLabel')
         self.header_key_pill = KeyStatusPill(toolbar, chrome=WHITE)
-        self.header_key_pill.pack(side='right', padx=(0, 10))
+        # Not packed yet: soft "Sign in" duplicates the OAuth button; shown after a real key state.
         self._header_toolbar = toolbar
         self._refresh_oauth_header()
         tabs = ttk.Notebook(shell)
@@ -1194,6 +1194,26 @@ class App:
                 continue
             try:
                 pill.set_state(kind, text=pill_text, tooltip=tip)
+            except tk.TclError:
+                pass
+        # Soft "Sign in" pill duplicates header OAuth CTA — hide until there is a real key state.
+        header_pill = getattr(self, 'header_key_pill', None)
+        if header_pill is not None:
+            try:
+                if kind == 'soft':
+                    header_pill.pack_forget()
+                elif not header_pill.winfo_manager():
+                    # side=right: first packed is rightmost; place pill just left of login/out.
+                    anchor = None
+                    for cand in (getattr(self, 'header_oauth_btn', None),
+                                 getattr(self, 'header_logout_btn', None)):
+                        if cand is not None and cand.winfo_manager():
+                            anchor = cand
+                            break
+                    if anchor is not None:
+                        header_pill.pack(side='right', padx=(0, 10), after=anchor)
+                    else:
+                        header_pill.pack(side='right', padx=(0, 10))
             except tk.TclError:
                 pass
         verify_pill = getattr(self, 'keys_verify_pill', None)
