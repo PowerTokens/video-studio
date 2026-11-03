@@ -78,19 +78,17 @@ class ChatTab:
         actions.pack(fill='x', pady=(10, 0))
         self.send_btn = ttk.Button(actions, text=t('chat_send'), style='Accent.TButton',
                                    command=self.send)
-        self.send_btn.pack(side='left')
         self.clear_btn = ttk.Button(actions, text=t('chat_clear'), command=self.clear)
-        self.clear_btn.pack(side='left')
+        actions.schedule()
 
         exits = card(self.frame, t('chat_exits_card'), t('chat_exits_desc'))
         exit_row = Flow(exits)
         exit_row.pack(fill='x')
         self.fill_btn = ttk.Button(exit_row, text=t('chat_fill_generate'),
                                    command=self.fill_generate)
-        self.fill_btn.pack(side='left')
         self.batch_btn = ttk.Button(exit_row, text=t('chat_split_batch'),
                                     command=self.split_to_batch)
-        self.batch_btn.pack(side='left')
+        exit_row.schedule()
         self.status_var = tk.StringVar(value='')
         label(exits, variable=self.status_var).pack(fill='x', pady=(8, 0))
         self._sync_exit_buttons()

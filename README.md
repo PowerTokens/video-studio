@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Free open-source Video Studio **1.13** ([Windows desktop](../../releases/latest) + [web](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — Excel/CSV batch, compare, storyboard, safe resume.
+Free open-source Video Studio **1.14** ([Windows desktop](../../releases/latest) + [web](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — Excel/CSV batch, compare, storyboard, safe resume.
 
 ![Demo: a clip generated with Wan 3.0](docs/images/demo.gif)
 
@@ -29,7 +29,8 @@ Pick a model in the desktop UI, pass `--model` on the CLI, set `model` on MCP to
 - **English and Chinese interface**: switch any time with the **中文 / English** toggle in the top-right corner. On first launch the app follows your Windows display language.
 - **Use cases:** short-drama batch production remains a headline use case; also product demos, talking-head clips and social posts.
 - **Continue from previous clip:** optional Batch checkbox uses the previous row’s last frame as the next first frame (Seedance/Kling use embedded images; Wan data-URL support needs a live-key check). The Windows build bundles the frame tool (~70–80 MB).
-- **From script** (Batch tab only): paste a script/outline; free text model `glm-4.7-flash` (or `qwen3-max`) splits it into clip prompts for the preview table.
+- **Chat tab (对话):** refine what to shoot with a text model, then **Fill Generate** (prefill the single-clip form) or **Split to batch** (storyboard into Batch preview). Six shared text models: `glm-4.7-flash` (free default), `seed-1-6-flash-250715`, `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`, `qwen3-max` (expensive optional).
+- **From script** (Batch tab): paste a script/outline; the same six text models split it into clip prompts for the preview table (`glm-4.7-flash` free default).
 - **Compare models**: send one prompt to 2–3 models (Compare tab, CLI `compare`, or MCP `compare_videos`), see side-by-side status and open the best file. Outputs land in a `compare/` subfolder as `name_model-short.mp4`.
 - **Model picker**: choose Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0, Seedance 2.0 Fast (**−50%**), Seedance 2.0 Mini (**−60%**), Seedance 2.5 or kling v3. Duration / resolution / ratio controls update to what that model allows.
 - **Single video**: prompt, duration, resolution and ratio (limits depend on the model), optional first/last frame and reference image / video / audio URLs, seed (where supported). Duration and ratio are detected from the prompt in English or Chinese. Native audio is on when the model supports it.
@@ -145,8 +146,8 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 
 1. Download `PowerTokensVideoStudio.exe` from the [Releases](../../releases/latest) page.
 2. Double-click it. The EXE is not code-signed, so Windows SmartScreen may show "Windows protected your PC". Click **More info → Run anyway**.
-3. Click **Sign in with PowerTokens** (header). Your default API key and credits fill in automatically. Advanced users can still paste keys on the **API Key** tab.
-4. Write a prompt on the **Generate video** tab, or import a spreadsheet on the **Batch import** tab.
+3. Click **Sign in with PowerTokens** (header). Your default API key and credits fill in automatically. Paste keys only under **API Key → Advanced** if you need to.
+4. Write a prompt on **Generate video**, chat on **Chat**, or import a spreadsheet on **Batch import**.
 
 A three-episode sample spreadsheet is included in short-drama (`short-drama-batch-template.xlsx` / `短剧批量示例模板.xlsx`) and product (`product-batch-template.xlsx` / `产品批量示例模板.xlsx`). In the app, **Save short-drama sample…** / **Save product sample…** on the Batch import tab. Columns: `Title`, `Duration (s)`, `Resolution`, `Aspect ratio`, `Prompt` (only the prompt column is required; legacy `Wan 3.0 Prompt` still works). An optional `Model` column accepts a model ID or display name.
 
@@ -163,7 +164,7 @@ python pt_wan.py storyboard --script outline.txt --out rows.xlsx --duration 8 --
 
 ## Sign in / Get an API key
 
-Most users click **Sign in with PowerTokens** in the app header (OAuth + PKCE). The default key and credits fill in automatically. You can still create or paste keys on [PowerTokens API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio) via the **API Key** tab → Advanced.
+Most users click **Sign in with PowerTokens** in the app header (OAuth + PKCE). The default key and credits fill in automatically. Manual paste stays under **API Key → Advanced** ([PowerTokens API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio)).
 
 ## Run from source
 
@@ -283,7 +284,7 @@ Yes. On the [API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_med
 
 ### What is PowerTokens Video Studio?
 
-PowerTokens Video Studio **1.13** is a free, open-source (MIT) Windows desktop app, with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
+PowerTokens Video Studio **1.14** is a free, open-source (MIT) Windows desktop app, with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
 
 ### Can I batch-generate videos from a spreadsheet?
 

@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-免费开源 Video Studio **1.13**（[Windows 桌面端](../../releases/latest) + [网页版](https://powertokens.github.io/video-studio-web/)），支持 **Wan · Seedance · Kling 等** — Excel/CSV 批量、模型对比、分镜、安全恢复。
+免费开源 Video Studio **1.14**（[Windows 桌面端](../../releases/latest) + [网页版](https://powertokens.github.io/video-studio-web/)），支持 **Wan · Seedance · Kling 等** — Excel/CSV 批量、模型对比、分镜、安全恢复。
 
 ![演示：Wan 3.0 生成的片段](docs/images/demo.gif)
 
@@ -143,8 +143,8 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 
 1. 从 [Releases](../../releases/latest) 页面下载 `PowerTokensVideoStudio.exe`。
 2. 双击运行。EXE 没有代码签名，Windows SmartScreen 可能提示“Windows 已保护你的电脑”，点击「更多信息」→「仍要运行」。
-3. 点击顶栏「登录 PowerTokens」，默认 API Key 与积分会自动填入。高级用户仍可在「API Key」页粘贴 Key。
-4. 在「生成视频」页填写提示词，或在「批量导入」页导入表格。
+3. 点击顶栏「登录 PowerTokens」，默认 API Key 与积分会自动填入。需要手动粘贴时，到「API Key → 高级」。
+4. 在「生成视频」写提示词、在「对话」聊拍什么，或在「批量导入」导入表格。
 
 附带三集示例表格：`短剧批量示例模板.xlsx` / `产品批量示例模板.xlsx`（英文：`short-drama-batch-template.xlsx` / `product-batch-template.xlsx`）。在「批量导入」页可分别保存「短剧示例模板」与「产品示例模板」。列：`标题`、`时长(秒)`、`分辨率`、`画面比例`、`提示词` / `Prompt`（仅提示词列必填；旧表头 `Wan 3.0 Prompt` 仍可用）。可选 `模型` / `Model` 列接受模型 ID 或显示名。
 
@@ -161,7 +161,7 @@ python pt_wan.py storyboard --script outline.txt --out rows.xlsx --duration 8 --
 
 ## 登录 / 获取 API Key
 
-大多数用户点击顶栏「登录 PowerTokens」（OAuth + PKCE）即可，默认 Key 与积分会自动填入。也可在 [PowerTokens API Keys](https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio) 创建 Key，并在「API Key」页 → 高级 中粘贴。
+大多数用户点击顶栏「登录 PowerTokens」（OAuth + PKCE）即可，默认 Key 与积分会自动填入。手动粘贴仍在「API Key → 高级」（[PowerTokens API Keys](https://powertokens.ai/zh-Hans/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio)）。
 
 ## 从源码运行
 
@@ -272,7 +272,7 @@ GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build
 
 ### PowerTokens Video Studio 是什么？
 
-PowerTokens Video Studio **1.13** 是一款免费开源（MIT）的 Windows 桌面工具，另有[网页版](https://powertokens.github.io/video-studio-web/)，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 / Fast（**−50%**）/ Mini（**−60%**）、Seedance 2.5、kling v3 等，以及 Excel / CSV 批量导入、模型对比、分镜、按任务 ID 恢复，并避免重复扣费。
+PowerTokens Video Studio **1.14** 是一款免费开源（MIT）的 Windows 桌面工具，另有[网页版](https://powertokens.github.io/video-studio-web/)，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 / Fast（**−50%**）/ Mini（**−60%**）、Seedance 2.5、kling v3 等，以及 Excel / CSV 批量导入、模型对比、分镜、按任务 ID 恢复，并避免重复扣费。
 
 ### 可以用 Excel 表格批量生成视频吗？
 
