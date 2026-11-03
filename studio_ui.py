@@ -339,13 +339,8 @@ class KeyStatusPill(tk.Canvas):
             total_w = pad_x + dots_w + 8 + tw + pad_x
             total_h = max(24, th + 10)
             self.configure(width=total_w, height=total_h, background=self._chrome)
-            # Rounded pill (approximate with smooth polygon)
-            w, h = total_w - 1, total_h - 1
-            rr = min(12, h // 2)
-            self.create_polygon(
-                rr, 0, w - rr, 0, w, 0, w, rr, w, h - rr, w, h, w - rr, h,
-                rr, h, 0, h, 0, h - rr, 0, rr, 0, 0,
-                smooth=True, fill=palette['bg'], outline=palette['border'], width=1)
+            # Full-radius stadium (match web .key-status-pill border-radius: 999px).
+            _draw_stadium(self, total_w, total_h, fill=palette['bg'], outline=palette['border'], border=1)
             # Dots
             cx0 = pad_x + r
             cy = total_h // 2
@@ -364,6 +359,309 @@ class KeyStatusPill(tk.Canvas):
             # Label
             lx = pad_x + dots_w + 8
             self.create_text(lx, cy, text=text, font=font, fill=palette['fg'], anchor='w')
+        except tk.TclError:
+            pass
+
+
+
+def _draw_stadium(canvas, w, h, fill, outline, border=1):
+    """True full-radius pill (semicircle ends) — polygon+smooth looks chamfered."""
+    # Keep 1px inset so the outline stays inside the canvas bitmap.
+    x0, y0, x1, y1 = 0, 0, max(2, w - 1), max(2, h - 1)
+    r = max(1, (y1 - y0) // 2)
+    # End caps
+    canvas.create_oval(x0, y0, x0 + 2 * r, y1, fill=fill, outline=outline, width=border)
+    canvas.create_oval(x1 - 2 * r, y0, x1, y1, fill=fill, outline=outline, width=border)
+    # Body (covers seam between caps); stroke only top/bottom.
+    canvas.create_rectangle(x0 + r, y0, x1 - r, y1, fill=fill, outline='')
+    canvas.create_line(x0 + r, y0, x1 - r, y0, fill=outline, width=border)
+    canvas.create_line(x0 + r, y1, x1 - r, y1, fill=outline, width=border)
+
+
+class PillChip(tk.Canvas):
+    """Web-matching header chip: full-radius .user-chip / .credits-chip.
+
+    Variants:
+      credits — teal top-up / balance pill (clickable)
+      user    — name chip
+    """
+    _VARIANTS = {
+        'credits': dict(bg='#eafaf7', border='#7dd3c8', fg='#0e8f85',
+                        active_bg='#e2f7f3', active_border='#5bc4b6'),
+        'user': dict(bg='#f3f7f6', border='#d5e4df', fg='#2f4558',
+                     active_bg='#eef5f2', active_border='#c5d8d1'),
+    }
+
+    def __init__(self, parent, text='', textvariable=None, variant='credits',
+                 command=None, chrome=None, **kwargs):
+        self._chrome = chrome if chrome is not None else PAGE
+        super().__init__(parent, height=28, highlightthickness=0, borderwidth=0,
+                         background=self._chrome, cursor='hand2' if command else '', **kwargs)
+        self._variant = variant if variant in self._VARIANTS else 'credits'
+        self._textvariable = textvariable
+        self._text = str(textvariable.get() if textvariable is not None else text or '')
+        self._command = command
+        self._pressed = False
+        self._enabled = True
+        if textvariable is not None:
+            textvariable.trace_add('write', lambda *_: self._on_var())
+        self.bind('<Configure>', lambda e: self._redraw())
+        self.bind('<ButtonPress-1>', self._on_press)
+        self.bind('<ButtonRelease-1>', self._on_release)
+        self.bind('<Enter>', lambda e: self._redraw())
+        self.bind('<Leave>', lambda e: self._leave())
+        self.after_idle(self._redraw)
+
+    def _on_var(self):
+        if self._textvariable is not None:
+            self._text = str(self._textvariable.get() or '')
+        self._redraw()
+
+    def set_text(self, text):
+        self._text = str(text or '')
+        if self._textvariable is not None and self._textvariable.get() != self._text:
+            self._textvariable.set(self._text)
+        self._redraw()
+
+    def configure(self, cnf=None, **kwargs):
+        if cnf and isinstance(cnf, dict):
+            kwargs = {**cnf, **kwargs}
+        if 'text' in kwargs:
+            self.set_text(kwargs.pop('text'))
+        if 'command' in kwargs:
+            self._command = kwargs.pop('command')
+            kwargs['cursor'] = 'hand2' if self._command else ''
+        if kwargs:
+            return super().configure(**kwargs)
+
+    config = configure
+
+    def _leave(self):
+        self._pressed = False
+        self._redraw()
+
+    def _on_press(self, _event=None):
+        if not self._enabled or not self._command:
+            return
+        self._pressed = True
+        self._redraw()
+
+    def _on_release(self, _event=None):
+        was = self._pressed
+        self._pressed = False
+        self._redraw()
+        if was and self._enabled and self._command:
+            self._command()
+
+    def _redraw(self, event=None):
+        try:
+            palette = self._VARIANTS[self._variant]
+            text = self._text or ''
+            font = (FONT, 9, 'bold')
+            self.delete('all')
+            tid = self.create_text(0, 0, text=text, font=font, anchor='nw')
+            bbox = self.bbox(tid) or (0, 0, 48, 12)
+            self.delete(tid)
+            tw = max(28, bbox[2] - bbox[0])
+            th = max(12, bbox[3] - bbox[1])
+            pad_x, pad_y = 12, 5
+            total_w = pad_x * 2 + tw
+            total_h = max(26, th + pad_y * 2)
+            super().configure(width=total_w, height=total_h, background=self._chrome)
+            w, h = total_w - 1, total_h - 1
+            bg = palette['active_bg'] if self._pressed else palette['bg']
+            border = palette['active_border'] if self._pressed else palette['border']
+            _draw_stadium(self, total_w, total_h, fill=bg, outline=border, border=1)
+            self.create_text(total_w // 2, total_h // 2, text=text, font=font,
+                             fill=palette['fg'], anchor='center')
+        except tk.TclError:
+            pass
+
+
+class AccentPillButton(tk.Canvas):
+    """Full-radius accent CTA matching web header Sign-in (btn-accent + stadium ends)."""
+
+    def __init__(self, parent, text='', command=None, chrome=None, **kwargs):
+        self._chrome = chrome if chrome is not None else PAGE
+        super().__init__(parent, height=30, highlightthickness=0, borderwidth=0,
+                         background=self._chrome, cursor='hand2', **kwargs)
+        self._text = str(text or '')
+        self._command = command
+        self._state = 'normal'
+        self._pressed = False
+        self._hover = False
+        self.bind('<Configure>', lambda e: self._redraw())
+        self.bind('<ButtonPress-1>', self._on_press)
+        self.bind('<ButtonRelease-1>', self._on_release)
+        self.bind('<Enter>', self._on_enter)
+        self.bind('<Leave>', self._on_leave)
+        self.after_idle(self._redraw)
+
+    def configure(self, cnf=None, **kwargs):
+        if cnf and isinstance(cnf, dict):
+            kwargs = {**cnf, **kwargs}
+        redraw = False
+        if 'text' in kwargs:
+            self._text = str(kwargs.pop('text') or '')
+            redraw = True
+        if 'command' in kwargs:
+            self._command = kwargs.pop('command')
+        if 'state' in kwargs:
+            state = kwargs.pop('state')
+            self._state = 'disabled' if str(state) in ('disabled', '0') else 'normal'
+            kwargs['cursor'] = '' if self._state == 'disabled' else 'hand2'
+            redraw = True
+        if kwargs:
+            super().configure(**kwargs)
+        if redraw:
+            self._redraw()
+
+    config = configure
+
+    def cget(self, key):
+        if key == 'text':
+            return self._text
+        if key == 'state':
+            return self._state
+        return super().cget(key)
+
+    def _on_enter(self, _event=None):
+        self._hover = True
+        self._redraw()
+
+    def _on_leave(self, _event=None):
+        self._hover = False
+        self._pressed = False
+        self._redraw()
+
+    def _on_press(self, _event=None):
+        if self._state == 'disabled':
+            return
+        self._pressed = True
+        self._redraw()
+
+    def _on_release(self, _event=None):
+        was = self._pressed
+        self._pressed = False
+        self._redraw()
+        if was and self._state != 'disabled' and self._command:
+            self._command()
+
+    def _redraw(self, event=None):
+        try:
+            text = self._text or ''
+            font = (FONT, 9, 'bold')
+            self.delete('all')
+            tid = self.create_text(0, 0, text=text, font=font, anchor='nw')
+            bbox = self.bbox(tid) or (0, 0, 80, 12)
+            self.delete(tid)
+            tw = max(40, bbox[2] - bbox[0])
+            th = max(12, bbox[3] - bbox[1])
+            pad_x, pad_y = 14, 6
+            total_w = pad_x * 2 + tw
+            total_h = max(28, th + pad_y * 2)
+            super().configure(width=total_w, height=total_h, background=self._chrome)
+            w, h = total_w - 1, total_h - 1
+            if self._state == 'disabled':
+                bg, border, fg = '#bddbd5', '#bddbd5', '#f6faf9'
+            elif self._pressed:
+                bg, border, fg = '#348f83', '#348f83', WHITE
+            elif self._hover:
+                bg, border, fg = '#419f92', '#419f92', WHITE
+            else:
+                bg, border, fg = ACCENT, ACCENT, WHITE
+            _draw_stadium(self, total_w, total_h, fill=bg, outline=border, border=1)
+            self.create_text(total_w // 2, total_h // 2, text=text, font=font, fill=fg, anchor='center')
+        except tk.TclError:
+            pass
+
+
+
+class LangPill(tk.Canvas):
+    """Web-matching language select: stadium outline + caret, opens a tk Menu."""
+
+    def __init__(self, parent, text='', command=None, chrome=None, values=None, **kwargs):
+        self._chrome = chrome if chrome is not None else PAGE
+        super().__init__(parent, height=28, highlightthickness=0, borderwidth=0,
+                         background=self._chrome, cursor='hand2', **kwargs)
+        self._text = str(text or '')
+        self._command = command  # called with selected label
+        self._values = list(values or [])
+        self._hover = False
+        self._menu = tk.Menu(self, tearoff=0)
+        self.bind('<Configure>', lambda e: self._redraw())
+        self.bind('<Button-1>', self._open_menu)
+        self.bind('<Enter>', lambda e: self._set_hover(True))
+        self.bind('<Leave>', lambda e: self._set_hover(False))
+        self.after_idle(self._rebuild_menu)
+        self.after_idle(self._redraw)
+
+    def set_values(self, values):
+        self._values = list(values or [])
+        self._rebuild_menu()
+
+    def set_text(self, text):
+        self._text = str(text or '')
+        self._redraw()
+
+    def configure(self, cnf=None, **kwargs):
+        if cnf and isinstance(cnf, dict):
+            kwargs = {**cnf, **kwargs}
+        redraw = False
+        if 'text' in kwargs:
+            self._text = str(kwargs.pop('text') or '')
+            redraw = True
+        if 'values' in kwargs:
+            self.set_values(kwargs.pop('values'))
+        if kwargs:
+            super().configure(**kwargs)
+        if redraw:
+            self._redraw()
+
+    config = configure
+
+    def _set_hover(self, on):
+        self._hover = on
+        self._redraw()
+
+    def _rebuild_menu(self):
+        self._menu.delete(0, 'end')
+        for label in self._values:
+            self._menu.add_command(label=label, command=lambda v=label: self._pick(v))
+
+    def _pick(self, label):
+        self.set_text(label)
+        if self._command:
+            self._command(label)
+
+    def _open_menu(self, event=None):
+        try:
+            self._menu.tk_popup(self.winfo_rootx(), self.winfo_rooty() + self.winfo_height())
+        finally:
+            self._menu.grab_release()
+
+    def _redraw(self, event=None):
+        try:
+            text = self._text or ''
+            font = (FONT, 9)
+            self.delete('all')
+            tid = self.create_text(0, 0, text=text, font=font, anchor='nw')
+            bbox = self.bbox(tid) or (0, 0, 40, 12)
+            self.delete(tid)
+            tw = max(36, bbox[2] - bbox[0])
+            th = max(12, bbox[3] - bbox[1])
+            pad_x, caret_w = 10, 12
+            total_w = pad_x + tw + 6 + caret_w + pad_x
+            total_h = max(28, th + 10)
+            super().configure(width=total_w, height=total_h, background=self._chrome)
+            border = '#b9ddd4' if self._hover else LINE
+            _draw_stadium(self, total_w, total_h, fill=WHITE, outline=border, border=1)
+            cy = total_h // 2
+            self.create_text(pad_x, cy, text=text, font=font, fill='#4b6073', anchor='w')
+            # small caret
+            cx = total_w - pad_x - 4
+            self.create_polygon(cx - 4, cy - 2, cx + 4, cy - 2, cx, cy + 3,
+                                fill=MUTED, outline=MUTED)
         except tk.TclError:
             pass
 

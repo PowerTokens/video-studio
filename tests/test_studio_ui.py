@@ -16,7 +16,7 @@ import re
 import app
 import batch_ui
 import wan_core
-from studio_ui import APP_NAME, VERSION, Columns, Card, KeyStatusPill
+from studio_ui import APP_NAME, VERSION, Columns, Card, KeyStatusPill, PillChip, AccentPillButton
 
 
 @unittest.skipUnless(os.name == 'nt' or os.environ.get('PT_GUI_TESTS') == '1',
@@ -204,6 +204,19 @@ class LogoWindowTests(unittest.TestCase):
         self.addCleanup(lambda: [root.after_cancel(item) for item in root.tk.splitlist(root.tk.call('after', 'info'))])
         root.update()
         return gui
+
+    def test_header_account_chrome_uses_web_pills(self):
+        """Header Sign-in / credits must be stadium Canvas pills (web .btn-accent / .credits-chip)."""
+        gui = self.build()
+        self.assertIsInstance(gui.header_oauth_btn, AccentPillButton)
+        self.assertIsInstance(gui.oauth_credits_label, PillChip)
+        self.assertIsInstance(gui.oauth_account_label, PillChip)
+        # Soft key pill stays unpacked while logged out (PR #13).
+        self.assertEqual(gui.header_key_pill.current_state(), 'soft')
+        self.assertFalse(bool(gui.header_key_pill.winfo_manager()))
+        # Credits chip always visible (web billing-chip).
+        self.assertTrue(bool(gui.oauth_credits_label.winfo_manager()))
+        self.assertEqual(gui.oauth_credits_var.get(), '积分充值')
 
     def test_header_shows_official_logo(self):
         gui = self.build()
