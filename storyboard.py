@@ -10,25 +10,50 @@ from i18n import t
 from models import DEFAULT_MODEL_ID, get_model, resolve_model_id, snap_params, format_adjust_notice
 from wan_core import API_BASE, TaskError, api, estimate_cost, payload
 
-# Free default on PowerTokens; qwen3-max is the paid alternative. Never deepseek-v4 / Kimi.
+# Free default first; same six for Chat + Batch「从剧本生成」. Never Seedream / MiniMax H3 / deepseek-v4 / Kimi.
 DEFAULT_TEXT_MODEL = 'glm-4.7-flash'
-TEXT_MODEL_QWEN = 'qwen3-max'
+TEXT_MODEL_SEED = 'seed-1-6-flash-250715'
+TEXT_MODEL_DEEPSEEK = 'deepseek-flash'
+TEXT_MODEL_MINIMAX = 'MiniMax-M2.7'
+TEXT_MODEL_GLM53 = 'glm-5.3-flash'
+TEXT_MODEL_QWEN = 'qwen3-max'  # expensive optional; keep name for older imports
 FREE_TEXT_MODELS = frozenset({DEFAULT_TEXT_MODEL})
-ALLOWED_TEXT_MODELS = (DEFAULT_TEXT_MODEL, TEXT_MODEL_QWEN)
+ALLOWED_TEXT_MODELS = (
+    DEFAULT_TEXT_MODEL,
+    TEXT_MODEL_SEED,
+    TEXT_MODEL_DEEPSEEK,
+    TEXT_MODEL_MINIMAX,
+    TEXT_MODEL_GLM53,
+    TEXT_MODEL_QWEN,
+)
+TEXT_MODEL_LABEL_KEYS = {
+    DEFAULT_TEXT_MODEL: 'storyboard_text_free',
+    TEXT_MODEL_SEED: 'storyboard_text_seed',
+    TEXT_MODEL_DEEPSEEK: 'storyboard_text_deepseek',
+    TEXT_MODEL_MINIMAX: 'storyboard_text_minimax',
+    TEXT_MODEL_GLM53: 'storyboard_text_glm53',
+    TEXT_MODEL_QWEN: 'storyboard_text_qwen',
+}
 
 CHAT_PATH = '/v1/chat/completions'
 
 
 def text_model_label(model_id, lang=None):
-    if model_id == DEFAULT_TEXT_MODEL:
-        return t('storyboard_text_free')
-    if model_id == TEXT_MODEL_QWEN:
-        return t('storyboard_text_qwen')
+    key = TEXT_MODEL_LABEL_KEYS.get(model_id)
+    if key:
+        return t(key)
     return model_id
 
 
 def is_free_text_model(model_id):
     return model_id in FREE_TEXT_MODELS
+
+
+def resolve_text_model(model_id):
+    """Return an allowlisted text model id; unknown/banned → DEFAULT_TEXT_MODEL."""
+    if model_id in ALLOWED_TEXT_MODELS:
+        return model_id
+    return DEFAULT_TEXT_MODEL
 
 
 def extract_json_payload(text):
@@ -144,9 +169,7 @@ def storyboard_from_script(script, key, *, clip_count=0, duration=8, model_id=DE
         model_id = resolve_model_id(model_id)
     except KeyError:
         raise TaskError(t('model_unknown', model_id), 'PARAM')
-    if text_model not in ALLOWED_TEXT_MODELS:
-        # Fall back rather than calling banned models
-        text_model = DEFAULT_TEXT_MODEL
+    text_model = resolve_text_model(text_model)
     clip_count = int(clip_count or 0)
     duration = int(duration or 8)
     messages = [

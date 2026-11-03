@@ -23,7 +23,7 @@ from tkinter import ttk  # noqa: E402
 
 import i18n  # noqa: E402
 
-TABS = ('generate', 'batch', 'history', 'apikey')
+TABS = ('generate', 'chat', 'compare', 'batch', 'history', 'apikey')
 DUMMY_KEY = 'sk-demo-screenshot-A1b2'  # Not a real key; shown masked as ****A1b2.
 PROMPTS = {
     'en': ('16s, 16:9 landscape. Realistic coming-of-age drama on a quiet college-town street at night: streetlights '

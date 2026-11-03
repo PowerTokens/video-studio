@@ -86,3 +86,37 @@ class StoryboardCallTests(unittest.TestCase):
         self.assertEqual(skipped, [])
         self.assertEqual(len(imported), 1)
         self.assertEqual(imported[0]['state'], 'queued')
+
+
+class SixModelAllowlistTests(unittest.TestCase):
+    def test_allowed_text_models_are_the_six(self):
+        self.assertEqual(sb.ALLOWED_TEXT_MODELS[0], 'glm-4.7-flash')
+        self.assertEqual(set(sb.ALLOWED_TEXT_MODELS), {
+            'glm-4.7-flash', 'seed-1-6-flash-250715', 'deepseek-flash',
+            'MiniMax-M2.7', 'glm-5.3-flash', 'qwen3-max',
+        })
+        self.assertTrue(sb.is_free_text_model('glm-4.7-flash'))
+        self.assertFalse(sb.is_free_text_model('deepseek-flash'))
+        self.assertFalse(sb.is_free_text_model('qwen3-max'))
+        i18n.set_language('zh')
+        self.assertIn('免费', sb.text_model_label('glm-4.7-flash'))
+        self.assertIn('MiniMax', sb.text_model_label('MiniMax-M2.7'))
+        self.assertIn('千问', sb.text_model_label('qwen3-max'))
+        i18n.set_language('en')
+        self.assertIn('free', sb.text_model_label('glm-4.7-flash'))
+        self.assertIn('expensive', sb.text_model_label('qwen3-max'))
+
+    def test_paid_allowlisted_model_is_not_rewritten(self):
+        good = json.dumps({'clips': [{'title': 'A', 'duration': 5, 'prompt': 'hello world scene'}]})
+        calls = []
+
+        def fake_api(method, url, key, body=None, timeout=30):
+            calls.append(body)
+            return 200, {'choices': [{'message': {'content': good}}]}
+
+        with patch.object(sb, 'api', side_effect=fake_api):
+            jobs, meta = sb.storyboard_from_script('x', 'sk', text_model='deepseek-flash')
+        self.assertEqual(calls[0]['model'], 'deepseek-flash')
+        self.assertEqual(meta['text_model'], 'deepseek-flash')
+        self.assertFalse(meta['free_text'])
+        self.assertEqual(len(jobs), 1)
