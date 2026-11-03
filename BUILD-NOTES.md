@@ -20,3 +20,10 @@ In-app and OAuth already send `utm_source=videostudio&utm_medium=app&utm_campaig
 (with `utm_content=app.oauth_authorize` on authorize). A powertokens.ai download jump page
 that 302s to the GitHub `.exe` with UTM is **not** built yet — track as a follow-up so
 Release/download attribution stops landing as unknown.
+
+## Billing outbound UTM (product-forced)
+
+Credits chip / recharge opens `https://powertokens.ai[/zh-Hans]/billing` with
+`utm_source=videostudio&utm_medium=app&utm_campaign=video-studio&utm_content=app.billing`.
+Product fields are **forced** even if last-touch was an ad; click ids still forward.
+OAuth authorize still uses last-touch (not forced).

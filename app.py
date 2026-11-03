@@ -31,6 +31,8 @@ OFFICIAL_KEY_URL = 'https://powertokens.ai/zh-Hans/api-keys?' + UTM
 OFFICIAL_KEY_URL_EN = 'https://powertokens.ai/api-keys?' + UTM
 KEY_QUOTA_TIP_URL = 'https://powertokens.ai/zh-Hans/api-keys?utm_source=videostudio&utm_medium=app&utm_campaign=video-studio'
 KEY_QUOTA_TIP_URL_EN = 'https://powertokens.ai/api-keys?utm_source=videostudio&utm_medium=app&utm_campaign=video-studio'
+BILLING_URL = 'https://powertokens.ai/zh-Hans/billing'
+BILLING_URL_EN = 'https://powertokens.ai/billing'
 
 
 def key_quota_tip_url():
@@ -49,6 +51,20 @@ def official_key_url():
         return utm_attr.append_to_url(url, content='app.signup')
     except Exception:
         return url
+
+
+def billing_url():
+    """Official console billing page with product-forced UTM (recharge → VS)."""
+    url = BILLING_URL if is_zh() else BILLING_URL_EN
+    try:
+        import utm_attr
+        return utm_attr.append_to_url(
+            url,
+            content=utm_attr.CONTENT_BILLING,
+            force_product=True,
+        )
+    except Exception:
+        return url + ('?' + UTM + '&utm_content=app.billing')
 
 
 def protect(raw, decrypt=False):
@@ -153,6 +169,11 @@ class App:
         self.header_logout_btn = ttk.Button(toolbar, text=t('oauth_logout'), style='Link.TButton',
                                             command=self.logout_oauth)
         self.oauth_credits_label = ttk.Label(toolbar, textvariable=self.oauth_credits_var, style='CreditsChip.TLabel')
+        self.oauth_credits_label.bind('<Button-1>', lambda *_: self.open_billing())
+        try:
+            self.oauth_credits_label.configure(cursor='hand2')
+        except tk.TclError:
+            pass
         self.oauth_account_label = ttk.Label(toolbar, textvariable=self.oauth_account_var, style='UserChip.TLabel')
         self.header_key_pill = KeyStatusPill(toolbar, chrome=WHITE)
         self.header_key_pill.pack(side='right', padx=(0, 10))
@@ -1120,6 +1141,15 @@ class App:
                 messagebox.showinfo(t('official_site'), official_key_url())
         except OSError:
             messagebox.showinfo(t('official_site'), official_key_url())
+
+    def open_billing(self):
+        """Open official billing/top-up with product-forced VS UTM."""
+        url = billing_url()
+        try:
+            if not webbrowser.open(url):
+                messagebox.showinfo(t('official_site'), url)
+        except OSError:
+            messagebox.showinfo(t('official_site'), url)
 
     def choose_folder(self):
         folder = filedialog.askdirectory()
