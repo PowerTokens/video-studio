@@ -16,7 +16,7 @@ TEXT_MODEL_SEED = 'seed-1-6-flash-250715'
 TEXT_MODEL_DEEPSEEK = 'deepseek-flash'
 TEXT_MODEL_MINIMAX = 'MiniMax-M2.7'
 TEXT_MODEL_GLM53 = 'glm-5.3-flash'
-TEXT_MODEL_QWEN = 'qwen3-max'  # expensive optional; keep name for older imports
+TEXT_MODEL_QWEN = 'qwen3-max'  # keep name for older imports
 FREE_TEXT_MODELS = frozenset({DEFAULT_TEXT_MODEL})
 ALLOWED_TEXT_MODELS = (
     DEFAULT_TEXT_MODEL,
