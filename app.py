@@ -16,7 +16,7 @@ from i18n import (LANGUAGES, LANGUAGE_NAMES, get_language, is_zh, load_settings,
                   save_setting, set_language, t)
 from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE, PAGE, INK, LINE, ACCENT, LOGO_FILE,
                        apply_theme, label, heading, card, Columns, Flow, ScrollPage, text_area,
-                       load_image, header_logo_file, KeyStatusPill, PillChip, AccentPillButton, LangPill)
+                       load_image, header_logo_file, KeyStatusPill, PillChip, AccentPillButton, LangPill, WebSelect)
 from input_helpers import parse_keys, infer_prompt
 from batch_ui import BatchTab
 from chat_ui import ChatTab
@@ -395,7 +395,7 @@ class App:
         model_row = ttk.Frame(params)
         model_row.pack(fill='x', pady=(0, 4))
         ttk.Label(model_row, text=t('param_model'), style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
-        self.model_combo = ttk.Combobox(model_row, textvariable=self.model_label, state='readonly', width=28)
+        self.model_combo = WebSelect(model_row, textvariable=self.model_label, state='readonly')
         self.model_combo.pack(fill='x')
         desc_row = ttk.Frame(model_row)
         desc_row.pack(fill='x', pady=(4, 0))

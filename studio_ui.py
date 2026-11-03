@@ -666,6 +666,341 @@ class LangPill(tk.Canvas):
             pass
 
 
+def _draw_round_rect(canvas, w, h, radius=8, fill=WHITE, outline=LINE, border=1):
+    """Web-like 8px rounded field (`.cselect-trigger`), not a full stadium pill."""
+    x0, y0, x1, y1 = 0, 0, max(2, w - 1), max(2, h - 1)
+    r = max(1, min(int(radius), (x1 - x0) // 2, (y1 - y0) // 2))
+    # Corner caps
+    canvas.create_oval(x0, y0, x0 + 2 * r, y0 + 2 * r, fill=fill, outline=outline, width=border)
+    canvas.create_oval(x1 - 2 * r, y0, x1, y0 + 2 * r, fill=fill, outline=outline, width=border)
+    canvas.create_oval(x0, y1 - 2 * r, x0 + 2 * r, y1, fill=fill, outline=outline, width=border)
+    canvas.create_oval(x1 - 2 * r, y1 - 2 * r, x1, y1, fill=fill, outline=outline, width=border)
+    # Body fills (cover oval seams)
+    canvas.create_rectangle(x0 + r, y0, x1 - r, y1, fill=fill, outline='')
+    canvas.create_rectangle(x0, y0 + r, x1, y1 - r, fill=fill, outline='')
+    # Outer strokes on straight edges
+    canvas.create_line(x0 + r, y0, x1 - r, y0, fill=outline, width=border)
+    canvas.create_line(x0 + r, y1, x1 - r, y1, fill=outline, width=border)
+    canvas.create_line(x0, y0 + r, x0, y1 - r, fill=outline, width=border)
+    canvas.create_line(x1, y0 + r, x1, y1 - r, fill=outline, width=border)
+
+
+class WebSelect(ttk.Frame):
+    """Web `.cselect` stand-in: 8px rounded white field + teal caret + popup menu.
+
+    ttk.Combobox cannot draw a custom chevron or true border-radius; this Canvas
+    trigger + Toplevel menu matches video-studio-web as closely as Tk allows.
+    Drop-in enough for model pickers: textvariable, values, state, <<ComboboxSelected>>.
+    """
+    _HEIGHT = 40
+    _RADIUS = 8
+    _ACCENT_TEXT = '#268b7e'
+    _HOVER_BORDER = '#b7d9d1'
+    _HOVER_BG = '#fbfdfe'
+    _OPEN_BG = '#f7fcfa'
+    _MENU_BORDER = '#c5ddd6'
+    _PALE = PALE
+
+    def __init__(self, parent, textvariable=None, values=(), state='readonly',
+                 command=None, width=None, **kwargs):
+        super().__init__(parent, **kwargs)
+        self._textvariable = textvariable if textvariable is not None else tk.StringVar()
+        self._owns_var = textvariable is None
+        self._values = [str(v) for v in (values or ())]
+        self._state = 'disabled' if str(state) == 'disabled' else 'readonly'
+        self._command = command
+        self._listeners = []
+        self._hover = False
+        self._open = False
+        self._popup = None
+        self._chrome = WHITE
+        self.canvas = tk.Canvas(self, height=self._HEIGHT, highlightthickness=0,
+                                borderwidth=0, background=WHITE, cursor='hand2')
+        self.canvas.pack(fill='x', expand=True)
+        self.bind('<Configure>', self._on_resize)
+        self.canvas.bind('<Button-1>', self._toggle)
+        self.canvas.bind('<Enter>', lambda e: self._set_hover(True))
+        self.canvas.bind('<Leave>', lambda e: self._set_hover(False))
+        self.canvas.bind('<FocusIn>', lambda e: self._redraw())
+        self.canvas.bind('<FocusOut>', lambda e: self._redraw())
+        self._var_trace = self._textvariable.trace_add('write', lambda *_: self._redraw())
+        self.after_idle(self._redraw)
+
+    def configure(self, cnf=None, **kwargs):
+        if cnf and isinstance(cnf, dict):
+            kwargs = {**cnf, **kwargs}
+        redraw = False
+        if 'values' in kwargs:
+            self._values = [str(v) for v in (kwargs.pop('values') or ())]
+            redraw = True
+        if 'state' in kwargs:
+            state = kwargs.pop('state')
+            self._state = 'disabled' if str(state) == 'disabled' else 'readonly'
+            self.canvas.configure(cursor='' if self._state == 'disabled' else 'hand2')
+            redraw = True
+        if 'textvariable' in kwargs:
+            if self._var_trace and self._textvariable is not None:
+                try:
+                    self._textvariable.trace_remove('write', self._var_trace)
+                except tk.TclError:
+                    pass
+            self._textvariable = kwargs.pop('textvariable')
+            self._var_trace = self._textvariable.trace_add('write', lambda *_: self._redraw())
+            redraw = True
+        if 'command' in kwargs:
+            self._command = kwargs.pop('command')
+        if kwargs:
+            super().configure(**kwargs)
+        if redraw:
+            self._redraw()
+
+    config = configure
+
+    def cget(self, key):
+        if key == 'values':
+            return tuple(self._values)
+        if key == 'state':
+            return self._state
+        if key == 'textvariable':
+            return self._textvariable
+        return super().cget(key)
+
+    def bind(self, sequence=None, func=None, add=None):
+        if sequence == '<<ComboboxSelected>>' and func is not None:
+            self._listeners.append(func)
+            return 'webselect-selected'
+        return super().bind(sequence, func, add)
+
+    def current(self, newindex=None):
+        value = self._textvariable.get()
+        if newindex is None:
+            try:
+                return self._values.index(value)
+            except ValueError:
+                return -1
+        if 0 <= int(newindex) < len(self._values):
+            self._pick(self._values[int(newindex)])
+
+    def get(self):
+        return self._textvariable.get()
+
+    def set(self, value):
+        self._textvariable.set(str(value or ''))
+        self._redraw()
+
+    def _set_hover(self, on):
+        if self._state == 'disabled':
+            return
+        self._hover = bool(on)
+        self._redraw()
+
+    def _on_resize(self, event):
+        if event.widget is self and event.width > 1:
+            self.canvas.configure(width=max(40, event.width))
+            self._redraw()
+
+    def _toggle(self, _event=None):
+        if self._state == 'disabled':
+            return
+        if self._open:
+            self._close_popup()
+        else:
+            self._open_popup()
+
+    def _pick(self, label):
+        self._textvariable.set(label)
+        self._close_popup()
+        self._redraw()
+        if self._command:
+            try:
+                self._command(label)
+            except TypeError:
+                self._command()
+        for func in list(self._listeners):
+            try:
+                func()
+            except TypeError:
+                func(None)
+
+    def _close_popup(self):
+        self._open = False
+        popup = self._popup
+        self._popup = None
+        if popup is not None:
+            try:
+                popup.grab_release()
+            except tk.TclError:
+                pass
+            try:
+                popup.destroy()
+            except tk.TclError:
+                pass
+        self._redraw()
+
+    def _open_popup(self):
+        self._close_popup()
+        if not self._values:
+            return
+        self._open = True
+        self._redraw()
+        popup = tk.Toplevel(self)
+        popup.withdraw()
+        popup.overrideredirect(True)
+        popup.configure(background=self._MENU_BORDER)
+        try:
+            popup.attributes('-topmost', True)
+        except tk.TclError:
+            pass
+        shell = tk.Frame(popup, background=WHITE, highlightthickness=1,
+                         highlightbackground=self._MENU_BORDER, bd=0)
+        shell.pack(fill='both', expand=True, padx=1, pady=1)
+        canvas = tk.Canvas(shell, background=WHITE, highlightthickness=0, borderwidth=0)
+        scroll = ttk.Scrollbar(shell, orient='vertical', command=canvas.yview)
+        body = tk.Frame(canvas, background=WHITE)
+        window = canvas.create_window(0, 0, window=body, anchor='nw')
+        canvas.configure(yscrollcommand=scroll.set)
+
+        def sync_scroll(_event=None):
+            canvas.configure(scrollregion=canvas.bbox('all'))
+            canvas.itemconfigure(window, width=max(1, canvas.winfo_width()))
+
+        body.bind('<Configure>', sync_scroll)
+        canvas.bind('<Configure>', sync_scroll)
+
+        selected = self._textvariable.get()
+        for label in self._values:
+            row = tk.Frame(body, background=self._PALE if label == selected else WHITE)
+            row.pack(fill='x', padx=6, pady=2)
+            fg = self._ACCENT_TEXT if label == selected else INK
+            font = (FONT, 10, 'bold') if label == selected else (FONT, 10)
+            lab = tk.Label(row, text=label, anchor='w', justify='left',
+                           background=row.cget('background'), foreground=fg,
+                           font=font, padx=10, pady=8)
+            lab.pack(fill='x')
+
+            def enter(event, r=row, l=lab, sel=(label == selected)):
+                if not sel:
+                    r.configure(background='#edf7f4')
+                    l.configure(background='#edf7f4', foreground=self._ACCENT_TEXT)
+
+            def leave(event, r=row, l=lab, sel=(label == selected)):
+                bg = self._PALE if sel else WHITE
+                fg = self._ACCENT_TEXT if sel else INK
+                r.configure(background=bg)
+                l.configure(background=bg, foreground=fg)
+
+            def click(_event=None, value=label):
+                self._pick(value)
+
+            for widget in (row, lab):
+                widget.bind('<Enter>', enter)
+                widget.bind('<Leave>', leave)
+                widget.bind('<Button-1>', click)
+
+        canvas.pack(side='left', fill='both', expand=True)
+        self.update_idletasks()
+        body.update_idletasks()
+        x = self.winfo_rootx()
+        y = self.winfo_rooty() + self.winfo_height() + 4
+        width = max(self.winfo_width(), 160)
+        need = max(body.winfo_reqheight() + 8, 48)
+        max_h = 280
+        scrollable = need > max_h
+        height = max_h if scrollable else need
+        if scrollable:
+            scroll.pack(side='right', fill='y')
+        popup.geometry('%dx%d+%d+%d' % (width, height, x, y))
+        canvas.configure(width=max(40, width - (18 if scrollable else 2)), height=max(40, height - 2))
+        popup.deiconify()
+        popup.lift()
+        try:
+            popup.grab_set()
+        except tk.TclError:
+            pass
+        popup.bind('<Escape>', lambda e: self._close_popup())
+        # With grab, presses outside land on the popup; close unless on trigger.
+        popup.bind('<ButtonPress-1>', self._grab_press, add='+')
+        self._popup = popup
+
+    def _grab_press(self, event):
+        if not self._open or self._popup is None:
+            return
+        px = self._popup.winfo_rootx()
+        py = self._popup.winfo_rooty()
+        pw = self._popup.winfo_width()
+        ph = self._popup.winfo_height()
+        inside_menu = px <= event.x_root <= px + pw and py <= event.y_root <= py + ph
+        if inside_menu:
+            return
+        tx, ty = self.winfo_rootx(), self.winfo_rooty()
+        tw, th = self.winfo_width(), self.winfo_height()
+        on_trigger = tx <= event.x_root <= tx + tw and ty <= event.y_root <= ty + th
+        self._close_popup()
+        if on_trigger:
+            # swallow re-open from the same click
+            return 'break'
+
+    def _redraw(self, event=None):
+        try:
+            canvas = self.canvas
+            width = max(40, int(canvas.winfo_width() or self.winfo_width() or 200))
+            height = self._HEIGHT
+            canvas.configure(width=width, height=height, background=WHITE)
+            canvas.delete('all')
+            text = str(self._textvariable.get() or '')
+            disabled = self._state == 'disabled'
+            if disabled:
+                bg, border, fg, caret = '#f3faf7', '#d5ebe5', '#7a9099', '#7a9099'
+            elif self._open:
+                bg, border, fg, caret = self._OPEN_BG, ACCENT, INK, ACCENT
+            elif self._hover:
+                bg, border, fg, caret = self._HOVER_BG, self._HOVER_BORDER, INK, self._ACCENT_TEXT
+            else:
+                bg, border, fg, caret = WHITE, LINE, INK, self._ACCENT_TEXT
+            _draw_round_rect(canvas, width, height, radius=self._RADIUS,
+                             fill=bg, outline=border, border=1)
+            # Soft top hairline like web box-shadow: 0 1px 0 rgba(...)
+            pad_x, caret_box = 12, 22
+            font = (FONT, 10)
+            # Measure + ellipsize
+            max_text_w = max(20, width - pad_x - caret_box - 8)
+            display = text
+            tid = canvas.create_text(0, 0, text=display, font=font, anchor='nw')
+            bbox = canvas.bbox(tid) or (0, 0, 10, 12)
+            canvas.delete(tid)
+            while display and (bbox[2] - bbox[0]) > max_text_w:
+                display = display[:-1]
+                tid = canvas.create_text(0, 0, text=display + '…', font=font, anchor='nw')
+                bbox = canvas.bbox(tid) or (0, 0, 10, 12)
+                canvas.delete(tid)
+            if display != text and display:
+                display = display + '…'
+            cy = height // 2
+            canvas.create_text(pad_x, cy, text=display, font=font, fill=fg, anchor='w')
+            # Teal chevron (web .cselect-caret): two strokes forming >
+            cx = width - 14
+            if self._open:
+                # point up
+                canvas.create_line(cx - 5, cy + 2, cx, cy - 3, fill=caret, width=2, capstyle='round')
+                canvas.create_line(cx, cy - 3, cx + 5, cy + 2, fill=caret, width=2, capstyle='round')
+            else:
+                canvas.create_line(cx - 5, cy - 2, cx, cy + 3, fill=caret, width=2, capstyle='round')
+                canvas.create_line(cx, cy + 3, cx + 5, cy - 2, fill=caret, width=2, capstyle='round')
+        except tk.TclError:
+            pass
+
+    def destroy(self):
+        self._close_popup()
+        if self._var_trace and self._textvariable is not None:
+            try:
+                self._textvariable.trace_remove('write', self._var_trace)
+            except tk.TclError:
+                pass
+        super().destroy()
+
+
+
+
 def text_area(parent, height=5, **kwargs):
     return tk.Text(parent, height=height, width=1, wrap='word', font=(FONT, 10),
                    background=WHITE, foreground='#354b5f', relief='flat',

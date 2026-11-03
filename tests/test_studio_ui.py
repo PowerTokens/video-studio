@@ -16,7 +16,7 @@ import re
 import app
 import batch_ui
 import wan_core
-from studio_ui import APP_NAME, VERSION, Columns, Card, KeyStatusPill, PillChip, AccentPillButton
+from studio_ui import APP_NAME, VERSION, Columns, Card, KeyStatusPill, PillChip, AccentPillButton, WebSelect
 
 
 @unittest.skipUnless(os.name == 'nt' or os.environ.get('PT_GUI_TESTS') == '1',
@@ -350,3 +350,47 @@ class LanguageSwitchTests(unittest.TestCase):
                 self.assertGreaterEqual(int(batch_tree.column(column, 'width')),
                                         font.measure(batch_tree.heading(column, 'text')) + 20, (lang, column))
         self.assertFalse(self.errors, self.errors)
+
+
+class WebSelectHeadlessTests(unittest.TestCase):
+    """API smoke for web-matching model select (no window persistence asserts)."""
+
+    def test_round_rect_helper_exists(self):
+        import studio_ui
+        self.assertTrue(callable(studio_ui._draw_round_rect))
+
+
+@unittest.skipUnless(os.name == 'nt' or os.environ.get('PT_GUI_TESTS') == '1',
+                     'Native Tk tests require Windows or PT_GUI_TESTS=1')
+class WebSelectTests(unittest.TestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        patches = [patch.object(app, 'DATA_DIR', Path(folder.name)),
+                   patch.object(batch_ui, 'CHARACTER_SETTING_PATH', Path(folder.name) / 'characters.json')]
+        for item in patches:
+            item.start()
+            self.addCleanup(item.stop)
+        self.root = tk.Tk()
+        self.addCleanup(self.root.destroy)
+        self.addCleanup(lambda: [self.root.after_cancel(item) for item in self.root.tk.splitlist(self.root.tk.call('after', 'info'))])
+        self.gui = app.App(self.root)
+        self.root.update()
+
+    def test_generate_and_chat_use_webselect(self):
+        self.assertIsInstance(self.gui.model_combo, WebSelect)
+        self.assertIsInstance(self.gui.chat.text_combo, WebSelect)
+        # Closed field height matches web min-height 40
+        self.assertEqual(int(self.gui.model_combo.canvas.cget('height')), 40)
+        self.assertEqual(int(self.gui.chat.text_combo.canvas.cget('height')), 40)
+        # Values populate
+        self.assertGreater(len(self.gui.model_combo.cget('values')), 0)
+        self.assertGreater(len(self.gui.chat.text_combo.cget('values')), 0)
+        # Selection callback fires
+        fired = []
+        self.gui.model_combo.bind('<<ComboboxSelected>>', lambda *_: fired.append(1))
+        labels = list(self.gui.model_combo.cget('values'))
+        self.gui.model_combo._pick(labels[-1])
+        self.root.update()
+        self.assertEqual(fired, [1])
+        self.assertEqual(self.gui.model_label.get(), labels[-1])
