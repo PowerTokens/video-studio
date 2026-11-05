@@ -24,7 +24,7 @@ from storyboard import (
     storyboard_from_script,
     text_model_label,
 )
-from studio_ui import Flow, card, heading, label, text_area
+from studio_ui import Flow, card, heading, label, text_area, WebSelect
 
 
 def _catalog_hint():
@@ -65,7 +65,7 @@ class ChatTab:
         self.text_model = tk.StringVar(value=DEFAULT_TEXT_MODEL)
         self.text_choices = {text_model_label(mid): mid for mid in ALLOWED_TEXT_MODELS}
         self.text_label = tk.StringVar(value=text_model_label(DEFAULT_TEXT_MODEL))
-        self.text_combo = ttk.Combobox(
+        self.text_combo = WebSelect(
             tools, textvariable=self.text_label,
             values=list(self.text_choices.keys()), state='readonly')
         self.text_combo.pack(fill='x', pady=(4, 0))

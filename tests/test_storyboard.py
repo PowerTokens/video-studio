@@ -104,7 +104,9 @@ class SixModelAllowlistTests(unittest.TestCase):
         self.assertIn('千问', sb.text_model_label('qwen3-max'))
         i18n.set_language('en')
         self.assertIn('free', sb.text_model_label('glm-4.7-flash'))
-        self.assertIn('expensive', sb.text_model_label('qwen3-max'))
+        self.assertIn('Qwen', sb.text_model_label('qwen3-max'))
+        self.assertNotIn('expensive', sb.text_model_label('qwen3-max'))
+        self.assertNotIn('较贵', sb.text_model_label('qwen3-max'))
 
     def test_paid_allowlisted_model_is_not_rewritten(self):
         good = json.dumps({'clips': [{'title': 'A', 'duration': 5, 'prompt': 'hello world scene'}]})

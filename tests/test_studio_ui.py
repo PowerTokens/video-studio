@@ -16,7 +16,7 @@ import re
 import app
 import batch_ui
 import wan_core
-from studio_ui import APP_NAME, VERSION, Columns, Card, KeyStatusPill
+from studio_ui import APP_NAME, VERSION, Columns, Card, KeyStatusPill, PillChip, AccentPillButton, WebSelect
 
 
 @unittest.skipUnless(os.name == 'nt' or os.environ.get('PT_GUI_TESTS') == '1',
@@ -205,6 +205,19 @@ class LogoWindowTests(unittest.TestCase):
         root.update()
         return gui
 
+    def test_header_account_chrome_uses_web_pills(self):
+        """Header Sign-in / credits must be stadium Canvas pills (web .btn-accent / .credits-chip)."""
+        gui = self.build()
+        self.assertIsInstance(gui.header_oauth_btn, AccentPillButton)
+        self.assertIsInstance(gui.oauth_credits_label, PillChip)
+        self.assertIsInstance(gui.oauth_account_label, PillChip)
+        # Soft key pill stays unpacked while logged out (PR #13).
+        self.assertEqual(gui.header_key_pill.current_state(), 'soft')
+        self.assertFalse(bool(gui.header_key_pill.winfo_manager()))
+        # Credits chip always visible (web billing-chip).
+        self.assertTrue(bool(gui.oauth_credits_label.winfo_manager()))
+        self.assertEqual(gui.oauth_credits_var.get(), '积分充值')
+
     def test_header_shows_official_logo(self):
         gui = self.build()
         self.assertIsNotNone(gui.logo_image)
@@ -337,3 +350,80 @@ class LanguageSwitchTests(unittest.TestCase):
                 self.assertGreaterEqual(int(batch_tree.column(column, 'width')),
                                         font.measure(batch_tree.heading(column, 'text')) + 20, (lang, column))
         self.assertFalse(self.errors, self.errors)
+
+
+class WebSelectHeadlessTests(unittest.TestCase):
+    """API smoke for web-matching model select (no window persistence asserts)."""
+
+    def test_round_rect_helper_exists(self):
+        import studio_ui
+        self.assertTrue(callable(studio_ui._draw_round_rect))
+
+    def test_coerce_discounts_and_ids(self):
+        self.assertEqual(WebSelect._coerce_discounts([50, None, '60'], 3), [50, 0, 60])
+        self.assertEqual(WebSelect._coerce_discounts(None, 2), [0, 0])
+        self.assertEqual(WebSelect._coerce_ids(['a', None], 2), ['a', ''])
+        self.assertEqual(i18n.t('discount_badge', 50), '-50%')
+        self.assertEqual(i18n.t('discount_badge', 60), '-60%')
+
+
+@unittest.skipUnless(os.name == 'nt' or os.environ.get('PT_GUI_TESTS') == '1',
+                     'Native Tk tests require Windows or PT_GUI_TESTS=1')
+class WebSelectTests(unittest.TestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        patches = [patch.object(app, 'DATA_DIR', Path(folder.name)),
+                   patch.object(batch_ui, 'CHARACTER_SETTING_PATH', Path(folder.name) / 'characters.json')]
+        for item in patches:
+            item.start()
+            self.addCleanup(item.stop)
+        self.root = tk.Tk()
+        self.addCleanup(self.root.destroy)
+        self.addCleanup(lambda: [self.root.after_cancel(item) for item in self.root.tk.splitlist(self.root.tk.call('after', 'info'))])
+        self.gui = app.App(self.root)
+        self.root.update()
+
+    def test_generate_and_chat_use_webselect(self):
+        self.assertIsInstance(self.gui.model_combo, WebSelect)
+        self.assertIsInstance(self.gui.chat.text_combo, WebSelect)
+        # Closed field height matches web min-height 40
+        self.assertEqual(int(self.gui.model_combo.canvas.cget('height')), 40)
+        self.assertEqual(int(self.gui.chat.text_combo.canvas.cget('height')), 40)
+        # Values populate
+        self.assertGreater(len(self.gui.model_combo.cget('values')), 0)
+        self.assertGreater(len(self.gui.chat.text_combo.cget('values')), 0)
+        # Selection callback fires
+        fired = []
+        self.gui.model_combo.bind('<<ComboboxSelected>>', lambda *_: fired.append(1))
+        labels = list(self.gui.model_combo.cget('values'))
+        self.gui.model_combo._pick(labels[-1])
+        self.root.update()
+        self.assertEqual(fired, [1])
+        self.assertEqual(self.gui.model_label.get(), labels[-1])
+
+    def test_generate_model_discount_badges(self):
+        """Generate WebSelect carries discount % (web .discount-badge), not baked-in label text."""
+        from models import list_models
+        combo = self.gui.model_combo
+        labels = list(combo.cget('values'))
+        discounts = list(combo.cget('discounts'))
+        ids = list(combo.cget('ids'))
+        self.assertEqual(len(labels), len(discounts))
+        self.assertEqual(len(labels), len(ids))
+        # Labels stay clean — no "(-50%)" suffix
+        for lab in labels:
+            self.assertNotRegex(lab, r'\(-\d+%\)')
+        expected = {spec.id: int(spec.discount_percent() or 0) for spec in list_models()}
+        for lab, pct, mid in zip(labels, discounts, ids):
+            self.assertEqual(pct, expected.get(mid, -1), msg='%s (%s)' % (lab, mid))
+        # Seedance Fast / Mini still discounted
+        self.assertIn(50, discounts)
+        self.assertIn(60, discounts)
+        # current_id resolves by parallel ids
+        fast_idx = discounts.index(50)
+        combo._pick(labels[fast_idx])
+        self.root.update()
+        self.assertEqual(combo.current_id(), ids[fast_idx])
+        self.assertEqual(combo.discount_for(), 50)
+        self.assertEqual(combo._badge_label(50), '-50%')
