@@ -276,6 +276,7 @@ ZH = {
     'chat_filled': '已填进生成表；可切回对话继续改。',
     'chat_need_plan': '请先聊到有可用的单条提示词方案。',
     'chat_need_outline': '请先在对话里写一些内容，再拆成批量。',
+    'chat_need_login': '请先登录 PowerTokens，再开始对话。你写好的内容会保留，登录后可直接发送。',
     'chat_splitting': '正在拆成批量提示词…',
     'chat_split_ok': '已拆成 %d 条并载入批量预览。',
     'chat_bad_json': '助手回复格式异常，可换个说法再试。',
@@ -803,6 +804,7 @@ EN = {
     'chat_filled': 'Filled into Generate. You can come back and keep chatting.',
     'chat_need_plan': 'Chat until there is a usable single-clip plan first.',
     'chat_need_outline': 'Add some chat content before splitting to batch.',
+    'chat_need_login': 'Sign in to PowerTokens before chatting. Your draft will stay here so you can send it after signing in.',
     'chat_splitting': 'Splitting into batch prompts…',
     'chat_split_ok': 'Split into %d rows and loaded Batch preview.',
     'chat_bad_json': 'The assistant reply was hard to parse. Try rephrasing.',
@@ -1121,6 +1123,7 @@ ES_OVERLAY = {
     'add_btn': 'Verificar y guardar',
     'show_key': 'Mostrar',
     'paste_hint': 'Tras verificar, la clave solo permanece en este equipo; las inválidas no se guardan.',
+    'chat_need_login': 'Inicia sesión en PowerTokens antes de chatear. Tu borrador se mantendrá aquí para que puedas enviarlo después de iniciar sesión.',
 }
 
 PT_OVERLAY = {
@@ -1174,6 +1177,7 @@ PT_OVERLAY = {
     'add_btn': 'Verificar e guardar',
     'show_key': 'Mostrar',
     'paste_hint': 'Após verificar, a chave fica só neste equipamento; inválidas não são guardadas.',
+    'chat_need_login': 'Entre no PowerTokens antes de conversar. Seu rascunho ficará aqui para você enviar depois de entrar.',
 }
 
 ES = dict(EN)
