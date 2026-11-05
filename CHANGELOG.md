@@ -4,6 +4,9 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+- **Chat requires PowerTokens sign-in.** On 对话出片, Send no longer runs from a saved API key alone. Logged out, the draft stays, the same "sign in before chatting" tip as the web app is shown, and the desktop OAuth login opens. No text-model request is made.
+- **Generate asks for sign-in first.** With an empty key pool, Generate, Compare, and Batch start (and the other create actions that used to say "add an API key") show a sign-in tip and open PowerTokens login. After sign-in, generation still uses the key pool. Pasting a key stays under API Key → Advanced, including a quiet "Already have a key?" link on the Generate tips card.
+
 ## [1.14](https://github.com/PowerTokens/video-studio/releases/tag/v1.14.0) - 2026-11-03
 
 - **Desktop Chat tab (对话).** New main tab next to Generate: talk with a text model to refine what to shoot, then **Fill Generate** (prefill the single-clip form) or **Split to batch** (reuse storyboard split into Batch preview). Six shared text models: `glm-4.7-flash` (free default), `seed-1-6-flash-250715`, `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`, `qwen3-max` (expensive optional). Batch **From script…** uses the same six options.
