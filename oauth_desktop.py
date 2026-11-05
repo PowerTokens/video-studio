@@ -63,7 +63,11 @@ def make_state() -> str:
 def build_authorize_url(redirect_uri: str, state: str, code_challenge: str,
                         client_id: str = CLIENT_ID, scope: str = SCOPE,
                         utm: Optional[dict] = None) -> str:
-    """Authorize URL. Always appends last-touch UTM (required for backend attribution)."""
+    """Authorize URL. Forces the Video Studio UTM suite (required for attribution).
+
+    Click ids from last-touch still forward. An explicit ``utm`` dict replaces
+    that suite (callers and tests); production login does not pass one.
+    """
     params = {
         'client_id': client_id,
         'redirect_uri': redirect_uri,
@@ -73,11 +77,12 @@ def build_authorize_url(redirect_uri: str, state: str, code_challenge: str,
         'code_challenge': code_challenge,
         'code_challenge_method': 'S256',
     }
-    # Required: last-touch UTM so backend can attribute desktop OAuth.
+    # Required: product-forced UTM so an ad last-touch cannot steal desktop OAuth.
     try:
         import utm_attr
         utm_attr.capture_from_env()
-        track = utm if utm is not None else utm_attr.params_for(utm_attr.CONTENT_OAUTH)
+        track = utm if utm is not None else utm_attr.params_for(
+            utm_attr.CONTENT_OAUTH, force_product=True)
     except Exception:
         track = {
             'utm_source': 'videostudio',

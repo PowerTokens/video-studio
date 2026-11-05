@@ -16,8 +16,10 @@ A full Windows build cannot be verified on Linux CI; confirm on a Windows machin
 
 ## Desktop download UTM jump (web Pages)
 
-In-app and OAuth send `utm_source=videostudio&utm_medium=app&utm_campaign=video-studio`
-(with `utm_content=app.oauth_authorize` on authorize).
+In-app signup, OAuth, and billing force
+`utm_source=videostudio&utm_medium=app&utm_campaign=video-studio`
+(`utm_content=app.signup` or `utm_content=app.oauth_authorize` on auth jumps).
+An ad last-touch cannot replace those three fields.
 
 Public download attribution uses the GitHub Pages jump (static site cannot true-HTTP 302):
 
@@ -37,7 +39,19 @@ same path). Direct GitHub asset links remain unattributed.
 Credits chip / recharge opens `https://powertokens.ai[/zh-Hans]/billing` with
 `utm_source=videostudio&utm_medium=app&utm_campaign=video-studio&utm_content=app.billing`.
 Product fields are **forced** even if last-touch was an ad; click ids still forward.
-OAuth authorize still uses last-touch (not forced).
+
+## Auth outbound UTM (product-forced)
+
+Same rule as billing for every desktop jump to register or sign in:
+
+- OAuth authorize (`utm_content=app.oauth_authorize`)
+- Onboarding signup, official API key / register, and the quota-tip link (`utm_content=app.signup`)
+
+Example (Chinese API keys page, after an ad click that also left a `gclid`):
+
+`https://powertokens.ai/zh-Hans/api-keys?utm_source=videostudio&utm_medium=app&utm_campaign=video-studio&gclid=…&utm_content=app.signup`
+
+GitHub release assets, the EXE redirect, and template raw URLs stay without UTM.
 
 ## Tag CI (`build-windows.yml`)
 

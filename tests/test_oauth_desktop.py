@@ -48,7 +48,7 @@ class AuthorizeUrlTests(unittest.TestCase):
         self.assertEqual(q['state'], 'abc')
         self.assertEqual(q['code_challenge'], 'challenge123')
         self.assertEqual(q['code_challenge_method'], 'S256')
-        # Required: last-touch UTM on authorize
+        # Required: product-forced UTM on authorize
         self.assertEqual(q['utm_source'], 'videostudio')
         self.assertEqual(q['utm_medium'], 'app')
         self.assertEqual(q['utm_campaign'], 'video-studio')
@@ -67,6 +67,38 @@ class AuthorizeUrlTests(unittest.TestCase):
         self.assertEqual(q['utm_source'], 'github')
         self.assertEqual(q['utm_medium'], 'release')
         self.assertEqual(q['utm_content'], 'app.oauth_authorize')
+
+    def test_authorize_forces_product_over_ad_last_touch(self):
+        import os
+        import utm_attr
+        cleared = {
+            'POWERTTOKENS_UTM': '',
+            'POWERTTOKENS_UTM_SOURCE': '',
+            'POWERTTOKENS_UTM_MEDIUM': '',
+            'POWERTTOKENS_UTM_CAMPAIGN': '',
+            'POWERTTOKENS_UTM_CONTENT': '',
+            'POWERTTOKENS_UTM_TERM': '',
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            with patch.object(utm_attr, 'DATA_DIR', data_dir), \
+                 patch.dict(os.environ, cleared, clear=False):
+                utm_attr.capture({
+                    'utm_source': 'google',
+                    'utm_medium': 'cpc',
+                    'utm_campaign': 'spring-sale',
+                    'gclid': 'Cj0TEST',
+                }, data_dir=data_dir)
+                url = oauth_desktop.build_authorize_url(
+                    'http://127.0.0.1:53682/callback', 'abc', 'challenge123')
+        q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))
+        self.assertEqual(q['client_id'], oauth_desktop.CLIENT_ID)
+        self.assertEqual(q['utm_source'], 'videostudio')
+        self.assertEqual(q['utm_medium'], 'app')
+        self.assertEqual(q['utm_campaign'], 'video-studio')
+        self.assertEqual(q['utm_content'], 'app.oauth_authorize')
+        self.assertEqual(q['gclid'], 'Cj0TEST')
+        self.assertNotIn('google', url)
 
 
 class LoopbackTests(unittest.TestCase):

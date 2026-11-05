@@ -89,10 +89,40 @@ class UtmAttrTests(unittest.TestCase):
         self.assertEqual(p['utm_campaign'], 'video-studio')
         self.assertEqual(p['utm_content'], 'app.billing')
         self.assertEqual(p['gclid'], 'Cj0TEST')
-        # Without force_product, last-touch ad source remains (OAuth path).
+        # Unforced params_for still keeps last-touch. Auth call sites pass force_product.
         oauth = utm_attr.params_for(utm_attr.CONTENT_OAUTH, data_dir=self.data_dir)
         self.assertEqual(oauth['utm_source'], 'google')
         self.assertEqual(oauth['utm_content'], 'app.oauth_authorize')
+
+    def test_auth_force_product_keeps_click_ids(self):
+        utm_attr.capture({
+            'utm_source': 'google',
+            'utm_medium': 'cpc',
+            'utm_campaign': 'spring-sale',
+            'gclid': 'Cj0TEST',
+            'utm_term': 'wan',
+        }, data_dir=self.data_dir)
+        for content in (utm_attr.CONTENT_OAUTH, utm_attr.CONTENT_SIGNUP):
+            p = utm_attr.params_for(content, data_dir=self.data_dir, force_product=True)
+            self.assertEqual(p['utm_source'], 'videostudio')
+            self.assertEqual(p['utm_medium'], 'app')
+            self.assertEqual(p['utm_campaign'], 'video-studio')
+            self.assertEqual(p['utm_content'], content)
+            self.assertEqual(p['gclid'], 'Cj0TEST')
+            self.assertEqual(p['utm_term'], 'wan')
+        url = utm_attr.append_to_url(
+            'https://powertokens.ai/zh-Hans/api-keys?utm_source=old&x=1',
+            content=utm_attr.CONTENT_SIGNUP,
+            data_dir=self.data_dir,
+            force_product=True,
+        )
+        q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))
+        self.assertEqual(q['x'], '1')
+        self.assertEqual(q['utm_source'], 'videostudio')
+        self.assertEqual(q['utm_medium'], 'app')
+        self.assertEqual(q['utm_campaign'], 'video-studio')
+        self.assertEqual(q['utm_content'], 'app.signup')
+        self.assertEqual(q['gclid'], 'Cj0TEST')
 
     def test_append_billing_url_force_product(self):
         utm_attr.capture({
