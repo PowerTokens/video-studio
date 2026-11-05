@@ -146,11 +146,60 @@ class ChatTab:
         mid = self.text_choices.get(self.text_label.get(), self.text_model.get())
         return resolve_text_model(mid)
 
+    def _oauth_logged_in(self):
+        """True only for a live PowerTokens OAuth session. API keys do not count."""
+        checker = getattr(self.app, '_is_oauth_logged_in', None)
+        if not callable(checker):
+            return False
+        try:
+            return bool(checker())
+        except Exception:
+            return False
+
+    def _prompt_chat_login(self):
+        """Need-login tip, then the existing desktop OAuth flow.
+
+        Leaves the draft, transcript history, and any plan untouched.
+        If a login is already in progress, start_oauth_login keeps that flow.
+        """
+        tip = t('chat_need_login')
+        try:
+            self._append_bubble('assistant', tip)
+        except tk.TclError:
+            pass
+        try:
+            self.status_var.set(tip)
+        except (tk.TclError, AttributeError):
+            pass
+        status = getattr(self.app, 'status', None)
+        setter = getattr(status, 'set', None)
+        if callable(setter):
+            try:
+                setter(tip)
+            except tk.TclError:
+                pass
+        parent = None
+        try:
+            parent = self.frame.winfo_toplevel()
+        except tk.TclError:
+            parent = None
+        try:
+            messagebox.showinfo(t('chat_title'), tip, parent=parent)
+        except tk.TclError:
+            pass
+        starter = getattr(self.app, 'start_oauth_login', None)
+        if callable(starter):
+            starter()
+
     def send(self, *_):
         if self._busy:
             return
         text = self.input.get('1.0', 'end').strip()
         if not text:
+            return
+        # A stored API key is not enough. Sign in before any user bubble or model call.
+        if not self._oauth_logged_in():
+            self._prompt_chat_login()
             return
         try:
             self.app.selected_key()
