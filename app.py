@@ -37,19 +37,43 @@ BILLING_URL_EN = 'https://powertokens.ai/billing'
 
 
 def key_quota_tip_url():
+    """Quota / expiry tip → API keys, with product-forced signup UTM."""
     url = KEY_QUOTA_TIP_URL if is_zh() else KEY_QUOTA_TIP_URL_EN
     try:
         import utm_attr
-        return utm_attr.append_to_url(url, content='app.signup')
+        return utm_attr.append_to_url(
+            url,
+            content=utm_attr.CONTENT_SIGNUP,
+            force_product=True,
+        )
     except Exception:
         return url
 
 
 def official_key_url():
+    """Register / get API key, with product-forced signup UTM."""
     url = OFFICIAL_KEY_URL if is_zh() else OFFICIAL_KEY_URL_EN
     try:
         import utm_attr
-        return utm_attr.append_to_url(url, content='app.signup')
+        return utm_attr.append_to_url(
+            url,
+            content=utm_attr.CONTENT_SIGNUP,
+            force_product=True,
+        )
+    except Exception:
+        return url
+
+
+def onboard_signup_url():
+    """Onboarding signup link, with product-forced signup UTM."""
+    url = t('onboard_signup_url')
+    try:
+        import utm_attr
+        return utm_attr.append_to_url(
+            url,
+            content=utm_attr.CONTENT_SIGNUP,
+            force_product=True,
+        )
     except Exception:
         return url
 
@@ -358,13 +382,7 @@ class App:
 
     def _onboard_open_signup(self):
         import webbrowser
-        _signup = t('onboard_signup_url')
-        try:
-            import utm_attr
-            _signup = utm_attr.append_to_url(_signup, content='app.signup')
-        except Exception:
-            pass
-        webbrowser.open(_signup)
+        webbrowser.open(onboard_signup_url())
 
 
     def build_create(self, frame):

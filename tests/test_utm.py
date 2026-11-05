@@ -1,8 +1,14 @@
-import i18n
+import tempfile
 import unittest
+import urllib.parse
+from pathlib import Path
+from unittest.mock import patch
+
+import i18n
 
 import app
 import models
+import utm_attr
 import wan_core
 
 
@@ -64,6 +70,39 @@ class InAppUtmTests(unittest.TestCase):
             self.assertEqual(q2['utm_medium'], 'app')
             self.assertEqual(q2['utm_campaign'], 'video-studio')
             self.assertEqual(q2['utm_content'], 'app.billing')
+
+    def test_auth_outbound_urls_force_product(self):
+        """Signup, register, and quota tip ignore ad last-touch for the product suite."""
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            with patch.object(utm_attr, 'DATA_DIR', data_dir):
+                utm_attr.capture({
+                    'utm_source': 'google',
+                    'utm_medium': 'cpc',
+                    'utm_campaign': 'ads',
+                    'gclid': 'g.1',
+                }, data_dir=data_dir)
+                cases = (
+                    ('zh', '/zh-Hans/api-keys'),
+                    ('en', '/api-keys'),
+                )
+                for lang, path in cases:
+                    i18n.set_language(lang)
+                    urls = (
+                        app.official_key_url(),
+                        app.key_quota_tip_url(),
+                        app.onboard_signup_url(),
+                    )
+                    for url in urls:
+                        parts = urllib.parse.urlsplit(url)
+                        self.assertEqual(parts.path, path, url)
+                        q = dict(urllib.parse.parse_qsl(parts.query))
+                        self.assertEqual(q['utm_source'], 'videostudio', url)
+                        self.assertEqual(q['utm_medium'], 'app', url)
+                        self.assertEqual(q['utm_campaign'], 'video-studio', url)
+                        self.assertEqual(q['utm_content'], 'app.signup', url)
+                        self.assertEqual(q['gclid'], 'g.1', url)
+                        self.assertNotIn('google', q['utm_source'])
 
 if __name__ == '__main__':
     unittest.main()

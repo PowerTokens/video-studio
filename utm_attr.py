@@ -1,9 +1,12 @@
 """First/last-touch UTM for Video Studio desktop.
 
-Backend attribution uses UTM only. In-app defaults (OAuth/signup use last-touch;
-billing forces product source/medium/campaign):
+Backend attribution uses UTM only. Leaving the app for signup, OAuth authorize,
+API-key register, the quota tip, or billing passes force_product=True so ad
+last-touch cannot replace:
   utm_source=videostudio&utm_medium=app&utm_campaign=video-studio
+Click ids from last-touch still forward. Unforced params_for() keeps last-touch.
 GitHub README/Release copy keeps github + oss|readme (not stored here).
+Release asset, EXE, and template raw URLs stay without UTM.
 
 Persist file: DATA_DIR / utm.json  →  { "first": {...}, "last": {...} }
 Optional env capture (updates last, and first if empty):
@@ -134,9 +137,10 @@ def params_for(
 ) -> dict[str, str]:
     """Last-touch params (+ optional content).
 
-    force_product: for billing — keep click ids from last-touch but force
-    utm_source / utm_medium / utm_campaign to product DEFAULTS so recharge
-    attributes to Video Studio even after an ad last-touch.
+    force_product: keep click ids from last-touch but force utm_source /
+    utm_medium / utm_campaign to product DEFAULTS. Desktop signup, OAuth,
+    quota-tip, and billing links pass this so an ad last-touch cannot
+    override attribution when leaving the app.
     """
     p = last_touch(data_dir)
     if force_product:
