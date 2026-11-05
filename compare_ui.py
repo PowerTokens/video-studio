@@ -249,9 +249,9 @@ class CompareTab:
     def start_compare(self):
         if self.app.busy:
             return
+        if not self.app.ensure_submit_credentials():
+            return
         try:
-            if not self.app.keys:
-                raise TaskError(t('need_key'))
             selected = self.selected_models()
             plan = plan_compare(
                 self.prompt.get('1.0', 'end'),

@@ -201,14 +201,7 @@ class ChatTab:
         if not self._oauth_logged_in():
             self._prompt_chat_login()
             return
-        try:
-            self.app.selected_key()
-        except Exception:
-            messagebox.showerror(t('chat_title'), t('storyboard_need_key'))
-            try:
-                self.app.tabs.select(len(self.app.pages) - 1)
-            except Exception:
-                pass
+        if not self.app.ensure_submit_credentials():
             return
         key = self.app.selected_key()
         self.input.delete('1.0', 'end')
@@ -308,6 +301,8 @@ class ChatTab:
         outline = script_outline_from_chat(self.messages, self.last_plan)
         if not outline:
             messagebox.showinfo(t('chat_title'), t('chat_need_outline'))
+            return
+        if not self.app.ensure_submit_credentials():
             return
         try:
             key = self.app.selected_key()

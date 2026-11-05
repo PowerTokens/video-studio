@@ -186,13 +186,14 @@ class ChatLoginGateTests(unittest.TestCase):
         tab = self._tab(host)
         draft = self._draft(tab)
         with patch('chat_ui.chat_completions') as chat, \
-             patch('chat_ui.messagebox.showinfo') as info, \
+             patch('app.messagebox.showinfo') as info, \
              patch('chat_ui.messagebox.showerror') as error:
             tab.send()
         chat.assert_not_called()
-        info.assert_not_called()
-        error.assert_called_once()
-        self.assertEqual(error.call_args.args[1], i18n.t('storyboard_need_key'))
+        error.assert_not_called()
+        info.assert_called_once()
+        self.assertEqual(info.call_args.args[1], i18n.t('need_key_advanced'))
+        self.assertNotIn('粘贴', i18n.t('need_key'))
         self.assertEqual(host.login_calls, 0)
         self.assertEqual(tab.input.get('1.0', 'end').strip(), draft)
         self.assertEqual(tab.messages, [])

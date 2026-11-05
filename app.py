@@ -338,7 +338,8 @@ class App:
         actions = Flow(box)
         actions.pack(fill='x', pady=(8, 0))
         ttk.Button(actions, text=t('onboard_get_key'), style='Accent.TButton', command=self.start_oauth_login)
-        ttk.Button(actions, text=t('onboard_goto_keys'), command=self._onboard_goto_keys)
+        self.onboard_keys_btn = ttk.Button(actions, text=t('onboard_goto_keys'), style='Link.TButton',
+                                           command=self._onboard_goto_keys)
         ttk.Button(actions, text=t('onboard_dismiss'), command=self.dismiss_onboarding)
         actions.schedule()
 
@@ -375,10 +376,70 @@ class App:
             self.onboard_card = None
 
     def _onboard_goto_keys(self):
+        """Quiet path for people who already have a key. Not the logged-out hero."""
+        self._focus_advanced_keys()
+
+    def _focus_advanced_keys(self):
+        """Open API Key → Advanced (paste), the secondary credential path."""
         try:
-            self.tabs.select(5)  # API Key is last tab
+            self.tabs.select(len(self.pages) - 1)
+        except Exception:
+            pass
+        opener = getattr(self, 'keys_advanced_open', None)
+        if opener is not None and not opener.get() and hasattr(self, 'keys_advanced_body'):
+            try:
+                self._toggle_keys_advanced()
+            except tk.TclError:
+                pass
+
+    def ensure_submit_credentials(self, parent=None):
+        """True when the key pool can submit a create/generate request.
+
+        Empty pool and logged out: login tip, then the existing OAuth flow.
+        Empty pool and logged in: advanced-paste tip, then API Key → Advanced.
+        A saved key is enough either way, so power users are not blocked.
+        """
+        if self.keys:
+            return True
+        logged_in = False
+        try:
+            logged_in = bool(self._is_oauth_logged_in())
+        except Exception:
+            logged_in = False
+        if parent is None:
+            parent = getattr(self, 'root', None)
+        if not logged_in:
+            tip = t('need_key')
+            try:
+                self.status.set(tip)
+            except Exception:
+                pass
+            try:
+                if parent is not None:
+                    messagebox.showinfo(t('oauth_login'), tip, parent=parent)
+                else:
+                    messagebox.showinfo(t('oauth_login'), tip)
+            except tk.TclError:
+                pass
+            try:
+                self.start_oauth_login()
+            except Exception:
+                pass
+            return False
+        tip = t('need_key_advanced')
+        try:
+            self.status.set(tip)
+        except Exception:
+            pass
+        try:
+            if parent is not None:
+                messagebox.showinfo(t('keys_title'), tip, parent=parent)
+            else:
+                messagebox.showinfo(t('keys_title'), tip)
         except tk.TclError:
             pass
+        self._focus_advanced_keys()
+        return False
 
     def _onboard_open_signup(self):
         import webbrowser
@@ -1433,9 +1494,9 @@ class App:
     def generate(self):
         if self.busy:
             return
+        if not self.ensure_submit_credentials():
+            return
         try:
-            if not self.keys:
-                raise TaskError(t('need_key'))
             recognized = self.apply_prompt()
             if recognized['warnings']:
                 raise TaskError(t('warning_sep').join(recognized['warnings']))
@@ -1472,6 +1533,8 @@ class App:
 
     def resume_manual(self):
         if self.busy:
+            return
+        if not self.ensure_submit_credentials():
             return
         try:
             from wan_core import task_url
