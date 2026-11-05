@@ -324,6 +324,8 @@ class BatchTab:
     def start(self, selected):
         if self.app.busy or self.store is None:
             return
+        if not self.app.ensure_submit_credentials():
+            return
         if self.character_setting.get('1.0', 'end-1c').strip() != self.imported_character_setting:
             messagebox.showerror(t('character_changed_title'), t('character_changed_body'))
             return
@@ -544,6 +546,8 @@ class StoryboardDialog(tk.Toplevel):
         script = self.script.get('1.0', 'end').strip()
         if not script:
             messagebox.showerror(t('storyboard_title'), t('storyboard_need_script'), parent=self)
+            return
+        if not self.app.ensure_submit_credentials(parent=self):
             return
         try:
             key = self.app.selected_key()

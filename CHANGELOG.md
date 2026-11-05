@@ -4,7 +4,8 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
-- **Chat requires PowerTokens sign-in.** On 对话出片, Send no longer runs from a saved API key alone. Logged out, the draft stays, the same "sign in before chatting" tip as the web app is shown, and the desktop OAuth login opens. No text-model request is made. Generate and other API-key tabs are unchanged.
+- **Chat requires PowerTokens sign-in.** On 对话出片, Send no longer runs from a saved API key alone. Logged out, the draft stays, the same "sign in before chatting" tip as the web app is shown, and the desktop OAuth login opens. No text-model request is made.
+- **Generate asks for sign-in first.** With an empty key pool, Generate, Compare, and Batch start (and the other create actions that used to say "add an API key") show a sign-in tip and open PowerTokens login. After sign-in, generation still uses the key pool. Pasting a key stays under API Key → Advanced, including a quiet "Already have a key?" link on the Generate tips card.
 
 ## [1.14](https://github.com/PowerTokens/video-studio/releases/tag/v1.14.0) - 2026-11-03
 
