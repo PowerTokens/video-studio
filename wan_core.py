@@ -15,7 +15,7 @@ from pathlib import Path
 
 from i18n import t
 
-APP_VERSION = '1.14'
+APP_VERSION = '1.15'
 USER_AGENT = 'PowerTokensVideoStudio/' + APP_VERSION
 DEFAULT_API_BASE = 'https://api.powertokens.ai'
 # In-app links (get-key button, price source) use medium=app; README links use medium=oss.
