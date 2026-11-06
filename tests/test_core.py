@@ -95,8 +95,9 @@ class Tests(unittest.TestCase):
 
     def test_streaming_uses_bounded_reads(self):
         response = Response()
-        with patch.object(w.OPENER, 'open', return_value=response):
+        with patch.object(w.OPENER, 'open', return_value=response) as opened:
             size = w.download(w.BASE + '/content', self.out, 'secret')
+        self.assertEqual(opened.call_args.args[0].get_header('User-agent'), 'videostudio/' + w.APP_VERSION)
         self.assertEqual(size, len(VIDEO))
         self.assertGreater(len(response.sizes), 1)
         self.assertLessEqual(max(response.sizes), 1048576)
@@ -153,7 +154,18 @@ class Tests(unittest.TestCase):
     def test_user_agent_names_the_app(self):
         with patch.object(w.OPENER, 'open', side_effect=OSError) as opened:
             w.api('GET', w.API_BASE + '/v1/models', 'key')
-        self.assertEqual(opened.call_args.args[0].get_header('User-agent'), 'PowerTokensVideoStudio/' + w.APP_VERSION)
+        self.assertEqual(w.USER_AGENT, 'videostudio/' + w.APP_VERSION)
+        self.assertEqual(opened.call_args.args[0].get_header('User-agent'), w.USER_AGENT)
+
+    def test_open_http_forces_videostudio_user_agent(self):
+        with patch.object(w.OPENER, 'open', side_effect=OSError) as opened:
+            with self.assertRaises(OSError):
+                w.open_http(w.API_BASE + '/v1/models', headers={
+                    'User-Agent': 'curl/8.0', 'Accept': 'application/json'})
+        request = opened.call_args.args[0]
+        self.assertEqual(request.get_header('User-agent'), 'videostudio/' + w.APP_VERSION)
+        self.assertTrue(request.get_header('User-agent').startswith('videostudio'))
+        self.assertEqual(request.get_header('Accept'), 'application/json')
 
     def test_api_base_validation(self):
         self.assertEqual(w.resolve_api_base(None), 'https://api.powertokens.ai')

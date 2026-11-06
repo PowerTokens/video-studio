@@ -4,6 +4,8 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+- **API User-Agent is `videostudio/<version>`.** Chat, generate, key checks, API-host downloads, and desktop OAuth token, userinfo, and revoke requests send this header so PowerTokens consumption logs can attribute Video Studio. Browser links and their UTM parameters are unchanged.
+
 - **Signup and OAuth force the Video Studio UTM suite.** Desktop jumps to PowerTokens signup, OAuth authorize, API key register, and the quota-tip link now force `utm_source=videostudio&utm_medium=app&utm_campaign=video-studio` (`utm_content=app.signup` or `app.oauth_authorize`). An ad last-touch can no longer replace those fields; click ids still forward. Billing is unchanged. GitHub release, EXE, and template URLs stay without UTM.
 
 ## [1.14](https://github.com/PowerTokens/video-studio/releases/tag/v1.14.0) - 2026-11-03

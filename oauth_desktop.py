@@ -19,12 +19,11 @@ import threading
 import time
 import urllib.error
 import urllib.parse
-import urllib.request
 import webbrowser
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from wan_core import DATA_DIR
+from wan_core import DATA_DIR, open_http
 
 CLIENT_ID = 'powerbaze_desktop_v1'
 AUTHORIZE_URL = 'https://www.powertokens.ai/oauth/authorize'
@@ -36,7 +35,6 @@ PREFERRED_PORT = 53682
 CALLBACK_PATH = '/callback'
 DEFAULT_TIMEOUT = 300
 SESSION_FILE = 'oauth_session.json'
-USER_AGENT = 'PowerTokensVideoStudio-Desktop/oauth'
 
 
 class OAuthError(Exception):
@@ -190,13 +188,11 @@ def _form_post(url: str, fields: dict, headers: Optional[dict] = None) -> dict:
     req_headers = {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json',
-        'User-Agent': USER_AGENT,
     }
     if headers:
         req_headers.update(headers)
-    req = urllib.request.Request(url, data=body, method='POST', headers=req_headers)
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with open_http(url, data=body, method='POST', headers=req_headers, timeout=30) as resp:
             raw = resp.read().decode('utf-8')
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as exc:
@@ -216,13 +212,11 @@ def _form_post(url: str, fields: dict, headers: Optional[dict] = None) -> dict:
 
 
 def _json_get(url: str, access_token: str) -> dict:
-    req = urllib.request.Request(url, method='GET', headers={
-        'Authorization': 'Bearer ' + access_token,
-        'Accept': 'application/json',
-        'User-Agent': USER_AGENT,
-    })
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with open_http(url, method='GET', headers={
+            'Authorization': 'Bearer ' + access_token,
+            'Accept': 'application/json',
+        }, timeout=30) as resp:
             raw = resp.read().decode('utf-8')
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as exc:

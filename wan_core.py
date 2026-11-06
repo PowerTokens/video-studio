@@ -16,7 +16,9 @@ from pathlib import Path
 from i18n import t
 
 APP_VERSION = '1.14'
-USER_AGENT = 'PowerTokensVideoStudio/' + APP_VERSION
+# Product token first so PowerTokens consumption logs can attribute Video Studio.
+# Structured as videostudio/<version>; backend matches "videostudio".
+USER_AGENT = 'videostudio/' + APP_VERSION
 DEFAULT_API_BASE = 'https://api.powertokens.ai'
 # In-app links (get-key button, price source) use medium=app; README links use medium=oss.
 UTM = 'utm_source=videostudio&utm_medium=app&utm_campaign=video-studio'
@@ -139,13 +141,29 @@ class SafeRedirect(urllib.request.HTTPRedirectHandler):
 OPENER = urllib.request.build_opener(SafeRedirect())
 
 
+def open_http(url, data=None, method=None, headers=None, timeout=30):
+    """Open one HTTP request. Always sends User-Agent ``videostudio/<version>``.
+
+    Chat, generate, key checks, content downloads, and OAuth token/userinfo
+    all go through here so consumption logs attribute Video Studio. A
+    caller-supplied User-Agent is replaced.
+    """
+    merged = {}
+    for key, value in (headers or {}).items():
+        if str(key).lower() == 'user-agent':
+            continue
+        merged[key] = value
+    merged['User-Agent'] = USER_AGENT
+    request = urllib.request.Request(url, data=data, method=method, headers=merged)
+    return OPENER.open(request, timeout=timeout)
+
+
 def api(method, url, key, payload=None, timeout=30):
     data = json.dumps(payload, ensure_ascii=False).encode() if payload is not None else None
-    req = urllib.request.Request(url, data=data, method=method, headers={
-        'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json',
-        'User-Agent': USER_AGENT})
     try:
-        with OPENER.open(req, timeout=timeout) as response:
+        with open_http(url, data=data, method=method, headers={
+            'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json',
+        }, timeout=timeout) as response:
             code, raw = response.status, response.read(2 * 1024 * 1024)
     except urllib.error.HTTPError as exc:
         code, raw = exc.code, exc.read(2 * 1024 * 1024)
@@ -299,7 +317,7 @@ def download(url, out_path, key, stop=None, report=lambda text: None, timeout=18
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
         raise TaskError(t('video_url_invalid'), 'DOWNLOAD')
-    headers = {'User-Agent': USER_AGENT, 'Accept-Encoding': 'identity'}
+    headers = {'Accept-Encoding': 'identity'}
     if is_api_url(url):
         headers['Authorization'] = 'Bearer ' + key
     out = Path(out_path)
@@ -332,10 +350,9 @@ def download(url, out_path, key, stop=None, report=lambda text: None, timeout=18
     if offset:
         headers['Range'] = 'bytes=%d-' % range_start
     requested_range = bool(headers.get('Range'))
-    req = urllib.request.Request(url, headers=headers)
     try:
         try:
-            response = OPENER.open(req, timeout=timeout)
+            response = open_http(url, headers=headers, timeout=timeout)
         except urllib.error.HTTPError as exc:
             if exc.code == 416 and offset:
                 raise TaskError(t('range_rejected'), 'DOWNLOAD')
