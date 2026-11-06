@@ -14,6 +14,7 @@ from unittest.mock import patch
 import tempfile
 
 import oauth_desktop
+import wan_core
 
 
 class PkceTests(unittest.TestCase):
@@ -163,6 +164,7 @@ class TokenUserinfoTests(unittest.TestCase):
                 body = self.rfile.read(length).decode('utf-8')
                 captured['path'] = self.path
                 captured['ctype'] = self.headers.get('Content-Type')
+                captured['ua'] = self.headers.get('User-Agent')
                 captured['fields'] = dict(urllib.parse.parse_qsl(body))
                 payload = json.dumps({
                     'access_token': 'tok-123',
@@ -193,6 +195,8 @@ class TokenUserinfoTests(unittest.TestCase):
         self.assertEqual(captured['fields']['code_verifier'], 'verifier1')
         self.assertEqual(captured['fields']['client_id'], oauth_desktop.CLIENT_ID)
         self.assertIn('application/x-www-form-urlencoded', captured['ctype'])
+        self.assertEqual(captured['ua'], wan_core.USER_AGENT)
+        self.assertTrue(captured['ua'].startswith('videostudio'))
 
     def test_fetch_userinfo_sends_bearer(self):
         captured = {}
@@ -200,6 +204,7 @@ class TokenUserinfoTests(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):  # noqa: N802
                 captured['auth'] = self.headers.get('Authorization')
+                captured['ua'] = self.headers.get('User-Agent')
                 payload = json.dumps({
                     'name': 'Cai Wei',
                     'credits': 1234,
@@ -224,6 +229,8 @@ class TokenUserinfoTests(unittest.TestCase):
         thread.join(timeout=2)
         httpd.server_close()
         self.assertEqual(captured['auth'], 'Bearer tok-abc')
+        self.assertEqual(captured['ua'], wan_core.USER_AGENT)
+        self.assertTrue(captured['ua'].startswith('videostudio'))
         self.assertEqual(info['credits'], 1234)
         self.assertTrue(info['key'])
 
