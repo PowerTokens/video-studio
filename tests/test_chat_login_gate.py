@@ -1,4 +1,4 @@
-"""Chat Send requires a PowerTokens OAuth session, not merely a stored API key."""
+"""Chat Send runs on any saved key. An empty pool with no OAuth session asks for sign-in."""
 import i18n
 i18n.set_language('zh')
 
@@ -85,44 +85,47 @@ class ChatLoginGateTests(unittest.TestCase):
             i18n.set_language(lang)
             self.assertEqual(i18n.t('chat_need_login'), text)
 
-    def test_logged_out_with_api_key_does_not_send_or_mount_plan(self):
-        host = _host(session=None, keys=['sk-local-only'])
-        tab = self._tab(host)
-        draft = self._draft(tab)
-        existing = {'prompt': 'already here', 'title': 'old'}
-        tab.last_plan = existing
-        with patch('chat_ui.chat_completions') as chat, \
-             patch('chat_ui.messagebox.showinfo') as info, \
-             patch('chat_ui.messagebox.showerror') as error:
-            tab.send()
-        chat.assert_not_called()
-        error.assert_not_called()
-        info.assert_called_once()
-        self.assertEqual(info.call_args.args[0], i18n.t('chat_title'))
-        self.assertEqual(info.call_args.args[1], i18n.t('chat_need_login'))
-        self.assertEqual(host.login_calls, 1)
-        self.assertEqual(host.key_reads, 0)
-        self.assertEqual(tab.input.get('1.0', 'end').strip(), draft)
-        self.assertEqual(tab.messages, [])
-        self.assertIs(tab.last_plan, existing)
-        self.assertIn(i18n.t('chat_need_login'), tab.thread.get('1.0', 'end'))
-        self.assertEqual(tab.status_var.get(), i18n.t('chat_need_login'))
-        host.tabs.select.assert_not_called()
+    def _assert_sent(self, tab, host, chat, text):
+        chat.assert_called_once()
+        self.assertEqual(chat.call_args.args[0], host.keys[0])
+        self.assertEqual(host.login_calls, 0)
+        self.assertEqual(tab.input.get('1.0', 'end').strip(), '')
+        self.assertEqual(tab.messages[0]['role'], 'user')
+        self.assertEqual(tab.messages[0]['content'], text)
+        self.assertIsNone(tab.last_plan)
 
-    def test_expired_session_with_api_key_is_logged_out(self):
+    def test_key_without_oauth_sends(self):
+        host = _host(session=None, keys=['sk-local-only'])
+        self.assertFalse(host._is_oauth_logged_in())
+        tab = self._tab(host)
+        text = self._draft(tab)
+        tab.last_plan = {'prompt': 'already here', 'title': 'old'}
+        with patch('chat_ui.chat_completions', return_value=('{"assistant_message":"好","ready":false,"plan":null}', 'm')) as chat, \
+             patch('chat_ui.threading.Thread', _InlineThread), \
+             patch('chat_ui.messagebox.showinfo') as info, \
+             patch('app.messagebox.showinfo') as app_info:
+            with patch.object(tab, '_schedule_poll', lambda: None):
+                tab.send()
+        info.assert_not_called()
+        app_info.assert_not_called()
+        self._assert_sent(tab, host, chat, text)
+        host.tabs.select.assert_not_called()
+        self.assertNotIn(i18n.t('chat_need_login'), tab.thread.get('1.0', 'end'))
+
+    def test_expired_session_with_api_key_still_sends(self):
         host = _host(
             session={'access_token': 'tok', 'expires_at': time.time() - 30},
             keys=['sk-local-only'])
         self.assertFalse(host._is_oauth_logged_in())
         tab = self._tab(host)
-        self._draft(tab)
-        with patch('chat_ui.chat_completions') as chat, \
+        text = self._draft(tab)
+        with patch('chat_ui.chat_completions', return_value=('{"assistant_message":"好","ready":false,"plan":null}', 'm')) as chat, \
+             patch('chat_ui.threading.Thread', _InlineThread), \
              patch('chat_ui.messagebox.showinfo') as info:
-            tab.send()
-        chat.assert_not_called()
-        info.assert_called_once()
-        self.assertEqual(host.login_calls, 1)
-        self.assertEqual(host.key_reads, 0)
+            with patch.object(tab, '_schedule_poll', lambda: None):
+                tab.send()
+        info.assert_not_called()
+        self._assert_sent(tab, host, chat, text)
 
     def test_logged_out_without_key_asks_for_login_not_a_key(self):
         host = _host(session=None, keys=[])
@@ -200,7 +203,7 @@ class ChatLoginGateTests(unittest.TestCase):
         host.tabs.select.assert_called_once_with(5)
 
     def test_login_already_in_progress_is_not_started_again(self):
-        host = _host(session=None, keys=['sk-local-only'])
+        host = _host(session=None, keys=[])
         tab = self._tab(host)
         self._draft(tab)
 

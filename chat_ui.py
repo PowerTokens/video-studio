@@ -157,10 +157,11 @@ class ChatTab:
             return False
 
     def _prompt_chat_login(self):
-        """Need-login tip, then the existing desktop OAuth flow.
+        """Empty pool and logged out: need-login tip, then desktop OAuth.
 
         Leaves the draft, transcript history, and any plan untouched.
-        If a login is already in progress, start_oauth_login keeps that flow.
+        A saved key never reaches this path. If a login is already in
+        progress, start_oauth_login keeps that flow.
         """
         tip = t('chat_need_login')
         try:
@@ -197,11 +198,13 @@ class ChatTab:
         text = self.input.get('1.0', 'end').strip()
         if not text:
             return
-        # A stored API key is not enough. Sign in before any user bubble or model call.
-        if not self._oauth_logged_in():
-            self._prompt_chat_login()
-            return
-        if not self.app.ensure_submit_credentials():
+        # A key in the pool is enough, with or without an OAuth session.
+        # Empty pool: sign in if logged out (draft stays); otherwise Advanced.
+        if not getattr(self.app, 'keys', None):
+            if self._oauth_logged_in():
+                self.app.ensure_submit_credentials()
+            else:
+                self._prompt_chat_login()
             return
         key = self.app.selected_key()
         self.input.delete('1.0', 'end')
