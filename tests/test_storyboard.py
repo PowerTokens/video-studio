@@ -29,7 +29,7 @@ class StoryboardCallTests(unittest.TestCase):
         i18n.set_language('zh')
         self.assertEqual(sb.DEFAULT_TEXT_MODEL, 'glm-4.7-flash')
         self.assertTrue(sb.is_free_text_model('glm-4.7-flash'))
-        self.assertFalse(sb.is_free_text_model('qwen3-max'))
+        self.assertEqual(sb.resolve_text_model('qwen3-max'), 'glm-4.7-flash')
         self.assertIn('免费', sb.text_model_label('glm-4.7-flash'))
         i18n.set_language('en')
         self.assertIn('free', sb.text_model_label('glm-4.7-flash'))
@@ -73,6 +73,19 @@ class StoryboardCallTests(unittest.TestCase):
         self.assertEqual(meta['text_model'], 'glm-4.7-flash')
         self.assertEqual(len(jobs), 1)
 
+    def test_removed_qwen_text_model_falls_back_to_default(self):
+        good = json.dumps({'clips': [{'title': 'A', 'duration': 5, 'prompt': 'hello world scene'}]})
+
+        def fake_api(method, url, key, body=None, timeout=30):
+            self.assertEqual(body['model'], 'glm-4.7-flash')
+            return 200, {'choices': [{'message': {'content': good}}]}
+
+        with patch.object(sb, 'api', side_effect=fake_api):
+            jobs, meta = sb.storyboard_from_script('x', 'sk', text_model='qwen3-max')
+        self.assertEqual(meta['text_model'], 'glm-4.7-flash')
+        self.assertTrue(meta['free_text'])
+        self.assertEqual(len(jobs), 1)
+
     def test_rows_to_xlsx_roundtrip(self):
         good = json.dumps({'clips': [
             {'title': 'SKU', 'duration': 8, 'prompt': 'Ear buds on marble, 8 seconds.'},
@@ -88,23 +101,24 @@ class StoryboardCallTests(unittest.TestCase):
         self.assertEqual(imported[0]['state'], 'queued')
 
 
-class SixModelAllowlistTests(unittest.TestCase):
-    def test_allowed_text_models_are_the_six(self):
+class FiveModelAllowlistTests(unittest.TestCase):
+    def test_allowed_text_models_are_the_five(self):
         self.assertEqual(sb.ALLOWED_TEXT_MODELS[0], 'glm-4.7-flash')
-        self.assertEqual(set(sb.ALLOWED_TEXT_MODELS), {
+        self.assertEqual(list(sb.ALLOWED_TEXT_MODELS), [
             'glm-4.7-flash', 'seed-1-6-flash-250715', 'deepseek-flash',
-            'MiniMax-M2.7', 'glm-5.3-flash', 'qwen3-max',
-        })
+            'MiniMax-M2.7', 'glm-5.3-flash',
+        ])
+        self.assertNotIn('qwen3-max', sb.ALLOWED_TEXT_MODELS)
         self.assertTrue(sb.is_free_text_model('glm-4.7-flash'))
         self.assertFalse(sb.is_free_text_model('deepseek-flash'))
-        self.assertFalse(sb.is_free_text_model('qwen3-max'))
+        self.assertEqual(sb.resolve_text_model('qwen3-max'), 'glm-4.7-flash')
         i18n.set_language('zh')
         self.assertIn('免费', sb.text_model_label('glm-4.7-flash'))
         self.assertIn('MiniMax', sb.text_model_label('MiniMax-M2.7'))
-        self.assertIn('千问', sb.text_model_label('qwen3-max'))
+        self.assertEqual(sb.text_model_label('qwen3-max'), 'qwen3-max')
         i18n.set_language('en')
         self.assertIn('free', sb.text_model_label('glm-4.7-flash'))
-        self.assertIn('expensive', sb.text_model_label('qwen3-max'))
+        self.assertIn('DeepSeek', sb.text_model_label('deepseek-flash'))
 
     def test_paid_allowlisted_model_is_not_rewritten(self):
         good = json.dumps({'clips': [{'title': 'A', 'duration': 5, 'prompt': 'hello world scene'}]})
