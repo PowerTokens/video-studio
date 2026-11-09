@@ -4,13 +4,15 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+- **Chat and From script text models.** Dropped `qwen3-max` (the chat endpoint does not serve it). Chat and Batch **From script** share five models: `glm-4.7-flash` (free default), `seed-1-6-flash-250715`, `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`. A saved choice of the removed model falls back to `glm-4.7-flash`.
+
 ## [1.15](https://github.com/PowerTokens/video-studio/releases/tag/v1.15.0) - 2026-11-06
 
 - **Signup and OAuth force the Video Studio UTM suite.** Desktop jumps to PowerTokens signup, OAuth authorize, API key register, and the quota-tip link now force `utm_source=videostudio&utm_medium=app&utm_campaign=video-studio` (`utm_content=app.signup` or `app.oauth_authorize`). An ad last-touch can no longer replace those fields; click ids still forward. Billing is unchanged. GitHub release, EXE, and template URLs stay without UTM.
 
 ## [1.14](https://github.com/PowerTokens/video-studio/releases/tag/v1.14.0) - 2026-11-03
 
-- **Desktop Chat tab (对话).** New main tab next to Generate: talk with a text model to refine what to shoot, then **Fill Generate** (prefill the single-clip form) or **Split to batch** (reuse storyboard split into Batch preview). Six shared text models: `glm-4.7-flash` (free default), `seed-1-6-flash-250715`, `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`, `qwen3-max` (expensive optional). Batch **From script…** uses the same six options.
+- **Desktop Chat tab (对话).** New main tab next to Generate: talk with a text model to refine what to shoot, then **Fill Generate** (prefill the single-clip form) or **Split to batch** (reuse storyboard split into Batch preview). Five shared text models: `glm-4.7-flash` (free default), `seed-1-6-flash-250715`, `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`. Batch **From script…** uses the same five options.
 - **Chat action row layout.** Send / Clear / Fill Generate / Split to batch use the shared Flow layout (no pack/grid clash on narrow windows).
 
 ## [1.13](https://github.com/PowerTokens/video-studio/releases/tag/v1.13.0) - 2026-11-03
@@ -38,7 +40,7 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 - **Continue from previous clip.** Optional Batch / From-script checkbox chains rows: N+1 uses N’s last frame as the next opening frame (Seedance/Kling via embedded image; Wan tries a data URL — live-key verify). Sequential submit; downloads stay concurrent. Resume never resubmits a saved task ID. Windows EXE bundles `imageio-ffmpeg` (**~70–80 MB** larger) so frame extraction works without a system install. Chain is **off by default**; the handoff frame is taken ~0.5s before the end and saved as `<clip>_chain_frame.jpg` beside the video.
 - **First-run tips.** Three-step onboarding on the Generate tab (dismissible; reopen from **Tips**). Links to the API Key tab and the PowerTokens API Keys page. In-app links use `utm_medium=app`; README links use `utm_medium=oss`.
 - **English UI pass.** Shortened awkward labels and truncation-prone strings across tabs and dialogs.
-- **From script (Batch only).** Optional **从剧本生成 / From script…** builds clip prompts via PT chat (`glm-4.7-flash` free default, or `qwen3-max`). Loads into the batch preview. CLI: `pt_wan.py storyboard`.
+- **From script (Batch only).** Optional **从剧本生成 / From script…** builds clip prompts via PT chat (`glm-4.7-flash` free default). Loads into the batch preview. CLI: `pt_wan.py storyboard`.
 - **Key pool exhaustion.** Keys that return quota / expired / rate-limit errors (HTTP 402 / 429 and related messages) are marked exhausted for the run; the next key is tried. A Task ID already returned is never resubmitted. If every key is exhausted, the batch pauses with a clear message. The API Key tab tip links to PowerTokens key limits.
 - **Compare models.** New Compare tab / `pt_wan.py compare --models a,b,c` / MCP `compare_videos`: one prompt to 2–3 models, per-model auto-snap notices, combined cost estimate, side-by-side results, outputs as `name_model-short.mp4` under a `compare/` folder, and a shared `compare_id` in History.
 - **Auto-adjust on model switch.** Duration, resolution and aspect ratio snap to the nearest values the new model supports, with a short notice. Batch import rows with unsupported params stay unsubmitted and show a clear per-row warning with suggested values (legacy templates keep working).

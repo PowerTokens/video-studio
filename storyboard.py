@@ -10,13 +10,13 @@ from i18n import t
 from models import DEFAULT_MODEL_ID, get_model, resolve_model_id, snap_params, format_adjust_notice
 from wan_core import API_BASE, TaskError, api, estimate_cost, payload
 
-# Free default first; same six for Chat + Batch「从剧本生成」. Never Seedream / MiniMax H3 / deepseek-v4 / Kimi.
+# Free default first; same five for Chat and Batch「从剧本生成」.
+# Never Seedream, MiniMax H3, deepseek-v4, Kimi, or qwen3-max (chat 404).
 DEFAULT_TEXT_MODEL = 'glm-4.7-flash'
 TEXT_MODEL_SEED = 'seed-1-6-flash-250715'
 TEXT_MODEL_DEEPSEEK = 'deepseek-flash'
 TEXT_MODEL_MINIMAX = 'MiniMax-M2.7'
 TEXT_MODEL_GLM53 = 'glm-5.3-flash'
-TEXT_MODEL_QWEN = 'qwen3-max'  # expensive optional; keep name for older imports
 FREE_TEXT_MODELS = frozenset({DEFAULT_TEXT_MODEL})
 ALLOWED_TEXT_MODELS = (
     DEFAULT_TEXT_MODEL,
@@ -24,7 +24,6 @@ ALLOWED_TEXT_MODELS = (
     TEXT_MODEL_DEEPSEEK,
     TEXT_MODEL_MINIMAX,
     TEXT_MODEL_GLM53,
-    TEXT_MODEL_QWEN,
 )
 TEXT_MODEL_LABEL_KEYS = {
     DEFAULT_TEXT_MODEL: 'storyboard_text_free',
@@ -32,7 +31,6 @@ TEXT_MODEL_LABEL_KEYS = {
     TEXT_MODEL_DEEPSEEK: 'storyboard_text_deepseek',
     TEXT_MODEL_MINIMAX: 'storyboard_text_minimax',
     TEXT_MODEL_GLM53: 'storyboard_text_glm53',
-    TEXT_MODEL_QWEN: 'storyboard_text_qwen',
 }
 
 CHAT_PATH = '/v1/chat/completions'
@@ -141,6 +139,7 @@ def _system_prompt(clip_count, duration, stricter=False):
 
 
 def chat_completions(key, messages, text_model=DEFAULT_TEXT_MODEL, temperature=0.3):
+    text_model = resolve_text_model(text_model)
     body = {
         'model': text_model,
         'messages': messages,

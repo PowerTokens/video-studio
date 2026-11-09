@@ -9,7 +9,7 @@ from storyboard import ALLOWED_TEXT_MODELS, DEFAULT_TEXT_MODEL, resolve_text_mod
 
 
 class AllowlistTests(unittest.TestCase):
-    def test_six_models_free_first(self):
+    def test_five_models_free_first(self):
         self.assertEqual(ALLOWED_TEXT_MODELS[0], DEFAULT_TEXT_MODEL)
         self.assertEqual(list(ALLOWED_TEXT_MODELS), [
             'glm-4.7-flash',
@@ -17,9 +17,10 @@ class AllowlistTests(unittest.TestCase):
             'deepseek-flash',
             'MiniMax-M2.7',
             'glm-5.3-flash',
-            'qwen3-max',
         ])
+        self.assertNotIn('qwen3-max', ALLOWED_TEXT_MODELS)
         self.assertEqual(resolve_text_model('deepseek-v4'), DEFAULT_TEXT_MODEL)
+        self.assertEqual(resolve_text_model('qwen3-max'), DEFAULT_TEXT_MODEL)
         self.assertEqual(resolve_text_model('MiniMax-M2.7'), 'MiniMax-M2.7')
 
 
