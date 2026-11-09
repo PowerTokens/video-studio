@@ -4,6 +4,8 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+## [1.16](https://github.com/PowerTokens/video-studio/releases/tag/v1.16.0) - 2026-11-09
+
 - **Chat and From script text models.** Dropped `qwen3-max` (the chat endpoint does not serve it). Chat and Batch **From script** share five models: `glm-4.7-flash` (free default), `seed-1-6-flash-250715`, `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`. A saved choice of the removed model falls back to `glm-4.7-flash`.
 - **Sign in when nothing is saved.** Chat Send, Generate, Compare, and Batch start open PowerTokens login when there is no OAuth session and the key pool is empty. The draft stays, and pasting a key is not the main next step. On the Generate tips card, Sign in stays the accent button; Already have a key? is a quiet link to API Key → Advanced.
 - **A saved key is enough.** Chat, Generate, Compare, and Batch still run from any key in the pool, with or without an OAuth session. Signed in with an empty pool opens API Key → Advanced and does not start login again.
