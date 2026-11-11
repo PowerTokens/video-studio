@@ -25,6 +25,8 @@ on:
       - 'Build-Mac.sh'
       - 'tools/make_icns.sh'
       - 'tools/macos_app_smoke.sh'
+      - 'tools/macos_acceptance.py'
+      - 'tools/https_fixture.py'
       - 'platform_paths.py'
       - 'secret_store.py'
       - 'requirements.txt'
@@ -77,6 +79,14 @@ jobs:
           PYTHONUTF8: '1'
           LOCALAPPDATA: ${{ runner.temp }}/pt-smoke-data
         run: bash tools/macos_app_smoke.sh
+      - name: Mac acceptance (Keychain, GUI, fixture sim, DMG)
+        env:
+          PYTHONUTF8: '1'
+          # Isolated Keychain item names so this job never reads or writes
+          # a real remembered-key item. Dummy values only.
+          PT_KEYCHAIN_SERVICE: PowerTokens Video Studio CI ${{ github.run_id }}
+          PT_KEYCHAIN_ACCOUNT: accept-dummy-${{ github.run_id }}
+        run: python tools/macos_acceptance.py --app dist/PowerTokensVideoStudio.app --dmg dist/PowerTokensVideoStudio-macOS-arm64.dmg --out dist/acceptance
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -93,4 +103,11 @@ jobs:
         with:
           name: macos-smoke-evidence
           path: dist/smoke/
+          if-no-files-found: ignore
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-acceptance
+          path: dist/acceptance/
           if-no-files-found: ignore

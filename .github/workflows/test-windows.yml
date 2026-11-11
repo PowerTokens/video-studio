@@ -1,0 +1,40 @@
+name: Windows tests
+
+# Unit tests on windows-latest for pull requests that touch desktop code.
+# This is a regression check (including the real DPAPI round-trip and native
+# Tk tests). It does not build the EXE and does not publish a release.
+# No secrets. Not pull_request_target.
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/test-windows.yml'
+      - 'requirements.txt'
+      - '*.py'
+      - 'tests/**'
+      - 'assets/**'
+      - '*.xlsx'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Run tests
+        env:
+          PYTHONUTF8: '1'
+        run: python -m unittest discover -s tests -v

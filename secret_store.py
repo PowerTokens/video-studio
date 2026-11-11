@@ -23,6 +23,19 @@ from i18n import t
 KEYCHAIN_SERVICE = 'PowerTokens Video Studio'
 KEYCHAIN_ACCOUNT = 'remembered-api-keys'
 
+
+def active_keychain_service():
+    """Production service name, or PT_KEYCHAIN_SERVICE for isolated tests.
+
+    Acceptance and live unit tests set a unique service so they never read or
+    write the user's real remembered keys.
+    """
+    return (os.environ.get('PT_KEYCHAIN_SERVICE') or '').strip() or KEYCHAIN_SERVICE
+
+
+def active_keychain_account():
+    return (os.environ.get('PT_KEYCHAIN_ACCOUNT') or '').strip() or KEYCHAIN_ACCOUNT
+
 # Security.framework OSStatus values we branch on.
 _ERR_SEC_SUCCESS = 0
 _ERR_SEC_DUPLICATE_ITEM = -25299
@@ -114,11 +127,12 @@ def write_remembered_keys(path, keys):
         _atomic_record(path, {'dpapi': base64.b64encode(encrypted).decode('ascii')})
         return
     if kind == 'keychain':
-        keychain_set(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, raw)
+        service, account = active_keychain_service(), active_keychain_account()
+        keychain_set(service, account, raw)
         _atomic_record(path, {
             'keychain': 'login',
-            'service': KEYCHAIN_SERVICE,
-            'account': KEYCHAIN_ACCOUNT,
+            'service': service,
+            'account': account,
         })
         return
     raise RuntimeError(t('remember_unavailable'))
@@ -132,8 +146,8 @@ def read_remembered_keys(path):
     if 'dpapi' in record:
         raw = dpapi_protect(base64.b64decode(record['dpapi']), decrypt=True)
     elif record.get('keychain') == 'login':
-        service = record.get('service') or KEYCHAIN_SERVICE
-        account = record.get('account') or KEYCHAIN_ACCOUNT
+        service = record.get('service') or active_keychain_service()
+        account = record.get('account') or active_keychain_account()
         raw = keychain_get(service, account)
     else:
         raise ValueError('unknown secret record')
@@ -155,8 +169,8 @@ def clear_remembered_keys(path):
         except (OSError, ValueError):
             record = {}
     if record.get('keychain') == 'login' or storage_kind() == 'keychain':
-        service = record.get('service') or KEYCHAIN_SERVICE
-        account = record.get('account') or KEYCHAIN_ACCOUNT
+        service = record.get('service') or active_keychain_service()
+        account = record.get('account') or active_keychain_account()
         keychain_delete(service, account)
     path.unlink(missing_ok=True)
 

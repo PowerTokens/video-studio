@@ -9,6 +9,7 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 - **Remember key on macOS** writes the key pool to the login Keychain for the current user. Windows still uses DPAPI. The checkbox copy follows the system you are on.
 - First launch follows the macOS UI language (`AppleLanguages`) as well as the Windows display language. The Mac window font stays PingFang SC.
 - **Mac preview builds on pull request.** The **Build macOS app** workflow now also runs on a pull request that touches Mac packaging or desktop platform files, on the `macos-15` Apple Silicon runner, and smoke-launches the packaged app with a throw-away data folder. It still does not publish a GitHub Release.
+- **Mac acceptance on CI.** The same workflow now runs a longer acceptance pass on the Mac runner: real login-Keychain write/read/update/delete with an isolated dummy item, EN/ZH tab screenshots, bundled ffmpeg frame extraction, and a clearly labeled local HTTPS simulation of generate/poll/download. It does not perform a real PowerTokens login or a paid generation. A Windows unit-test workflow covers DPAPI and native Tk regressions on the same pull request.
 
 ## [1.16](https://github.com/PowerTokens/video-studio/releases/tag/v1.16.0) - 2026-11-09
 
