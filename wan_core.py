@@ -269,6 +269,22 @@ def payload(prompt, duration=5, resolution='720p', ratio='16:9', media=None, see
     return _models.build_request(model or DEFAULT_MODEL_ID, prompt, duration, resolution, ratio, media, seed)
 
 
+
+def infer_input_mode(request, context=None):
+    """Return t2v / i2v when known, else None. Never returns image bytes or URLs."""
+    for src in (context, request):
+        if not isinstance(src, dict):
+            continue
+        mode = str(src.get('input_mode') or src.get('_vs_input_mode') or '').strip().lower()
+        if mode in ('t2v', 'i2v'):
+            return mode
+    if isinstance(request, dict) and isinstance(request.get('media'), list):
+        for item in request['media']:
+            if isinstance(item, dict) and item.get('type') == 'first_frame' and item.get('url'):
+                return 'i2v'
+        return 't2v'
+    return None
+
 def download_source(url):
     parsed = urllib.parse.urlsplit(url)
     # Drop only common expiring-signature fields; retain parameters that may select a version.
@@ -483,6 +499,9 @@ class Client:
         ctx = self.context or {}
         surface = ctx.get('surface') or ('batch' if ctx.get('batch_id') else 'generate')
         requested = peek.get('duration')
+        input_mode = infer_input_mode(peek, ctx)
+        if isinstance(request, dict):
+            request.pop('_vs_input_mode', None)
 
         def _notify(ok, kind=None):
             try:
@@ -491,11 +510,12 @@ class Client:
                 if ok:
                     _analytics.notify_generation_finish(
                         generation_id, True, model=str(model_id or ''),
-                        surface=surface, duration_ms=duration_ms)
+                        surface=surface, duration_ms=duration_ms, input_mode=input_mode)
                 elif _analytics.is_final_generation_failure(kind):
                     _analytics.notify_generation_finish(
                         generation_id, False, model=str(model_id or ''),
-                        surface=surface, duration_ms=duration_ms, error_code=kind)
+                        surface=surface, duration_ms=duration_ms, error_code=kind,
+                        input_mode=input_mode)
             except Exception:
                 return
 
@@ -503,7 +523,7 @@ class Client:
             import analytics as _analytics
             _analytics.notify_generation_start(
                 generation_id, model=str(model_id or ''), surface=surface,
-                requested_duration_s=requested)
+                requested_duration_s=requested, input_mode=input_mode)
         except Exception:
             pass
         try:
@@ -519,6 +539,7 @@ class Client:
 
     def _submit_impl(self, keys, request, out_path):
         request = dict(request)
+        request.pop('_vs_input_mode', None)
         poll_kind = request.pop('_poll_kind', None)
         model_id = request.get('model') or request.get('model_name') or DEFAULT_MODEL_ID
         if model_id not in MODELS:

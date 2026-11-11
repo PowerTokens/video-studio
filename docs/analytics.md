@@ -64,16 +64,28 @@ Login still emits `login_success` as a funnel step, without an account id.
 ## Event schema
 
 Shared properties: `platform=desktop`, `app_version`, `session_id`,
-`install_id`. Switching tabs does not fire `app_open`. A new session starts
-after 30 minutes idle.
+`install_id`. Switching tabs does not fire `app_open` (it may fire
+`surface_open` once per tab per session). Losing focus pauses `active_ms`
+but does not end the session. A new session starts after 30 minutes idle, or
+after the window closes; `session_end` is emitted first. The next startup
+ends an unterminated previous session (crash recovery) before `app_open`.
 
 | Event | When it fires | Extra properties |
 | --- | --- | --- |
 | `app_open` | Once per session, after opt-in (or on startup if already opted in) | — |
+| `session_end` | Once per `session_id` on window close, after 30 minutes idle, or on the next consented start if a previous session was not ended (crash) | `duration_ms` (wall time), `active_ms` (time the window was focused/visible). Integers, each capped at 12 hours |
+| `login_start` | User started the OAuth sign-in (login button). Not a completed sign-in | — |
 | `login_success` | Once per session after a successful OAuth sign-in, not on session restore | `key_applied` (boolean only) |
-| `generation_start` | New `Client.submit` only (Generate, Compare, or Batch). Resume is not a start | `generation_id` (= task `local_id`), `model` (catalog-like token only), `surface`, optional `requested_duration_s` |
-| `generation_success` | That submit, or a later **resume** of the same `local_id`, finishes | `duration_ms` |
-| `generation_failed` | Only irreversible failures (`AUTH`, `QUOTA`, `PARAM`, `REJECTED`, `UNCERTAIN` with no task, `SERVER_FAILED`, …). Pause, timeout, and query-down are not terminal, so a later resume can still record success | safe `error_code` only |
+| `login_failed` | OAuth/login finished unsuccessfully | safe `error_code` only |
+| `logout` | User confirmed Sign out | — |
+| `billing_click` | User clicked through to the official credits/billing page. Not a completed payment | `source`: `header`, `account`, `quota`, `credits_chip`, or `chat` |
+| `surface_open` | Once per surface per session when the user actually opens that tab | `surface`: `generate`, `chat`, `compare`, `batch`, `history`, `keys` |
+| `key_verified` | Advanced Key-pool verify-and-save succeeded | — |
+| `key_verify_failed` | That same verify-and-save failed | safe `error_code` only |
+| `language_set` | User manually changed the UI language (not first-run detection) | `language`: `zh`, `en`, `es`, `pt` (unknown codes dropped; `ja`/`ko` are allowed for the paired web app but not offered in this UI) |
+| `generation_start` | New `Client.submit` only (Generate, Compare, or Batch). Resume is not a start | `generation_id` (= task `local_id`), `model` (catalog-like token only), `surface`, optional `requested_duration_s`, `input_mode` (`t2v` or `i2v` when a first-frame image/url was or was not attached; omitted if unknown). The image and prompt are never sent |
+| `generation_success` | That submit, or a later **resume** of the same `local_id`, finishes | `duration_ms`, optional `input_mode` |
+| `generation_failed` | Only irreversible failures (`AUTH`, `QUOTA`, `PARAM`, `REJECTED`, `UNCERTAIN` with no task, `SERVER_FAILED`, …). Pause, timeout, and query-down are not terminal, so a later resume can still record success | safe `error_code` only, optional `input_mode` |
 | `video_download` | Not used for the automatic save inside a successful generate. Fired only for an explicit download-from-link | `model`, `surface` |
 | `chat_submit` | User confirmed **Send** with a non-empty message after the login/key gate. This is the click, not a completed reply | `chat_id`, `surface=chat`, optional `model` |
 | `chat_success` | The chat API/model reply for that `chat_id` completed | `chat_id`, `surface=chat`, optional `model` |
@@ -142,10 +154,10 @@ text is dropped. Shipped clients set `environment=production` by default. Filter
 
 These are independent steps related by the same anonymous `install_id` / `session_id`. There is no required order, and none of the later steps is implied by an earlier one.
 
-1. **Daily opens** — `app_open` (`platform=desktop` or `web`).
+1. **Daily opens and session length** — `app_open` (`platform=desktop` or `web`) and later `session_end` with `duration_ms` / `active_ms`.
 2. **Actual chat occurred** — `chat_submit` means the user confirmed Send. `chat_success` means a server reply completed for that `chat_id`. A local typo-clarify (web) can emit `chat_submit` with no success/failure, because no model call ran. Old `chat_*` pilot events (for example `chat_user_message`, `chat_flash_ok`) are still dropped by the PostHog allowlist.
-3. **Video generated** — `generation_start` then `generation_success` (or `generation_failed` for an irreversible failure). Compare/batch is one start per model/job.
-4. **Added the web app to the phone home screen** — **not observable as an in-product install.** The web app has no Web App Manifest, no service worker, and no install CTA, so `beforeinstallprompt` / `appinstalled` / accepted-or-dismissed are not instrumented and must not be faked. iOS "Add to Home Screen" cannot be reliably confirmed. Web may emit `pwa_standalone_launch` when the page is already running as `display-mode: standalone` or `navigator.standalone` (a later launch signal only). Desktop has no such event.
+3. **Video generated** — `generation_start` then `generation_success` (or `generation_failed` for an irreversible failure), with `input_mode` `t2v` or `i2v` when known. Compare/batch is one start per model/job.
+4. **Added the web app to the phone home screen** — a **web-only** surface. The web app now has an Add to Home Screen offer; measure it there as `pwa_offer_shown` → `pwa_install_click` → `pwa_install_accepted` (Chromium `userChoice=accepted` or `appinstalled`, deduped). iOS only opens a guide sheet, so the add itself cannot be confirmed until a later `pwa_standalone_launch`. Desktop has no home-screen or social-share UI and does not emit `pwa_*` events.
 5. **Social sharing** — **no existing share feature.** There is no `navigator.share`, no social-network buttons, and no share-complete callback. Clipboard copy of task IDs or prompts is not a social publish and is not captured. Do not invent `share_published`.
 
 Dashboard notes: filter `environment = production` for live traffic (exclude `synthetic` / `test`). Do not treat GitHub download counts as DAU. Do not compute revenue from these events.

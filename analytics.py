@@ -38,6 +38,15 @@ EVENTS = frozenset({
     'chat_submit',
     'chat_success',
     'chat_failed',
+    'session_end',
+    'login_start',
+    'login_failed',
+    'logout',
+    'billing_click',
+    'surface_open',
+    'key_verified',
+    'key_verify_failed',
+    'language_set',
 })
 
 ALLOWED_PROPS = frozenset({
@@ -55,6 +64,10 @@ ALLOWED_PROPS = frozenset({
     'environment',
     'test_run_id',
     'chat_id',
+    'active_ms',
+    'source',
+    'language',
+    'input_mode',
 })
 
 # Rejected even if someone later adds them to ALLOWED_PROPS by mistake.
@@ -78,7 +91,13 @@ SAFE_ERROR_CODES = frozenset({
     'NO_RESUME', 'QUERY_FORBIDDEN', 'FAILED', 'QUERY_UNAVAILABLE',
 })
 
-SAFE_SURFACES = frozenset({'generate', 'compare', 'batch', 'chat'})
+SAFE_SURFACES = frozenset({
+    'generate', 'compare', 'batch', 'chat', 'tasks', 'account', 'history', 'keys',
+})
+SAFE_INPUT_MODE = frozenset({'t2v', 'i2v'})
+SAFE_LANGUAGES = frozenset({'zh', 'en', 'es', 'pt', 'ja', 'ko'})
+SAFE_BILLING_SOURCE = frozenset({'header', 'account', 'quota', 'credits_chip', 'chat'})
+SESSION_MAX_MS = 12 * 60 * 60 * 1000
 
 # Official ingest hosts from https://posthog.com/docs/api/capture
 ALLOWED_INGEST_HOSTS = frozenset({
@@ -182,10 +201,26 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
             value = str(value or '').strip().lower()
             if value not in SAFE_SURFACES:
                 continue
-        elif key == 'duration_ms':
+        elif key in ('duration_ms', 'active_ms'):
             try:
-                value = int(max(0, int(value)))
+                value = int(value)
             except (TypeError, ValueError):
+                continue
+            if value < 0:
+                continue
+            if value > SESSION_MAX_MS:
+                value = SESSION_MAX_MS
+        elif key == 'language':
+            value = str(value or '').strip().lower()
+            if value not in SAFE_LANGUAGES:
+                continue
+        elif key == 'input_mode':
+            value = str(value or '').strip().lower()
+            if value not in SAFE_INPUT_MODE:
+                continue
+        elif key == 'source':
+            value = str(value or '').strip().lower()
+            if value not in SAFE_BILLING_SOURCE:
                 continue
         elif key == 'requested_duration_s':
             try:
@@ -334,23 +369,194 @@ class Analytics:
         self._schedule_flush()
 
     # ----- session -----
+    def _cap_ms(self, ms: Any) -> int:
+        try:
+            value = int(ms)
+        except (TypeError, ValueError):
+            return 0
+        if value < 0:
+            return 0
+        return SESSION_MAX_MS if value > SESSION_MAX_MS else value
+
+    def _is_focused(self) -> bool:
+        hook = getattr(self, '_focused', None)
+        if hook is None:
+            return True
+        if callable(hook):
+            try:
+                return bool(hook())
+            except Exception:
+                return True
+        return bool(hook)
+
+    def _pause_active(self, at: float) -> None:
+        started = float(self._state.get('active_started_at') or 0)
+        if not started:
+            return
+        slice_ms = max(0, int((at - started) * 1000))
+        self._state['active_ms'] = self._cap_ms(int(self._state.get('active_ms') or 0) + slice_ms)
+        self._state['active_started_at'] = 0
+
+    def _resume_active(self, at: float) -> None:
+        if self.consent_state() != CONSENT_GRANTED:
+            return
+        session_id = str(self._state.get('session_id') or '')
+        if not session_id or self._state.get('session_end_id') == session_id:
+            return
+        if self._state.get('active_started_at'):
+            return
+        self._state['active_started_at'] = at
+
+    def _session_times(self, end_at: float) -> dict:
+        self._pause_active(end_at)
+        started = float(self._state.get('session_started_at') or end_at)
+        duration = self._cap_ms(int(max(0, (end_at - started) * 1000)))
+        active = self._cap_ms(int(self._state.get('active_ms') or 0))
+        if active > duration:
+            active = duration
+        return {'duration_ms': duration, 'active_ms': active}
+
+    def _enqueue_session_end(self, end_at: float, session_id: str = '') -> bool:
+        session_id = str(session_id or self._state.get('session_id') or '').strip()
+        if not session_id:
+            return False
+        if self._state.get('session_end_id') == session_id:
+            return False
+        if self.consent_state() != CONSENT_GRANTED:
+            return False
+        install_id = str(self._state.get('install_id') or '').strip()
+        if not install_id:
+            return False
+        times = self._session_times(end_at)
+        self._state['session_end_id'] = session_id
+        props = {
+            'duration_ms': times['duration_ms'],
+            'active_ms': times['active_ms'],
+            'session_id': session_id,
+            'install_id': install_id,
+            'platform': PLATFORM,
+        }
+        if self.app_version:
+            props['app_version'] = self.app_version
+        env_name = sanitize_environment(self._marker_environment())
+        if env_name:
+            props['environment'] = env_name
+        run_id = sanitize_test_run_id(self._marker_test_run_id())
+        if run_id:
+            props['test_run_id'] = run_id
+        body = {
+            'event': 'session_end',
+            'distinct_id': install_id,
+            'properties': props,
+            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(end_at)),
+        }
+        if self.has_destination():
+            self._enqueue(body)
+        self._save_state()
+        return True
+
+    def _begin_new_session(self, now: float) -> str:
+        session_id = uuid.uuid4().hex
+        self._state['session_id'] = session_id
+        self._state['session_started_at'] = now
+        self._state['last_activity'] = now
+        self._state['app_open_session'] = ''
+        self._state['login_success_token'] = ''
+        self._state['surfaces_seen'] = {}
+        self._state['active_ms'] = 0
+        self._state['active_started_at'] = now if self._is_focused() else 0
+        self._state['session_end_id'] = ''
+        self._save_state()
+        return session_id
+
+    def _is_idle(self, now: float) -> bool:
+        last = float(self._state.get('last_activity') or 0)
+        return bool(last and now - last > SESSION_IDLE_S)
+
+    def recover_closed_session(self) -> bool:
+        """End an unterminated previous session (crash / last close failed)."""
+        with self._lock:
+            if self.consent_state() != CONSENT_GRANTED:
+                return False
+            session_id = str(self._state.get('session_id') or '').strip()
+            if not session_id or self._state.get('session_end_id') == session_id:
+                return False
+            end_at = float(self._state.get('last_activity') or self._state.get('session_started_at') or self.clock())
+            return self._enqueue_session_end(end_at, session_id)
+
+    def end_session(self) -> bool:
+        """Final session_end for window close. Idempotent per session_id."""
+        with self._lock:
+            if self.consent_state() != CONSENT_GRANTED:
+                return False
+            session_id = str(self._state.get('session_id') or '').strip()
+            if not session_id:
+                return False
+            ok = self._enqueue_session_end(self.clock(), session_id)
+        if ok:
+            try:
+                self.flush()
+            except Exception:
+                pass
+        return ok
+
+    def handle_focus(self, focused: bool) -> None:
+        """Pause or resume active time. After 30 minutes idle, end and start a new session."""
+        if self.consent_state() != CONSENT_GRANTED:
+            return
+        with self._lock:
+            now = self.clock()
+            session_id = str(self._state.get('session_id') or '').strip()
+            if not focused:
+                self._pause_active(now)
+                if session_id:
+                    self._state['last_activity'] = now
+                    self._save_state()
+                return
+            if session_id and self._state.get('session_end_id') != session_id and self._is_idle(now):
+                self._enqueue_session_end(float(self._state.get('last_activity') or now), session_id)
+                self._begin_new_session(now)
+                should_open = True
+            else:
+                should_open = False
+                if session_id and self._state.get('session_end_id') != session_id:
+                    self._resume_active(now)
+                    self._state['last_activity'] = now
+                    self._save_state()
+        if should_open:
+            self.capture_app_open()
+            if self.has_destination():
+                self._schedule_flush()
+
+    def set_focused_hook(self, hook: Any) -> None:
+        self._focused = hook
+
     def ensure_session(self) -> str:
         """Return the current session id. A desktop session is one process, or a
         30-minute idle gap if the process is left running. Tab switches do not
-        apply here; callers must not invoke capture_app_open on focus/tab change.
+        fire app_open; they may emit surface_open once per tab per session.
+        Idle after a focus loss ends the previous session first.
         """
         with self._lock:
             if self.consent_state() != CONSENT_GRANTED:
                 return ''
             now = self.clock()
             session_id = str(self._state.get('session_id') or '').strip()
-            last = float(self._state.get('last_activity') or 0)
-            if not session_id or (last and now - last > SESSION_IDLE_S):
-                session_id = uuid.uuid4().hex
-                self._state['session_id'] = session_id
-                self._state['session_started_at'] = now
-                self._state['app_open_session'] = ''
+            idle = self._is_idle(now)
+            if session_id and idle and self._state.get('session_end_id') != session_id:
+                self._enqueue_session_end(float(self._state.get('last_activity') or now), session_id)
+                if self.has_destination():
+                    # Schedule after releasing? RLock allows it; keep it lazy.
+                    pass
+            if (not session_id or idle
+                    or self._state.get('session_end_id') == session_id):
+                session_id = self._begin_new_session(now)
+                if self.has_destination():
+                    self._schedule_flush()
+                return session_id
             self._state['last_activity'] = now
+            if self._is_focused():
+                self._resume_active(now)
             self._save_state()
             return session_id
 
@@ -446,11 +652,24 @@ class Analytics:
             return False
         if self.consent_state() != CONSENT_GRANTED:
             return False
+        if event == 'session_end':
+            with self._lock:
+                sid = str((clean or {}).get('session_id') or self._state.get('session_id') or '')
+                return self._enqueue_session_end(self.clock(), sid)
         with self._lock:
             session_id = self.ensure_session()
             install_id = self._ensure_install_id()
             if not session_id or not install_id:
                 return False
+            if (event not in ('app_open', 'session_end')
+                    and not getattr(self, '_opening_app_open', False)
+                    and self._state.get('app_open_session') != session_id):
+                # New session created by idle rotation: record app_open first.
+                self._opening_app_open = True
+                try:
+                    self.capture_app_open()
+                finally:
+                    self._opening_app_open = False
             if not self._accept_unique(event, clean):
                 return False
             clean['session_id'] = session_id
@@ -529,6 +748,27 @@ class Analytics:
                 return False
             self._state['login_success_token'] = token
             return True
+        if event == 'session_end':
+            sid = str(clean.get('session_id') or self._state.get('session_id') or '').strip()
+            if not sid:
+                return False
+            if self._state.get('session_end_id') == sid:
+                return False
+            self._state['session_end_id'] = sid
+            return True
+        if event == 'surface_open':
+            surface = str(clean.get('surface') or '').strip().lower()
+            if surface not in SAFE_SURFACES:
+                return False
+            session_id = str(self._state.get('session_id') or '')
+            bag = dict(self._state.get('surfaces_seen') or {})
+            seen = list(bag.get(session_id) or [])
+            if surface in seen:
+                return False
+            seen.append(surface)
+            bag[session_id] = seen
+            self._state['surfaces_seen'] = bag
+            return True
         return True
 
     def _enqueue(self, body: dict) -> None:
@@ -541,6 +781,15 @@ class Analytics:
     def capture_app_open(self) -> bool:
         return self.track('app_open', {})
 
+    def notify_login_start(self) -> bool:
+        return self.track('login_start', {})
+
+    def notify_login_failed(self, error_code: Any = None) -> bool:
+        return self.track('login_failed', {'error_code': normalize_error_code(error_code)})
+
+    def notify_logout(self) -> bool:
+        return self.track('logout', {})
+
     def notify_login_success(self, user_id: Any = None, key_applied: Optional[bool] = None) -> bool:
         # user_id is ignored in this MVP (no account linkage).
         props: dict[str, Any] = {}
@@ -548,9 +797,25 @@ class Analytics:
             props['key_applied'] = bool(key_applied)
         return self.track('login_success', props)
 
+    def notify_billing_click(self, source: str = 'credits_chip') -> bool:
+        return self.track('billing_click', {'source': source})
+
+    def notify_surface_open(self, surface: str) -> bool:
+        return self.track('surface_open', {'surface': surface})
+
+    def notify_key_verified(self) -> bool:
+        return self.track('key_verified', {})
+
+    def notify_key_verify_failed(self, error_code: Any = None) -> bool:
+        return self.track('key_verify_failed', {'error_code': normalize_error_code(error_code)})
+
+    def notify_language_set(self, language: str) -> bool:
+        return self.track('language_set', {'language': language})
+
     def notify_generation_start(self, generation_id: str, model: str = '',
                                 surface: str = 'generate',
-                                requested_duration_s: Any = None) -> bool:
+                                requested_duration_s: Any = None,
+                                input_mode: Any = None) -> bool:
         props: dict[str, Any] = {
             'generation_id': generation_id,
             'surface': surface or 'generate',
@@ -559,11 +824,13 @@ class Analytics:
             props['model'] = model
         if requested_duration_s is not None:
             props['requested_duration_s'] = requested_duration_s
+        if input_mode:
+            props['input_mode'] = input_mode
         return self.track('generation_start', props)
 
     def notify_generation_finish(self, generation_id: str, ok: bool, model: str = '',
                                  surface: str = 'generate', duration_ms: Any = None,
-                                 error_code: Any = None) -> bool:
+                                 error_code: Any = None, input_mode: Any = None) -> bool:
         props: dict[str, Any] = {
             'generation_id': generation_id,
             'surface': surface or 'generate',
@@ -572,6 +839,8 @@ class Analytics:
             props['model'] = model
         if duration_ms is not None:
             props['duration_ms'] = duration_ms
+        if input_mode:
+            props['input_mode'] = input_mode
         event = 'generation_success' if ok else 'generation_failed'
         if not ok:
             props['error_code'] = normalize_error_code(error_code)
@@ -716,6 +985,7 @@ def boot(data_dir: Optional[Path] = None, app_version: str = '',
             app_version=app_version,
         )
         if _client.is_enabled():
+            _client.recover_closed_session()
             _client.ensure_session()
             _client.capture_app_open()
         return _client
@@ -745,20 +1015,65 @@ def set_consent(granted: bool) -> None:
     _call('set_consent', granted)
 
 
+def notify_login_start() -> bool:
+    return bool(_call('notify_login_start'))
+
+
+def notify_login_failed(error_code: Any = None) -> bool:
+    return bool(_call('notify_login_failed', error_code=error_code))
+
+
+def notify_logout() -> bool:
+    return bool(_call('notify_logout'))
+
+
 def notify_login_success(user_id: Any = None, key_applied: Optional[bool] = None) -> bool:
     return bool(_call('notify_login_success', user_id, key_applied=key_applied))
 
 
+def notify_billing_click(source: str = 'credits_chip') -> bool:
+    return bool(_call('notify_billing_click', source))
+
+
+def notify_surface_open(surface: str) -> bool:
+    return bool(_call('notify_surface_open', surface))
+
+
+def notify_key_verified() -> bool:
+    return bool(_call('notify_key_verified'))
+
+
+def notify_key_verify_failed(error_code: Any = None) -> bool:
+    return bool(_call('notify_key_verify_failed', error_code=error_code))
+
+
+def notify_language_set(language: str) -> bool:
+    return bool(_call('notify_language_set', language))
+
+
+def end_session() -> bool:
+    return bool(_call('end_session'))
+
+
+def handle_focus(focused: bool) -> None:
+    _call('handle_focus', focused)
+
+
+def flush() -> None:
+    _call('flush')
+
+
 def notify_generation_start(generation_id: str, model: str = '', surface: str = 'generate',
-                            requested_duration_s: Any = None) -> bool:
+                            requested_duration_s: Any = None, input_mode: Any = None) -> bool:
     return bool(_call('notify_generation_start', generation_id, model=model, surface=surface,
-                      requested_duration_s=requested_duration_s))
+                      requested_duration_s=requested_duration_s, input_mode=input_mode))
 
 
 def notify_generation_finish(generation_id: str, ok: bool, model: str = '', surface: str = 'generate',
-                             duration_ms: Any = None, error_code: Any = None) -> bool:
+                             duration_ms: Any = None, error_code: Any = None,
+                             input_mode: Any = None) -> bool:
     return bool(_call('notify_generation_finish', generation_id, ok, model=model, surface=surface,
-                      duration_ms=duration_ms, error_code=error_code))
+                      duration_ms=duration_ms, error_code=error_code, input_mode=input_mode))
 
 
 def notify_video_download(model: str = '', surface: str = 'generate') -> bool:

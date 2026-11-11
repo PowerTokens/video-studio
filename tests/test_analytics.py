@@ -152,11 +152,11 @@ class AnalyticsCoreTests(unittest.TestCase):
         self.assertFalse(self.client.capture_app_open())
         self.client.flush()
         self.assertEqual(self.sent, [])
-        # Idle timeout starts a new session and allows another app_open.
+        # Idle timeout ends the previous session, then allows another app_open.
         self.clock.advance(analytics.SESSION_IDLE_S + 1)
         self.assertTrue(self.client.capture_app_open())
         self.client.flush()
-        self.assertEqual([item['event'] for item in self.sent], ['app_open'])
+        self.assertEqual([item['event'] for item in self.sent], ['session_end', 'app_open'])
 
     def test_generation_duplicate_prevention(self):
         self.grant()
@@ -365,9 +365,9 @@ class AnalyticsCoreTests(unittest.TestCase):
         for name in ('share_click', 'share_resolved', 'share_published',
                      'pwa_prompt_shown', 'pwa_install_accepted', 'pwa_installed'):
             self.assertIsNone(analytics.sanitize_properties(name, {'platform': 'web'}))
-        # Desktop has no standalone web display; the event is not in the
-        # desktop allowlist (web-only observable).
+        # Add to Home Screen is a web-only surface. Desktop must not emit pwa_* events.
         self.assertIsNone(analytics.sanitize_properties('pwa_standalone_launch', {}))
+        self.assertIsNone(analytics.sanitize_properties('desktop_download_click', {'source': 'cta'}))
 
     def test_video_download_allowlisted(self):
         self.grant()
@@ -394,12 +394,9 @@ class AnalyticsCoreTests(unittest.TestCase):
         import analytics_config
         # Restore module defaults after env patch is gone.
         importlib.reload(analytics_config)
-        # Shipped config may contain the public capture token only.
-        self.assertTrue(analytics_config.POSTHOG_PROJECT_KEY.startswith('phc_'))
-        self.assertEqual(
-            analytics_config.public_project_key(analytics_config.POSTHOG_PROJECT_KEY),
-            analytics_config.POSTHOG_PROJECT_KEY,
-        )
+        # Committed config stays empty; the public phc_ token is filled at release.
+        self.assertEqual(analytics_config.POSTHOG_PROJECT_KEY, '')
+        self.assertEqual(analytics_config.public_project_key(analytics_config.POSTHOG_PROJECT_KEY), '')
         self.assertFalse(analytics_config.POSTHOG_PROJECT_KEY.startswith('phx_'))
 
     def test_boot_singleton_fail_open(self):
@@ -411,6 +408,168 @@ class AnalyticsCoreTests(unittest.TestCase):
         self.assertTrue(analytics.is_enabled())
         analytics.reset_client()
         self.assertFalse(analytics.notify_generation_start('z'))
+
+
+
+    def test_session_end_duration_vs_active_and_dedupe(self):
+        focused = True
+        self.client.set_focused_hook(lambda: focused)
+        self.grant()
+        self.sent.clear()
+        self.clock.advance(5)
+        focused = False
+        self.client.handle_focus(False)
+        self.clock.advance(2)
+        focused = True
+        self.client.handle_focus(True)
+        self.clock.advance(3)
+        self.assertTrue(self.client.end_session())
+        self.client.flush()
+        ends = [x for x in self.sent if x['event'] == 'session_end']
+        self.assertEqual(len(ends), 1)
+        self.assertEqual(ends[0]['properties']['duration_ms'], 10000)
+        self.assertEqual(ends[0]['properties']['active_ms'], 8000)
+        self.assertFalse(self.client.end_session())
+        self.assertEqual(len([x for x in self.sent if x['event'] == 'session_end']), 1)
+        capped = analytics.sanitize_properties('session_end', {'duration_ms': 50_000_000, 'active_ms': -3})
+        self.assertEqual(capped['duration_ms'], analytics.SESSION_MAX_MS)
+        self.assertNotIn('active_ms', capped)
+
+    def test_focus_return_within_idle_does_not_end_session(self):
+        focused = True
+        self.client.set_focused_hook(lambda: focused)
+        self.grant()
+        self.sent.clear()
+        focused = False
+        self.client.handle_focus(False)
+        self.clock.advance(60)
+        focused = True
+        self.client.handle_focus(True)
+        self.client.flush()
+        self.assertFalse(any(x['event'] == 'session_end' for x in self.sent))
+        self.assertFalse(any(x['event'] == 'app_open' for x in self.sent))
+        focused = False
+        self.client.handle_focus(False)
+        self.clock.advance(31 * 60)
+        focused = True
+        self.client.handle_focus(True)
+        self.client.flush()
+        names = [x['event'] for x in self.sent]
+        self.assertIn('session_end', names)
+        self.assertIn('app_open', names)
+        self.assertLess(names.index('session_end'), names.index('app_open'))
+
+    def test_crash_recovery_ends_previous_session_before_app_open(self):
+        self.grant()
+        self.clock.advance(4)
+        self.assertTrue(self.client.notify_chat_submit('c-crash'))
+        self.client.flush()
+        sent2 = []
+        clock2 = MemoryClock(self.clock.value)
+        other = analytics.Analytics(
+            self.tmp, transport=sent2.append, clock=clock2, app_version='1.16',
+            config={'project_key': 'phc_test', 'host': 'https://example.invalid'},
+        )
+        self.assertEqual(other.consent_state(), analytics.CONSENT_GRANTED)
+        other.recover_closed_session()
+        other.ensure_session()
+        other.capture_app_open()
+        other.flush()
+        names = [x['event'] for x in sent2]
+        self.assertIn('session_end', names)
+        self.assertIn('app_open', names)
+        self.assertLess(names.index('session_end'), names.index('app_open'))
+        end = next(x for x in sent2 if x['event'] == 'session_end')
+        self.assertEqual(end['properties']['duration_ms'], 4000)
+
+    def test_login_start_is_not_success(self):
+        self.grant()
+        self.sent.clear()
+        self.assertTrue(self.client.notify_login_start())
+        self.assertTrue(self.client.notify_login_success(key_applied=True))
+        self.assertTrue(self.client.notify_login_failed('access_denied: token abc'))
+        self.assertTrue(self.client.notify_logout())
+        self.client.flush()
+        names = [x['event'] for x in self.sent]
+        self.assertIn('login_start', names)
+        self.assertIn('login_success', names)
+        failed = next(x for x in self.sent if x['event'] == 'login_failed')
+        self.assertEqual(failed['properties']['error_code'], 'UNKNOWN')
+        blob = json.dumps(self.sent)
+        self.assertNotIn('token abc', blob)
+        self.assertIn('logout', names)
+
+    def test_billing_click_is_not_payment(self):
+        self.grant()
+        self.sent.clear()
+        self.assertTrue(self.client.notify_billing_click('credits_chip'))
+        self.assertTrue(self.client.notify_billing_click('quota'))
+        self.assertIsNone(analytics.sanitize_properties('payment_completed', {'amount': 12}))
+        self.client.flush()
+        self.assertTrue(all(x['event'] == 'billing_click' for x in self.sent))
+        self.assertEqual(self.sent[0]['properties']['source'], 'credits_chip')
+        self.assertNotIn('payment', json.dumps(self.sent))
+
+    def test_surface_open_once_per_session(self):
+        self.grant()
+        self.sent.clear()
+        self.assertTrue(self.client.notify_surface_open('generate'))
+        self.assertFalse(self.client.notify_surface_open('generate'))
+        self.assertTrue(self.client.notify_surface_open('chat'))
+        self.assertTrue(self.client.notify_surface_open('compare'))
+        self.assertTrue(self.client.notify_surface_open('batch'))
+        self.assertTrue(self.client.notify_surface_open('history'))
+        self.assertTrue(self.client.notify_surface_open('keys'))
+        self.assertFalse(self.client.notify_surface_open('settings'))
+        self.client.flush()
+        self.assertEqual(len([x for x in self.sent if x['event'] == 'surface_open']), 6)
+
+    def test_key_verify_does_not_leak_key_text(self):
+        self.grant()
+        self.sent.clear()
+        self.assertTrue(self.client.notify_key_verified())
+        self.assertTrue(self.client.notify_key_verify_failed('AUTH'))
+        leak = analytics.sanitize_properties('key_verify_failed', {
+            'error_code': 'AUTH', 'key': 'sk-live-secret', 'error': 'invalid key sk-live-secret',
+        })
+        self.assertEqual(leak['error_code'], 'AUTH')
+        self.assertNotIn('key', leak)
+        self.assertNotIn('error', leak)
+        self.client.flush()
+        self.assertNotIn('sk-live', json.dumps(self.sent))
+
+    def test_language_allowlist(self):
+        self.grant()
+        self.sent.clear()
+        self.assertTrue(self.client.notify_language_set('zh'))
+        self.assertTrue(self.client.notify_language_set('en'))
+        self.assertIsNone(analytics.sanitize_properties('language_set', {'language': 'fr'}).get('language') if analytics.sanitize_properties('language_set', {'language': 'fr'}) else None)
+        props = analytics.sanitize_properties('language_set', {'language': 'PT'})
+        self.assertEqual(props['language'], 'pt')
+        # ja/ko are allowlisted for the paired web app; desktop UI does not offer them.
+        self.assertEqual(analytics.sanitize_properties('language_set', {'language': 'ja'})['language'], 'ja')
+
+    def test_input_mode_i2v_vs_t2v(self):
+        self.grant()
+        self.sent.clear()
+        self.assertTrue(self.client.notify_generation_start('g-i2v', model='wan3.0-video', input_mode='i2v'))
+        self.assertTrue(self.client.notify_generation_finish('g-i2v', True, input_mode='i2v', duration_ms=1200))
+        self.assertTrue(self.client.notify_generation_start('g-t2v', input_mode='t2v'))
+        dirty = analytics.sanitize_properties('generation_start', {
+            'generation_id': 'g3', 'surface': 'generate', 'input_mode': 'prompt-image', 'prompt': 'secret',
+        })
+        self.assertNotIn('input_mode', dirty)
+        self.assertNotIn('prompt', dirty)
+        self.client.flush()
+        start_i2v = next(x for x in self.sent if x['event'] == 'generation_start' and x['properties']['generation_id'] == 'g-i2v')
+        start_t2v = next(x for x in self.sent if x['event'] == 'generation_start' and x['properties']['generation_id'] == 'g-t2v')
+        self.assertEqual(start_i2v['properties']['input_mode'], 'i2v')
+        self.assertEqual(start_t2v['properties']['input_mode'], 't2v')
+
+    def test_rejected_invented_events(self):
+        self.assertIsNone(analytics.sanitize_properties('consent_denied', {}))
+        self.assertIsNone(analytics.sanitize_properties('session_heartbeat', {}))
+        self.assertIsNone(analytics.sanitize_properties('share_published', {}))
 
 
 class AnalyticsHookImportTests(unittest.TestCase):
