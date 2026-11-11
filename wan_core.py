@@ -1,4 +1,4 @@
-"""Shared Windows UI / CLI engine. Standard library only; no automatic POST retries."""
+"""Shared desktop UI / CLI engine. Standard library only; no automatic POST retries."""
 import datetime
 import hashlib
 import http.client
@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 
 from i18n import t
+from platform_paths import user_data_dir
 
 APP_VERSION = '1.16'
 USER_AGENT = 'PowerTokensVideoStudio/' + APP_VERSION
@@ -69,7 +70,7 @@ def list_prices(today=None, model_id=None):
 
 PRICE_SOURCE_URL = get_model(DEFAULT_MODEL_ID).model_page_url_zh
 PRICE_SOURCE_URL_EN = get_model(DEFAULT_MODEL_ID).model_page_url
-DATA_DIR = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / '.local' / 'share'))) / 'PowerTokensWan'
+DATA_DIR = user_data_dir()
 
 
 class TaskError(Exception):

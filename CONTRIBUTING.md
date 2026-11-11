@@ -8,8 +8,8 @@ Please follow our [Code of Conduct](CODE_OF_CONDUCT.md). For security issues, se
 
 Open a [bug report](../../issues/new?template=bug_report.yml) and include:
 
-- The app version (shown in the window title, e.g. `v1.11`) and whether you use the EXE or run from source.
-- Your Windows version and, when running from source, your Python version (`python --version`).
+- The app version (shown in the window title, e.g. `v1.16`) and whether you use the Windows EXE, the unsigned Mac app, or run from source.
+- Your Windows or macOS version and, when running from source, your Python version (`python --version` or `python3 --version`).
 - What you did, what you expected and what happened instead. Screenshots and the exact error text help a lot.
 - For generation problems: the prompt, duration, resolution and aspect ratio.
 
@@ -33,6 +33,23 @@ The desktop app uses only the Python standard library, so no `pip install` is ne
 
 Your data (task records, saved keys, settings) lives in `%LOCALAPPDATA%\PowerTokensWan`. To experiment without touching it, set `LOCALAPPDATA` to a temporary folder in that terminal before starting the app.
 
+## Run from source on macOS
+
+1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/macos/). The official installer includes Tcl/Tk, which the window needs.
+2. Clone the repository and start the app:
+
+   ```bash
+   git clone https://github.com/PowerTokens/video-studio.git
+   cd video-studio
+   python3 app.py
+   ```
+
+The packaged Mac app does not need Python. This first Mac build is unsigned: after you download `PowerTokensVideoStudio.app`, Gatekeeper blocks it until you right-click **Open**, or choose **Open Anyway** under **System Settings → Privacy & Security**.
+
+Data lives in `~/Library/Application Support/PowerTokensWan`. New videos default to `~/Movies/PowerTokensVideoStudio`. "Remember keys" uses the login Keychain for the current user. Setting `LOCALAPPDATA` still redirects the data folder, including on macOS, which is useful for a throw-away directory.
+
+`./Build-Mac.sh` on an Apple Silicon Mac installs PyInstaller into `.build-venv`, runs the tests, and writes `dist/PowerTokensVideoStudio.app` plus a `.dmg` and a `.zip`. It does not sign with a Developer ID and does not notarize. It refuses to run on Linux, Windows, or Intel Macs.
+
 ## Run the tests
 
 ```bat
@@ -42,12 +59,13 @@ python -m unittest discover -s tests -v
 - Tests use mocked responses and never call the real API, so no API key is needed and nothing is charged.
 - The native Tk widget tests run on Windows; on other systems they are skipped unless you set `PT_GUI_TESTS=1`.
 - `Build-EXE.bat` runs the same tests before building `dist\PowerTokensVideoStudio.exe`.
+- `Build-Mac.sh` runs the same tests before building the unsigned Mac app. The Keychain is mocked in unit tests; the Windows DPAPI round-trip still runs only on Windows.
 
 ## Pull requests
 
 - For larger changes, open an issue first so we can agree on the approach.
 - Keep each pull request focused on one fix or feature, and add or update tests for behavior changes.
-- Run the full test suite before pushing. CI runs it on Windows with Python 3.12 and also builds the EXE and captures UI screenshots in both languages.
+- Run the full test suite before pushing. CI runs it on Windows with Python 3.12 and also builds the EXE and captures UI screenshots in both languages. The Mac workflow (`.github/workflows/build-macos.yml`) is separate: start **Build macOS app** manually, or let a `v*` tag upload an unsigned Apple Silicon artifact. It does not modify the Windows workflows and does not publish a GitHub Release.
 - Interface text lives in `i18n.py`. Add every new string to both `ZH` and `EN`, and check that labels and buttons still fit in both languages.
 - Never resubmit a task automatically when its outcome is uncertain, and never send the API key to any host other than the configured API host. These protect users from paying twice and from leaking keys.
 - Don't commit API keys, Task IDs, generated videos, `keys.json` or `cli-config.json`.

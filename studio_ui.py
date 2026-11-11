@@ -36,7 +36,21 @@ KEY_DOT_OK = '#22c55e'
 KEY_PILL_SOFT_BG = '#f7fcfa'
 KEY_PILL_SOFT_BORDER = '#c9e4dc'
 TAB_PADDING = (20, 12)  # Same for every notebook tab state.
-FONT = 'Microsoft YaHei UI' if sys.platform == 'win32' else 'PingFang SC'
+
+
+def ui_font(platform=None):
+    """UI font family. Windows keeps Microsoft YaHei UI; macOS uses PingFang SC.
+
+    PingFang SC ships with macOS and covers Chinese and Latin interface text.
+    Other systems keep the same non-Windows fallback as before.
+    """
+    platform = sys.platform if platform is None else platform
+    if platform == 'win32':
+        return 'Microsoft YaHei UI'
+    return 'PingFang SC'
+
+
+FONT = ui_font()
 
 
 def apply_theme(root):

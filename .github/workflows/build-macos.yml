@@ -1,0 +1,50 @@
+name: Build macOS app
+
+# Unsigned Apple Silicon desktop build. No Apple Developer ID, no notarization,
+# and no signing secrets. workflow_dispatch builds a preview artifact without
+# a version tag. A v* tag also uploads the same artifacts (it does not create
+# or edit a GitHub Release). Windows EXE workflows are separate and unchanged.
+#
+# GitHub only offers workflow_dispatch in the Actions tab once this file is on
+# the default branch. Until then, the job cannot be started from the UI.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require Apple Silicon
+        run: |
+          uname -sm
+          test "$(uname -m)" = "arm64"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pyinstaller>=6,<7" -r requirements.txt
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+      - name: Build unsigned app, DMG and zip
+        # Same packaging as Build-Mac.sh. Tests already ran in the previous step.
+        run: bash Build-Mac.sh --skip-tests --no-venv
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PowerTokensVideoStudio-macOS-arm64
+          path: |
+            dist/PowerTokensVideoStudio-macOS-arm64.dmg
+            dist/PowerTokensVideoStudio-macOS-arm64.app.zip
+            dist/GATEKEEPER.txt
+            dist/SHA256SUMS.txt
+          if-no-files-found: error

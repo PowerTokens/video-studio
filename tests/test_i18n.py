@@ -101,6 +101,7 @@ class LanguageChoiceTests(unittest.TestCase):
                 with patch.object(i18n, 'windows_ui_language', return_value=langid):
                     self.assertEqual(i18n.system_language(), expected, hex(langid))
             with patch.object(i18n, 'windows_ui_language', return_value=None), \
+                    patch.object(i18n, 'macos_ui_language', return_value=None), \
                     patch.dict(os.environ, {'LC_ALL': '', 'LC_MESSAGES': '', 'LANG': 'zh_CN.UTF-8'}):
                 self.assertEqual(i18n.system_language(), 'zh')
             with patch.object(i18n, 'windows_ui_language', return_value=0x0409):
@@ -112,6 +113,50 @@ class LanguageChoiceTests(unittest.TestCase):
         self.settings.write_text('{not json', encoding='utf-8')
         with patch.object(i18n, '_current', None), patch.object(i18n, 'system_language', return_value='en'):
             self.assertEqual(i18n.get_language(), 'en')
+
+    def test_default_follows_macos_ui_language(self):
+        samples = (
+            '(\n    "zh-Hans-CN",\n    "en-US"\n)',
+            '(\n    "zh-Hant-TW"\n)',
+        )
+        for text in samples:
+            self.assertEqual(i18n.parse_apple_languages(text).split('-', 1)[0], 'zh')
+        self.assertEqual(i18n.parse_apple_languages('(\n    "es-ES",\n    "en"\n)'), 'es-ES')
+        self.assertEqual(i18n.parse_apple_languages('(\n    "pt-BR"\n)'), 'pt-BR')
+        self.assertIsNone(i18n.parse_apple_languages(''))
+        self.assertIsNone(i18n.parse_apple_languages('(\n)'))
+        with patch.object(i18n, '_current', None), \
+                patch.object(i18n, 'windows_ui_language', return_value=None), \
+                patch.object(i18n, 'macos_ui_language', return_value='zh-Hans-CN'), \
+                patch.dict(os.environ, {'LC_ALL': 'en_US.UTF-8', 'LANG': 'en_US.UTF-8', 'LANGUAGE': ''}):
+            self.assertEqual(i18n.system_language(), 'zh')
+        for tag, expected in (('en-US', 'en'), ('es-MX', 'es'), ('pt-PT', 'pt')):
+            with patch.object(i18n, 'windows_ui_language', return_value=None), \
+                    patch.object(i18n, 'macos_ui_language', return_value=tag):
+                self.assertEqual(i18n.system_language(), expected, tag)
+        # An unsupported AppleLanguages tag falls through to POSIX LANG.
+        with patch.object(i18n, 'windows_ui_language', return_value=None), \
+                patch.object(i18n, 'macos_ui_language', return_value='fr-FR'), \
+                patch.dict(os.environ, {'LC_ALL': '', 'LC_MESSAGES': '', 'LANG': 'zh_CN.UTF-8', 'LANGUAGE': ''}):
+            self.assertEqual(i18n.system_language(), 'zh')
+
+    def test_remember_copy_follows_platform(self):
+        self.assertEqual(i18n.ZH['remember_note'], '默认只在本次运行中保留 Key。勾选后使用 Windows DPAPI 加密保存。')
+        self.assertEqual(i18n.ZH['dpapi_badge'], 'Windows 账户加密')
+        i18n.set_language('en')
+        with patch('i18n.os.name', 'nt'), patch('i18n.sys.platform', 'win32'):
+            self.assertIn('DPAPI', i18n.remember_note_text())
+            self.assertEqual(i18n.remember_badge_text(), 'Windows account encryption')
+        with patch('i18n.os.name', 'posix'), patch('i18n.sys.platform', 'darwin'):
+            self.assertIn('Keychain', i18n.remember_note_text())
+            self.assertEqual(i18n.remember_badge_text(), 'Login Keychain')
+            i18n.set_language('zh')
+            self.assertIn('钥匙串', i18n.remember_note_text())
+            self.assertEqual(i18n.remember_badge_text(), '登录钥匙串加密')
+        i18n.set_language('en')
+        with patch('i18n.os.name', 'posix'), patch('i18n.sys.platform', 'linux'):
+            self.assertIn('not available', i18n.remember_note_text())
+            self.assertEqual(i18n.remember_badge_text(), 'Cannot save encrypted keys here')
 
     def test_rejects_unknown_language(self):
         with self.assertRaises(ValueError):

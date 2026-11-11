@@ -1,7 +1,5 @@
 """PowerTokens Video Studio; run with Python 3.9+ / tkinter."""
-import base64
 import ctypes
-from ctypes import wintypes
 import json
 import os
 from pathlib import Path
@@ -12,7 +10,8 @@ from tkinter import ttk, filedialog, messagebox
 import uuid
 import webbrowser
 
-from i18n import (LANGUAGES, LANGUAGE_NAMES, get_language, is_zh, load_settings, save_language,
+from i18n import (LANGUAGES, LANGUAGE_NAMES, get_language, is_zh, load_settings,
+                  remember_badge_text, remember_note_text, save_language,
                   save_setting, set_language, t)
 from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE, PAGE, INK, LINE, ACCENT, LOGO_FILE,
                        apply_theme, label, heading, card, Columns, Flow, ScrollPage, text_area,
@@ -25,7 +24,9 @@ from models import (DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id, 
                    format_adjust_notice, model_allows_first_frame, allowed_media_types)
 from frame_util import encode_local_image_as_data_url
 from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices, list_prices,
-                      TaskError, atomic_json, estimate_cost, fingerprint, payload, verify_key)
+                      TaskError, estimate_cost, fingerprint, payload, verify_key)
+from platform_paths import default_output_dir, reveal_path
+import secret_store
 import oauth_desktop
 
 OFFICIAL_KEY_URL = 'https://powertokens.ai/zh-Hans/api-keys?' + UTM
@@ -93,28 +94,12 @@ def billing_url():
 
 
 def protect(raw, decrypt=False):
-    """Windows DPAPI: saved secrets are bound to the current Windows account."""
-    if os.name != 'nt':
-        raise RuntimeError(t('remember_windows_only'))
-    class Blob(ctypes.Structure):
-        _fields_ = [('size', wintypes.DWORD), ('data', ctypes.POINTER(ctypes.c_ubyte))]
-    buf = ctypes.create_string_buffer(raw)
-    source = Blob(len(raw), ctypes.cast(buf, ctypes.POINTER(ctypes.c_ubyte)))
-    result = Blob()
-    crypt = ctypes.WinDLL('crypt32', use_last_error=True)
-    fn = crypt.CryptUnprotectData if decrypt else crypt.CryptProtectData
-    fn.argtypes = [ctypes.POINTER(Blob), ctypes.c_void_p, ctypes.c_void_p,
-                   ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(Blob)]
-    fn.restype = wintypes.BOOL
-    if not fn(ctypes.byref(source), None, None, None, None, 1, ctypes.byref(result)):
-        raise ctypes.WinError(ctypes.get_last_error())
-    try:
-        return ctypes.string_at(result.data, result.size)
-    finally:
-        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
-        kernel.LocalFree.argtypes = [ctypes.c_void_p]
-        kernel.LocalFree.restype = ctypes.c_void_p
-        kernel.LocalFree(result.data)
+    """Windows DPAPI. Stable entry point for tests; implementation is secret_store.dpapi_protect.
+
+    On non-Windows this still raises. macOS remembered keys go through the login
+    Keychain in secret_store.write_remembered_keys, not through this function.
+    """
+    return secret_store.dpapi_protect(raw, decrypt)
 
 
 class App:
@@ -556,7 +541,7 @@ class App:
         ttk.Label(save_box, text=t('output_folder'), style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
         row = ttk.Frame(save_box)
         row.pack(fill='x')
-        self.output = tk.StringVar(value=str(Path.home() / 'Videos' / 'PowerTokensVideoStudio'))
+        self.output = tk.StringVar(value=str(default_output_dir()))
         ttk.Entry(row, textvariable=self.output, width=12).pack(side='left', fill='x', expand=True)
         ttk.Button(row, text=t('browse'), command=self.choose_folder).pack(side='left', padx=(10, 0))
         label(save_box, t('cloud_note')).pack(fill='x', pady=(6, 0))
@@ -861,8 +846,8 @@ class App:
         save = card(columns.right, t('local_card'))
         self.remember = tk.BooleanVar(value=False)
         ttk.Checkbutton(save, text=t('remember'), variable=self.remember, command=self.save_keys).pack(anchor='w')
-        label(save, t('dpapi_badge'), style='Badge.TLabel').pack(anchor='w', pady=(10, 14))
-        label(save, t('remember_note')).pack(fill='x')
+        label(save, remember_badge_text(), style='Badge.TLabel').pack(anchor='w', pady=(10, 14))
+        label(save, remember_note_text()).pack(fill='x')
         ttk.Separator(save).pack(fill='x', pady=16)
         label(save, t('no_repeat_note')).pack(fill='x')
         self._refresh_oauth_header()
@@ -1172,8 +1157,9 @@ class App:
             # OAuth userinfo key is already authenticated — apply without GET /v1/models
             # (matches web: no extra validate friction on the Sign-in path).
             self.keys = list(dict.fromkeys([key] + list(self.keys)))
-            # Beginner path: persist via existing DPAPI remember toggle on Windows.
-            if os.name == 'nt' and hasattr(self, 'remember') and not self.remember.get():
+            # Beginner path: persist when this OS can store secrets
+            # (DPAPI on Windows, login Keychain on macOS).
+            if secret_store.storage_kind() and hasattr(self, 'remember') and not self.remember.get():
                 self.remember.set(True)
             self.sync_keys()
             self.save_keys()
@@ -1424,10 +1410,9 @@ class App:
         path = DATA_DIR / 'keys.json'
         try:
             if self.remember.get():
-                encrypted = protect(json.dumps(self.keys).encode())
-                atomic_json(path, {'dpapi': base64.b64encode(encrypted).decode()})
+                secret_store.write_remembered_keys(path, self.keys)
             else:
-                path.unlink(missing_ok=True)
+                secret_store.clear_remembered_keys(path)
         except Exception:
             self.remember.set(False)
             messagebox.showerror(t('save_failed_title'), t('save_failed_body'))
@@ -1436,8 +1421,7 @@ class App:
         path = DATA_DIR / 'keys.json'
         if path.exists():
             try:
-                encrypted = base64.b64decode(json.loads(path.read_text(encoding='utf-8'))['dpapi'])
-                self.keys = json.loads(protect(encrypted, decrypt=True))
+                self.keys = secret_store.read_remembered_keys(path)
                 self.remember.set(True)
             except Exception:
                 messagebox.showwarning(t('load_failed_title'), t('load_failed_body'))
@@ -1688,9 +1672,9 @@ class App:
         selected = self.tree.selection()
         folder = Path(self.records[selected[0]]['output']).parent if selected else Path(self.output.get())
         folder.mkdir(parents=True, exist_ok=True)
-        if os.name == 'nt':
-            os.startfile(str(folder))
-        else:
+        try:
+            reveal_path(folder)
+        except OSError:
             messagebox.showinfo(t('save_location'), str(folder))
 
     def close(self):

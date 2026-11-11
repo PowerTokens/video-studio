@@ -22,7 +22,9 @@ body:
       label: How do you run it?
       options:
         - EXE (PowerTokensVideoStudio.exe)
-        - From source (Start.bat / python app.py)
+        - Mac app (PowerTokensVideoStudio.app, unsigned)
+        - From source on Windows (Start.bat / python app.py)
+        - From source on macOS (python3 app.py)
         - CLI (pt_wan.py)
         - MCP server (mcp_server.py)
     validations:
@@ -30,9 +32,9 @@ body:
   - type: input
     id: environment
     attributes:
-      label: Windows and Python version
-      description: Python version only when running from source (`python --version`).
-      placeholder: Windows 11 23H2, Python 3.12.4
+      label: Operating system and Python version
+      description: Windows or macOS version. Python version only when running from source (`python --version` or `python3 --version`).
+      placeholder: Windows 11 23H2, or macOS 15 Apple Silicon. Python 3.12.4 when running from source.
   - type: textarea
     id: what-happened
     attributes:

@@ -4,6 +4,11 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+- **Unsigned macOS app (Apple Silicon).** `Build-Mac.sh` and the **Build macOS app** workflow produce `PowerTokensVideoStudio.app`, a `.dmg`, and a `.zip`. There is no Apple Developer ID signature and no notarization. Gatekeeper blocks a downloaded copy until you right-click the app and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway**. The packaged app does not need Python. Windows EXE scripts and workflows are unchanged, and this does not publish a GitHub Release.
+- **macOS folders and open.** App data is `~/Library/Application Support/PowerTokensWan`. New videos default to `~/Movies/PowerTokensVideoStudio`. Open-folder actions use the macOS `open` command. Windows still uses `%LOCALAPPDATA%\PowerTokensWan`, `Videos\PowerTokensVideoStudio`, and `os.startfile`.
+- **Remember key on macOS** writes the key pool to the login Keychain for the current user. Windows still uses DPAPI. The checkbox copy follows the system you are on.
+- First launch follows the macOS UI language (`AppleLanguages`) as well as the Windows display language. The Mac window font stays PingFang SC.
+
 ## [1.16](https://github.com/PowerTokens/video-studio/releases/tag/v1.16.0) - 2026-11-09
 
 - **Chat and From script text models.** Dropped `qwen3-max` (the chat endpoint does not serve it). Chat and Batch **From script** share five models: `glm-4.7-flash` (free default), `seed-1-6-flash-250715`, `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`. A saved choice of the removed model falls back to `glm-4.7-flash`.

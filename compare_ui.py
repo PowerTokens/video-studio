@@ -1,7 +1,4 @@
 """Desktop Compare tab: one prompt, 2–3 models, side-by-side results."""
-import os
-import subprocess
-import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -11,6 +8,7 @@ from compare_core import (
 )
 from i18n import t
 from models import DEFAULT_MODEL_ID, list_models, snap_params, format_adjust_notice, get_model
+from platform_paths import default_output_dir, reveal_path
 from studio_ui import Columns, Flow, card, heading, label, text_area
 from wan_core import Client, TaskError
 
@@ -84,7 +82,7 @@ class CompareTab:
         ttk.Label(save, text=t('output_folder'), style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
         path_row = ttk.Frame(save)
         path_row.pack(fill='x')
-        self.output = tk.StringVar(value=str(Path.home() / 'Videos' / 'PowerTokensVideoStudio'))
+        self.output = tk.StringVar(value=str(default_output_dir()))
         ttk.Entry(path_row, textvariable=self.output, width=12).pack(side='left', fill='x', expand=True)
         ttk.Button(path_row, text=t('browse'), command=self._choose_folder).pack(side='left', padx=(10, 0))
         label(save, t('compare_output_note')).pack(fill='x', pady=(8, 0))
@@ -202,12 +200,7 @@ class CompareTab:
             messagebox.showinfo(t('compare_title'), str(target))
             return
         try:
-            if sys.platform == 'win32':
-                os.startfile(str(target))  # noqa: S606
-            elif sys.platform == 'darwin':
-                subprocess.Popen(['open', str(target)])
-            else:
-                subprocess.Popen(['xdg-open', str(target)])
+            reveal_path(target)
         except OSError as exc:
             messagebox.showerror(t('compare_title'), str(exc))
 

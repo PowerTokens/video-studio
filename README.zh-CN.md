@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-免费开源 Video Studio **1.16**（[Windows 桌面端](../../releases/latest) + [网页版](https://powertokens.github.io/video-studio-web/)），支持 **Wan · Seedance · Kling 等** — Excel/CSV 批量、模型对比、分镜、安全恢复。
+免费开源 Video Studio **1.16**（[Windows 桌面端](../../releases/latest)、未签名的 Apple Silicon Mac 应用，以及[网页版](https://powertokens.github.io/video-studio-web/)），支持 **Wan · Seedance · Kling 等** — Excel/CSV 批量、模型对比、分镜、安全恢复。
 
 ![演示：Wan 3.0 生成的片段](docs/images/demo.gif)
 
@@ -26,9 +26,9 @@ PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm
 
 ## 功能
 
-- **支持中英文界面切换**：右上角「中文 / English」一键切换，立即生效并自动记住；首次启动跟随 Windows 显示语言。
+- **支持中英文界面切换**：右上角「中文 / English」一键切换，立即生效并自动记住；首次启动跟随 Windows 显示语言，在 macOS 上跟随系统界面语言。
 - **适用场景**：短剧分集批量生产（仍是核心用例）；也可做产品展示、口播与社交短视频。
-- **接上一段**：批量导入可勾选，用上一段最后一帧作为下一段首帧（Seedance/Kling 用内嵌图片，Wan 需 live Key 验证）。Windows 安装包已内置截帧组件（约增大 70–80 MB）。
+- **接上一段**：批量导入可勾选，用上一段最后一帧作为下一段首帧（Seedance/Kling 用内嵌图片，Wan 需 live Key 验证）。Windows 与 Mac 安装包都内置截帧组件（Windows 上约增大 70–80 MB）。
 - **对话**（独立页签，与「生成视频」并列）：用文本模型把拍什么聊清楚，再点「填进生成」（填入单条生成表）或「拆成批量」（拆进批量预览）。五个文本模型：`glm-4.7-flash`（免费默认）、`seed-1-6-flash-250715`、`deepseek-flash`、`MiniMax-M2.7`、`glm-5.3-flash`。
 - **从剧本生成**（仅批量导入页）：粘贴剧本或提纲，用同一套五个文本模型拆成多条提示词，载入预览表后再生成（免费默认 `glm-4.7-flash`）。
 - **模型对比**：同一提示词发给 2–3 个模型（「模型对比」页、CLI `compare`、或 MCP `compare_videos`），并排查看状态并打开最好的文件。输出保存在 `compare/` 子目录，文件名为 `名称_模型简称.mp4`。
@@ -40,7 +40,7 @@ PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm
 - **断点续传下载**：`.part` 临时文件，HTTP Range，并校验交界内容和文件大小。
 - **Key 池**：可添加多个 Key，批量时按行轮换首选 Key。
 - **不重复扣费**：只有在尚未获得任务 ID 且提交被明确拒绝时才换 Key；超时、5xx、结果不明确时都不会自动重试。
-- **Key 加密保存**：默认只在内存中；勾选记住后使用 Windows DPAPI 加密，绑定当前 Windows 账户。
+- **Key 加密保存**：默认只在内存中。Windows 上勾选记住后使用 DPAPI，绑定当前 Windows 账户；macOS 上写入登录钥匙串，只有当前 macOS 用户能读取。
 - 可选命令行（`pt_wan.py`）和 MCP 服务（`mcp_server.py`）。
 
 ## 界面预览
@@ -227,7 +227,28 @@ docker run -i --rm -e POWERTOKENS_API_KEY=你的-powertokens-api-key -v "$PWD/vi
 
 在 Windows 上运行 `Build-EXE.bat`：创建构建环境、安装 PyInstaller、运行测试，生成带 PowerTokens 图标、已打包 `assets` 目录的 `dist\PowerTokensVideoStudio.exe`。
 
-GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build-windows.yml`）会在推送 `v*` 标签或手动触发时构建同一个 EXE。
+GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build-windows.yml`）会在推送 `v*` 标签或手动触发时构建同一个 EXE。该工作流没有改动。
+
+## 构建 Mac 应用
+
+在 Apple Silicon Mac 上运行 `./Build-Mac.sh`。脚本会创建构建环境、安装 PyInstaller、运行测试，并生成未签名的应用：
+
+- `dist/PowerTokensVideoStudio.app`
+- `dist/PowerTokensVideoStudio-macOS-arm64.dmg`
+- `dist/PowerTokensVideoStudio-macOS-arm64.app.zip`
+
+脚本不能在 Linux 或 Windows 上打出 Mac 包，也不会生成 Intel 或 universal2 二进制。**没有 Apple Developer ID 签名，也没有公证。** 不要添加签名证书来假装已经签名。PyInstaller 可能会加上临时的 ad-hoc 签名，以便 Apple Silicon 能启动程序；从网络下载后，Gatekeeper 仍会拦截。
+
+第一次打开下载的应用时，任选一种方式：
+
+1. 在 Finder 中右键（或按住 Control 点击）`PowerTokensVideoStudio.app`，选择「打开」，再确认一次「打开」。
+2. 先尝试打开一次，然后到「系统设置 → 隐私与安全性」，点击「仍要打开」。
+
+同样的说明会写入 `dist/GATEKEEPER.txt`，并放进磁盘映像。
+
+GitHub Actions 工作流 **Build macOS app**（`.github/workflows/build-macos.yml`）在 `macos-latest` 上通过 **workflow_dispatch** 手动触发，推送 `v*` 标签时也会上传同一批产物。它只上传构建产物，**不会**创建 GitHub Release，也不修改 Windows EXE 工作流。这个工作流文件进入默认分支之后，Actions 页面才会出现手动运行入口。Linux 或 Windows 运行器无法生成这个二进制，不要用假的包代替。
+
+网页版的下载页尚未列出 Mac 安装包。
 
 ## 费用
 
@@ -237,12 +258,12 @@ GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build
 
 - API Key 只发送到配置的 API 主机（默认 `https://api.powertokens.ai`），跳转时会移除，不会发送到 CDN / 存储域名。
 - 任务记录只保存 Key 指纹（SHA-256 前 16 位）和末 4 位，不保存完整 Key。
-- 桌面端 Key 默认只在内存中；勾选记住后用 Windows DPAPI 加密保存。
-- **CLI 配置以明文保存 Key。** `python pt_wan.py config --add-key` 会把 Key 不加密地写入 `%LOCALAPPDATA%\PowerTokensWan\cli-config.json`（或 `PT_WAN_CONFIG` 指定的路径），在 Windows 上无法限制文件权限。建议使用环境变量 `POWERTOKENS_API_KEY` / `POWERTOKENS_API_KEYS`，并且不要把该文件提交到版本库。
+- 桌面端 Key 默认只在内存中。Windows 上勾选记住后用 DPAPI 加密；macOS 上写入登录钥匙串。其他系统只在本次运行中保留。
+- **CLI 配置以明文保存 Key。** `python pt_wan.py config --add-key` 会把 Key 不加密地写入 Windows 的 `%LOCALAPPDATA%\PowerTokensWan\cli-config.json`，或 macOS 的 `~/Library/Application Support/PowerTokensWan/cli-config.json`（也可由 `PT_WAN_CONFIG` 指定）。在 Windows 上无法限制文件权限。建议使用环境变量 `POWERTOKENS_API_KEY` / `POWERTOKENS_API_KEYS`，并且不要把该文件提交到版本库。
 - 带签名的视频下载链接会保存在本机任务记录中，下载完成后清空；如果下载一直没有完成，链接会保留，但链接本身会过期。
 - 如需通过其他 HTTPS 网关访问，可设置 `POWERTOKENS_API_BASE`（仅限 HTTPS）。
 
-本机数据位于 `%LOCALAPPDATA%\PowerTokensWan`（沿用旧版目录名，已有记录可继续使用）。
+Windows 上本机数据位于 `%LOCALAPPDATA%\PowerTokensWan`，macOS 上位于 `~/Library/Application Support/PowerTokensWan`（沿用旧版目录名，Windows 上已有记录可继续使用）。新视频默认保存在 Windows 的 `Videos\PowerTokensVideoStudio`，macOS 的 `~/Movies/PowerTokensVideoStudio`。
 
 ## 故障排查
 
@@ -273,7 +294,7 @@ GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build
 
 ### PowerTokens Video Studio 是什么？
 
-PowerTokens Video Studio **1.16** 是一款免费开源（MIT）的 Windows 桌面工具，另有[网页版](https://powertokens.github.io/video-studio-web/)，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 / Fast（**−50%**）/ Mini（**−60%**）、Seedance 2.5、kling v3 等，以及 Excel / CSV 批量导入、模型对比、分镜、按任务 ID 恢复，并避免重复扣费。
+PowerTokens Video Studio **1.16** 是一款免费开源（MIT）的桌面工具，支持 Windows，以及未签名的 Apple Silicon Mac，另有[网页版](https://powertokens.github.io/video-studio-web/)，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 / Fast（**−50%**）/ Mini（**−60%**）、Seedance 2.5、kling v3 等，以及 Excel / CSV 批量导入、模型对比、分镜、按任务 ID 恢复，并避免重复扣费。
 
 ### 可以用 Excel 表格批量生成视频吗？
 
@@ -293,7 +314,7 @@ PowerTokens Video Studio **1.16** 是一款免费开源（MIT）的 Windows 桌�
 
 ### 支持 macOS 或 Linux 吗？
 
-桌面端和 EXE 仅支持 Windows；另有浏览器可用的[网页版](https://powertokens.github.io/video-studio-web/)。MCP 服务可在 macOS、Linux 上用 Python 3.11+ 运行，也可在任意系统上通过 Docker 运行。
+Windows 可以，Apple Silicon 的 macOS 也可以。Mac 安装包是未签名的 `.app`，放在 `.dmg` 里（同时提供一份 `.zip`），没有经过公证。从网络下载后，Gatekeeper 会拦截第一次打开：请在 Finder 中右键该 App 并选择「打开」，或到「系统设置 → 隐私与安全性」点击「仍要打开」。安装包本身不需要安装 Python。没有 Linux 桌面安装包。浏览器里还有[网页版](https://powertokens.github.io/video-studio-web/)。MCP 服务可在 macOS、Linux 上用 Python 3.11+ 运行，也可在任意系统上通过 Docker 运行。
 
 ### 如何获取 PowerTokens API Key？模型怎么计费？
 
