@@ -134,7 +134,7 @@ into a release EXE:
    machine, or write an untracked `analytics_config_local.py` with those names.
 2. `Build-EXE.bat` and the Windows workflows call
    `tools/prepare_analytics_config.py` and add `--hidden-import analytics_config_local`
-   when that file exists. `build-windows.yml` also checks that `analytics.py` and
+   when that file exists. `build-windows.yml` also checks that the `analytics` and
    `analytics_config.py` are present in the PyInstaller archive, and the local
    module if it was baked.
 3. Personal or admin keys (`phx_...` and anything that is not `phc_`) are
