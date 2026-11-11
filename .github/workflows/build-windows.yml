@@ -78,10 +78,15 @@ jobs:
           if ((Select-String -Path bundle.txt -Encoding utf8 -Pattern '\.xlsx').Count -lt 2) { throw 'Chinese template missing from EXE' }
           if (-not (Select-String -Path bundle.txt -Pattern 'logo.png' -Quiet)) { throw 'Logo missing from EXE' }
           if (-not (Select-String -Path bundle.txt -Pattern 'imageio_ffmpeg' -Quiet)) { throw 'imageio_ffmpeg missing from EXE' }
-          if (-not (Select-String -Path bundle.txt -Pattern 'analytics.py' -Quiet)) { throw 'analytics.py missing from EXE' }
-          if (-not (Select-String -Path bundle.txt -Pattern 'analytics_config.py' -Quiet)) { throw 'analytics_config.py missing from EXE' }
+          # PyInstaller lists PYZ modules by import name (analytics), not analytics.py.
+          function Has-Module([string]$name) {
+            $pattern = '(^|[^A-Za-z0-9_])' + [regex]::Escape($name) + '([^A-Za-z0-9_]|$)'
+            return [bool](Select-String -Path bundle.txt -Pattern $pattern -Quiet)
+          }
+          if (-not (Has-Module 'analytics')) { throw 'analytics module missing from EXE' }
+          if (-not (Has-Module 'analytics_config')) { throw 'analytics_config module missing from EXE' }
           if (Test-Path analytics_config_local.py) {
-            if (-not (Select-String -Path bundle.txt -Pattern 'analytics_config_local' -Quiet)) { throw 'analytics_config_local missing from EXE after bake' }
+            if (-not (Has-Module 'analytics_config_local')) { throw 'analytics_config_local missing from EXE after bake' }
           }
           Get-FileHash dist/PowerTokensVideoStudio.exe -Algorithm SHA256 | Format-List
           Get-Item dist/PowerTokensVideoStudio.exe | Format-List FullName, Length
