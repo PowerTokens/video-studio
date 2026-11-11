@@ -15,7 +15,7 @@ from pathlib import Path
 
 from i18n import t
 
-APP_VERSION = '1.16'
+APP_VERSION = '1.17'
 USER_AGENT = 'PowerTokensVideoStudio/' + APP_VERSION
 DEFAULT_API_BASE = 'https://api.powertokens.ai'
 # In-app links (get-key button, price source) use medium=app; README links use medium=oss.
@@ -269,6 +269,22 @@ def payload(prompt, duration=5, resolution='720p', ratio='16:9', media=None, see
     return _models.build_request(model or DEFAULT_MODEL_ID, prompt, duration, resolution, ratio, media, seed)
 
 
+
+def infer_input_mode(request, context=None):
+    """Return t2v / i2v when known, else None. Never returns image bytes or URLs."""
+    for src in (context, request):
+        if not isinstance(src, dict):
+            continue
+        mode = str(src.get('input_mode') or src.get('_vs_input_mode') or '').strip().lower()
+        if mode in ('t2v', 'i2v'):
+            return mode
+    if isinstance(request, dict) and isinstance(request.get('media'), list):
+        for item in request['media']:
+            if isinstance(item, dict) and item.get('type') == 'first_frame' and item.get('url'):
+                return 'i2v'
+        return 't2v'
+    return None
+
 def download_source(url):
     parsed = urllib.parse.urlsplit(url)
     # Drop only common expiring-signature fields; retain parameters that may select a version.
@@ -469,7 +485,61 @@ class Client:
             self.on_record(dict(self.record))
 
     def submit(self, keys, request, out_path):
+        """Submit a new generation and wait until it finishes or fails.
+
+        Product analytics hooks fire here so generate / compare / batch share one
+        start-success-failure path. Resume and download-from-link do not use this
+        method, so they are not counted as new generations.
+        """
+        started = time.monotonic()
+        generation_id = uuid.uuid4().hex
+        self._analytics_generation_id = generation_id
+        peek = dict(request or {})
+        model_id = peek.get('model') or peek.get('model_name') or DEFAULT_MODEL_ID
+        ctx = self.context or {}
+        surface = ctx.get('surface') or ('batch' if ctx.get('batch_id') else 'generate')
+        requested = peek.get('duration')
+        input_mode = infer_input_mode(peek, ctx)
+        if isinstance(request, dict):
+            request.pop('_vs_input_mode', None)
+
+        def _notify(ok, kind=None):
+            try:
+                import analytics as _analytics
+                duration_ms = int(max(0, (time.monotonic() - started) * 1000))
+                if ok:
+                    _analytics.notify_generation_finish(
+                        generation_id, True, model=str(model_id or ''),
+                        surface=surface, duration_ms=duration_ms, input_mode=input_mode)
+                elif _analytics.is_final_generation_failure(kind):
+                    _analytics.notify_generation_finish(
+                        generation_id, False, model=str(model_id or ''),
+                        surface=surface, duration_ms=duration_ms, error_code=kind,
+                        input_mode=input_mode)
+            except Exception:
+                return
+
+        try:
+            import analytics as _analytics
+            _analytics.notify_generation_start(
+                generation_id, model=str(model_id or ''), surface=surface,
+                requested_duration_s=requested, input_mode=input_mode)
+        except Exception:
+            pass
+        try:
+            result = self._submit_impl(keys, request, out_path)
+        except TaskError as exc:
+            _notify(False, exc.kind)
+            raise
+        except Exception:
+            _notify(False, 'UNKNOWN')
+            raise
+        _notify(True)
+        return result
+
+    def _submit_impl(self, keys, request, out_path):
         request = dict(request)
+        request.pop('_vs_input_mode', None)
         poll_kind = request.pop('_poll_kind', None)
         model_id = request.get('model') or request.get('model_name') or DEFAULT_MODEL_ID
         if model_id not in MODELS:
@@ -486,7 +556,7 @@ class Client:
             probe.touch()
         finally:
             probe.unlink(missing_ok=True)
-        self.record = dict(local_id=uuid.uuid4().hex, task_id='', created=time.strftime('%Y-%m-%d %H:%M:%S'),
+        self.record = dict(local_id=getattr(self, '_analytics_generation_id', None) or uuid.uuid4().hex, task_id='', created=time.strftime('%Y-%m-%d %H:%M:%S'),
                            output=str(Path(out_path).absolute()), state=t('state_preparing'), key_hash='', key_hint='',
                            model=model_id, poll_kind=poll_kind)
         self.record.update(self.context)
@@ -557,11 +627,49 @@ class Client:
         raise TaskError(t('all_rejected'), 'REJECTED')
 
     def resume(self, key, task_id, out_path, record=None):
+        """Resume an existing task. This is not a new generation_start.
+
+        If the original submit already recorded a start, a later success is
+        attached to the same local_id / generation_id. Intermediate pauses and
+        timeouts are not terminal failures, so they do not block that success.
+        """
         task_url(task_id)
+        started = time.monotonic()
         self.record = dict(record) if record else dict(local_id=uuid.uuid4().hex,
             created=time.strftime('%Y-%m-%d %H:%M:%S'), task_id=task_id)
         self.save(state=t('state_resuming'), output=str(Path(out_path).absolute()), key_hash=fingerprint(key), key_hint='****' + key[-4:])
-        return self.wait(key, task_id, out_path)
+        generation_id = str((self.record or {}).get('local_id') or '')
+        model_id = str((self.record or {}).get('model') or '')
+        ctx = self.context or {}
+        surface = ctx.get('surface') or ('batch' if ctx.get('batch_id') else 'generate')
+
+        def _notify(ok, kind=None):
+            if not generation_id:
+                return
+            try:
+                import analytics as _analytics
+                duration_ms = int(max(0, (time.monotonic() - started) * 1000))
+                if ok:
+                    _analytics.notify_generation_finish(
+                        generation_id, True, model=model_id, surface=surface,
+                        duration_ms=duration_ms)
+                elif _analytics.is_final_generation_failure(kind):
+                    _analytics.notify_generation_finish(
+                        generation_id, False, model=model_id, surface=surface,
+                        duration_ms=duration_ms, error_code=kind)
+            except Exception:
+                return
+
+        try:
+            result = self.wait(key, task_id, out_path)
+        except TaskError as exc:
+            _notify(False, exc.kind)
+            raise
+        except Exception:
+            _notify(False, 'UNKNOWN')
+            raise
+        _notify(True)
+        return result
 
     def resume_download_url(self, key, task_id, out_path, video_url, record=None):
         task_url(task_id)
@@ -578,6 +686,13 @@ class Client:
         self.save(**changes)
         result = self.try_download(key, video_url, out_path)
         if result == 'ok':
+            try:
+                import analytics as _analytics
+                _analytics.notify_video_download(
+                    model=str((self.record or {}).get('model') or ''),
+                    surface='generate')
+            except Exception:
+                pass
             return self.record
         self.save(state=t('state_download_pending'))
         raise TaskError(self.last_download_error or t('link_unavailable'),

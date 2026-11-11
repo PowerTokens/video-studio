@@ -228,7 +228,7 @@ class BatchRunner:
                             note=t('batch_keys_exhausted'), elapsed=round(time.monotonic() - start, 1))
                 return
             client = self.client_factory(report=report, stop=self.stop, data_dir=self.store.data_dir,
-                        on_record=checkpoint, context={'batch_id': self.store.id, 'batch_job_id': job['id']},
+                        on_record=checkpoint, context={'batch_id': self.store.id, 'batch_job_id': job['id'], 'surface': 'batch'},
                         download_slots=self.download_slots, defer_on_403=True, key_pool=self.key_pool)
             if task_id:
                 result = client.resume(key, task_id, job['output'], record)

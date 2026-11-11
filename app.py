@@ -27,6 +27,7 @@ from frame_util import encode_local_image_as_data_url
 from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices, list_prices,
                       TaskError, atomic_json, estimate_cost, fingerprint, payload, verify_key)
 import oauth_desktop
+import analytics
 
 OFFICIAL_KEY_URL = 'https://powertokens.ai/zh-Hans/api-keys?' + UTM
 OFFICIAL_KEY_URL_EN = 'https://powertokens.ai/api-keys?' + UTM
@@ -147,8 +148,10 @@ class App:
         self.load_keys()
         self._load_oauth_session()
         self.refresh_history()
+        self._boot_analytics()
         root.after(150, self.drain)
         root.protocol('WM_DELETE_WINDOW', self.close)
+        self._bind_analytics_focus()
 
     def build_ui(self):
         """Build every widget in the current language; rebuilt in place by switch_language()."""
@@ -194,7 +197,7 @@ class App:
         self.header_logout_btn = ttk.Button(toolbar, text=t('oauth_logout'), style='Link.TButton',
                                             command=self.logout_oauth)
         self.oauth_credits_label = ttk.Label(toolbar, textvariable=self.oauth_credits_var, style='CreditsChip.TLabel')
-        self.oauth_credits_label.bind('<Button-1>', lambda *_: self.open_billing())
+        self.oauth_credits_label.bind('<Button-1>', lambda *_: self.open_billing('credits_chip'))
         try:
             self.oauth_credits_label.configure(cursor='hand2')
         except tk.TclError:
@@ -218,7 +221,62 @@ class App:
         self.build_history(pages[4].body)
         self.build_keys(pages[5].body)
         self.status = tk.StringVar(value=t('status_ready'))
+        self._build_analytics_banner(shell)
         label(shell, variable=self.status, style='Page.TLabel').pack(fill='x', padx=28, pady=(8, 12))
+        self._bind_analytics_surfaces()
+
+    def _bind_analytics_surfaces(self):
+        if not hasattr(self, 'tabs'):
+            return
+        surfaces = ('generate', 'chat', 'compare', 'batch', 'history', 'keys')
+
+        def on_tab(_evt=None):
+            try:
+                idx = int(self.tabs.index('current'))
+                surface = surfaces[idx] if 0 <= idx < len(surfaces) else ''
+                if surface:
+                    analytics.notify_surface_open(surface)
+            except Exception:
+                return
+
+        self.tabs.bind('<<NotebookTabChanged>>', on_tab)
+        on_tab()
+
+    def _bind_analytics_focus(self):
+        def focused():
+            try:
+                if str(self.root.state()) == 'iconic':
+                    return False
+                return self.root.focus_displayof() is not None
+            except Exception:
+                return True
+
+        try:
+            analytics.get_client() and analytics.get_client().set_focused_hook(focused)
+        except Exception:
+            pass
+
+        def on_map(_evt=None):
+            try:
+                analytics.handle_focus(True)
+            except Exception:
+                pass
+
+        def on_unmap(_evt=None):
+            try:
+                if _evt is not None and getattr(_evt, 'widget', None) is not self.root:
+                    return
+                analytics.handle_focus(False)
+            except Exception:
+                pass
+
+        try:
+            self.root.bind('<Map>', on_map, add='+')
+            self.root.bind('<Unmap>', on_unmap, add='+')
+            self.root.bind('<FocusIn>', on_map, add='+')
+            self.root.bind('<FocusOut>', lambda e: on_unmap(e) if e.widget is self.root else None, add='+')
+        except tk.TclError:
+            pass
 
     def _on_lang_picked(self, *_):
         name = (self.lang_var.get() if hasattr(self, 'lang_var') else '') or ''
@@ -230,6 +288,10 @@ class App:
         """Switch the UI language now and remember it in settings.json."""
         if lang == get_language():
             return
+        try:
+            analytics.notify_language_set(lang)
+        except Exception:
+            pass
         if self.busy:
             # Widgets are in use by a running task: remember the choice for the next start.
             try:
@@ -865,6 +927,8 @@ class App:
         label(save, t('remember_note')).pack(fill='x')
         ttk.Separator(save).pack(fill='x', pady=16)
         label(save, t('no_repeat_note')).pack(fill='x')
+        ttk.Separator(save).pack(fill='x', pady=16)
+        self._build_analytics_toggle(save)
         self._refresh_oauth_header()
 
     def prompt_changed(self, event=None):
@@ -1140,9 +1204,99 @@ class App:
             except tk.TclError:
                 pass
 
+    def _boot_analytics(self):
+        """Start the anonymous session once per process. Never on tab switches."""
+        if getattr(self, '_analytics_booted', False):
+            return
+        self._analytics_booted = True
+        try:
+            analytics.boot(app_version=VERSION)
+        except Exception:
+            return
+        self._refresh_analytics_ui()
+
+    def _analytics_consent(self):
+        try:
+            return analytics.consent_state()
+        except Exception:
+            return analytics.CONSENT_UNSET
+
+    def _set_analytics_consent(self, granted):
+        try:
+            analytics.set_consent(bool(granted))
+        except Exception:
+            pass
+        self._refresh_analytics_ui()
+
+    def _refresh_analytics_ui(self):
+        consent = self._analytics_consent()
+        enabled = consent == analytics.CONSENT_GRANTED
+        if hasattr(self, 'analytics_enabled'):
+            try:
+                self.analytics_enabled.set(enabled)
+            except tk.TclError:
+                pass
+        banner = getattr(self, 'analytics_banner', None)
+        if banner is None:
+            return
+        try:
+            if consent == analytics.CONSENT_UNSET:
+                if not banner.winfo_manager():
+                    banner.pack(fill='x', padx=28, pady=(0, 4))
+            else:
+                banner.pack_forget()
+        except tk.TclError:
+            pass
+
+    def _build_analytics_banner(self, parent):
+        box = ttk.Frame(parent, style='Page.TFrame')
+        self.analytics_banner = box
+        label(box, t('analytics_notice'), style='Muted.TLabel').pack(fill='x', pady=(0, 6))
+        actions = ttk.Frame(box, style='Page.TFrame')
+        actions.pack(fill='x')
+        ttk.Button(actions, text=t('analytics_accept'), style='Accent.TButton',
+                   command=lambda: self._set_analytics_consent(True)).pack(side='left')
+        ttk.Button(actions, text=t('analytics_decline'), style='Link.TButton',
+                   command=lambda: self._set_analytics_consent(False)).pack(side='left', padx=(12, 0))
+        if self._analytics_consent() == analytics.CONSENT_UNSET:
+            box.pack(fill='x', padx=28, pady=(0, 4))
+
+    def _build_analytics_toggle(self, parent):
+        heading = label(parent, t('analytics_title'), style='Muted.TLabel')
+        heading.pack(fill='x', pady=(0, 6))
+        self.analytics_enabled = tk.BooleanVar(value=self._analytics_consent() == analytics.CONSENT_GRANTED)
+        ttk.Checkbutton(
+            parent, text=t('analytics_toggle'), variable=self.analytics_enabled,
+            command=self._on_analytics_toggle,
+        ).pack(anchor='w')
+        label(parent, t('analytics_privacy')).pack(fill='x', pady=(6, 0))
+
+    def _on_analytics_toggle(self):
+        granted = bool(self.analytics_enabled.get()) if hasattr(self, 'analytics_enabled') else False
+        self._set_analytics_consent(granted)
+
+    def _map_login_error(self, code):
+        text = str(code or '').strip().lower().replace('-', '_').replace(' ', '_')
+        if text in ('network', 'http_error'):
+            return 'NETWORK'
+        if text == 'timeout':
+            return 'TIMEOUT'
+        if text == 'access_denied':
+            return 'CANCELLED'
+        if text in (
+            'state_mismatch', 'missing_code', 'invalid_grant', 'invalid_request',
+            'unauthorized_client', 'userinfo_failed', 'token_exchange_failed',
+        ) or 'auth' in text:
+            return 'AUTH'
+        return 'UNKNOWN'
+
     def start_oauth_login(self):
         if self.oauth_busy:
             return
+        try:
+            analytics.notify_login_start()
+        except Exception:
+            pass
         self.oauth_busy = True
         self._refresh_oauth_header()
         self.status.set(t('oauth_busy'))
@@ -1183,6 +1337,10 @@ class App:
             self.tabs.select(0)  # Generate tab
         except tk.TclError:
             pass
+        try:
+            analytics.notify_login_success(key_applied=key_applied)
+        except Exception:
+            pass
         if key_applied:
             self.status.set(t('oauth_ok'))
             messagebox.showinfo(t('oauth_login'), t('oauth_ok'))
@@ -1200,6 +1358,10 @@ class App:
         self.oauth_busy = False
         self._refresh_oauth_header()
         code, _, detail = str(payload).partition('|')
+        try:
+            analytics.notify_login_failed(self._map_login_error(code))
+        except Exception:
+            pass
         msg = detail or code
         self.status.set(t('oauth_fail', msg))
         messagebox.showerror(t('oauth_login'), t('oauth_fail', msg))
@@ -1207,8 +1369,16 @@ class App:
     def logout_oauth(self):
         if self.oauth_busy:
             return
+        try:
+            analytics.notify_logout()
+        except Exception:
+            pass
         oauth_desktop.logout()
         self.oauth_session = None
+        try:
+            analytics.clear_account()
+        except Exception:
+            pass
         self._refresh_oauth_header()
         self.status.set(t('oauth_logged_out'))
 
@@ -1227,8 +1397,12 @@ class App:
         except OSError:
             messagebox.showinfo(t('official_site'), official_key_url())
 
-    def open_billing(self):
+    def open_billing(self, source='credits_chip'):
         """Open official billing/top-up with product-forced VS UTM."""
+        try:
+            analytics.notify_billing_click(source)
+        except Exception:
+            pass
         url = billing_url()
         try:
             if not webbrowser.open(url):
@@ -1357,6 +1531,10 @@ class App:
         try:
             keys = parse_keys(self.key_input.get())
         except ValueError as exc:
+            try:
+                analytics.notify_key_verify_failed('VALIDATION')
+            except Exception:
+                pass
             messagebox.showerror(t('key_format_title'), str(exc))
             return
         pending = [k for k in keys if k not in self.keys]
@@ -1387,6 +1565,14 @@ class App:
         self._set_key_verify_busy(False)
         ok_keys = list((payload or {}).get('ok') or [])
         fails = list((payload or {}).get('fails') or [])
+        try:
+            if ok_keys:
+                analytics.notify_key_verified()
+            if fails:
+                kind = ((fails[0] or {}).get('result') or {}).get('kind') or 'UNKNOWN'
+                analytics.notify_key_verify_failed(kind)
+        except Exception:
+            pass
         if ok_keys:
             self.keys = list(dict.fromkeys(list(self.keys) + ok_keys))
             self.key_input.set('')
@@ -1500,9 +1686,12 @@ class App:
             recognized = self.apply_prompt()
             if recognized['warnings']:
                 raise TaskError(t('warning_sep').join(recognized['warnings']))
+            media = self._collect_generate_media()
             request = payload(self.prompt.get('1.0', 'end'), self.duration.get(), self.resolution.get(),
-                self.ratio.get(), self._collect_generate_media(),
+                self.ratio.get(), media,
                 self.seed.get(), model=self.model_id.get())
+            has_ff = any(isinstance(item, dict) and item.get('type') == 'first_frame' and item.get('url') for item in (media or []))
+            request['_vs_input_mode'] = 'i2v' if has_ff else 't2v'
             output = self.new_output()
         except Exception as exc:
             messagebox.showerror(t('check_input'), str(exc))
@@ -1698,6 +1887,10 @@ class App:
             self.stop_wait()
             messagebox.showinfo(t('closing_title'), t('closing_body'))
             return
+        try:
+            analytics.end_session()
+        except Exception:
+            pass
         self.root.destroy()
 
 

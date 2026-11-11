@@ -10,6 +10,16 @@
 
 A full Windows build cannot be verified on Linux CI; confirm on a Windows machine that `dist\PowerTokensVideoStudio.exe` contains the binary (e.g. after extract, or by exercising **Continue from previous clip** without a system ffmpeg).
 
+## Analytics packaging
+
+The public PostHog project capture token (`phc_...` only) ships in `analytics_config.py`.
+`Build-EXE.bat` and the Windows workflows also import `analytics` / `analytics_config`
+(and `analytics_config_local` when that untracked file is present). Personal or admin
+keys are refused. Unit tests set `VS_ANALYTICS_DISABLE=1` so they never contact ingest.
+Tag builds of **Build Windows executable** attach `PowerTokensVideoStudio.exe` to that
+tag's GitHub Release. UI screenshots run only on `workflow_dispatch` so a hanging
+screenshot job cannot cancel a release build.
+
 ## Packaging check (Linux)
 
 `PyInstaller.utils.hooks.collect_all("imageio_ffmpeg")` / `collect_data_files("imageio_ffmpeg")` lists the ffmpeg binary under `imageio_ffmpeg/binaries/` (~76 MB on Linux wheels; Windows wheels are in the same ~70–80 MB range). A full Windows EXE build must still be run on Windows.
