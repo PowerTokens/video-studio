@@ -105,6 +105,14 @@ def protect(raw, decrypt=False):
 class App:
     def __init__(self, root):
         self.root = root
+        if sys.platform == 'darwin':
+            # Without this, a Tk app launched outside LaunchServices (or before
+            # the bundle Info.plist is attached) shows "Python" in the macOS
+            # menu bar, and Local Network prompts can be attributed to Python.
+            try:
+                root.tk.call('tk', 'appname', 'PowerTokens Video Studio')
+            except tk.TclError:
+                pass
         self.keys, self.records = [], {}
         self.events = queue.Queue()
         self.stop = threading.Event()

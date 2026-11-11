@@ -108,7 +108,8 @@ def dismiss_leftover_tcc_dialogs() -> str:
     """Click Don't Allow on leftover Local Network prompts from earlier Python tests.
 
     Does not disable the permission system; it only clears a stale dialog so the
-    packaged-app screenshot is about the app itself.
+    packaged-app screenshot is about the app itself. Matches the button title
+    rather than the window name — these TCC alerts often have an empty title.
     """
     script = '''
         tell application "System Events"
@@ -116,13 +117,15 @@ def dismiss_leftover_tcc_dialogs() -> str:
             repeat with p in application processes
                 try
                     repeat with w in windows of p
-                        set t to name of w as text
-                        if t contains "local network" or t contains "局域网" then
-                            try
+                        try
+                            if exists button "Don't Allow" of w then
                                 click button "Don't Allow" of w
                                 set dismissed to dismissed + 1
-                            end try
-                        end if
+                            else if exists button "不允许" of w then
+                                click button "不允许" of w
+                                set dismissed to dismissed + 1
+                            end if
+                        end try
                     end repeat
                 end try
             end repeat
@@ -580,16 +583,37 @@ def phase_gui(out: Path) -> str:
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def _launch_app_binary(binary: Path, data: Path, log_path: Path) -> int:
-    env = os.environ.copy()
-    env['LOCALAPPDATA'] = str(data)
-    env.pop('POWERTOKENS_API_KEY', None)
-    env.pop('POWERTOKENS_API_KEYS', None)
-    env.pop('POWERTOKENS_API_TOKEN', None)
-    env.pop('POWERTOKENS_API_BASE', None)
-    with open(log_path, 'ab') as fh:
-        proc = subprocess.Popen([str(binary)], env=env, stdout=fh, stderr=fh, cwd=str(data))
-    return proc.pid
+def _launch_app_bundle(app: Path, data: Path, log_path: Path) -> int:
+    """Launch the .app through LaunchServices so Info.plist names the process.
+
+    Starting Contents/MacOS/... directly makes Tk's menu bar say "Python" and
+    can attribute the macOS Local Network prompt to Python.
+    """
+    env_args = [
+        '--env', 'LOCALAPPDATA=%s' % data,
+        '--env', 'PYTHONUTF8=1',
+    ]
+    cmd = ['open', '-n', str(app), *env_args]
+    log('launch: %s' % ' '.join(cmd))
+    result = subprocess.run(cmd, text=True, capture_output=True)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(
+        'cmd=%s\nrc=%s\nstdout=%s\nstderr=%s\n' % (
+            cmd, result.returncode, result.stdout, result.stderr),
+        encoding='utf-8',
+    )
+    if result.returncode != 0:
+        raise RuntimeError('open failed: %s' % result.stderr.strip())
+    for _ in range(20):
+        time.sleep(0.5)
+        proc = subprocess.run(
+            ['pgrep', '-n', '-f', 'PowerTokensVideoStudio.app/Contents/MacOS/PowerTokensVideoStudio'],
+            text=True, capture_output=True,
+        )
+        pid = (proc.stdout or '').strip().splitlines()
+        if pid and pid[-1].isdigit():
+            return int(pid[-1])
+    raise RuntimeError('timed out waiting for PowerTokensVideoStudio process')
 
 
 def _wait_window(name: str, timeout: int = 25) -> bool:
@@ -668,7 +692,7 @@ def phase_packaged(app: Path, dmg: Path, out: Path) -> str:
         if not mounted_app.is_dir():
             raise RuntimeError('DMG does not contain the app')
         mounted_bin = mounted_app / 'Contents' / 'MacOS' / 'PowerTokensVideoStudio'
-        pid = _launch_app_binary(mounted_bin, data, log_path)
+        pid = _launch_app_bundle(mounted_app, data, log_path)
         shown = _wait_window('PowerTokensVideoStudio', timeout=20)
         # Keep the window up long enough to be a real launch, not a 1-second flash.
         time.sleep(8)

@@ -117,11 +117,24 @@ unset POWERTOKENS_API_KEY POWERTOKENS_API_KEYS POWERTOKENS_API_TOKEN POWERTOKENS
 
 SMOKE_LOG="$SMOKE_DIR/launch.log"
 : > "$SMOKE_LOG"
-echo "Launching $BIN"
-# Launch the packaged binary directly so we own the PID. The locally built
-# unsigned app is not a Gatekeeper-quarantined download.
-"$BIN" >>"$SMOKE_LOG" 2>&1 &
-PID=$!
+echo "Launching $APP via open (LaunchServices), not the inner binary"
+# Opening the .app attaches Info.plist (CFBundleName). Starting the inner
+# binary makes Tk's menu bar say "Python" and can attribute the macOS Local
+# Network prompt to Python. The locally built unsigned app is not quarantined.
+open -n "$APP" --env "LOCALAPPDATA=${LOCALAPPDATA}" --env "PYTHONUTF8=1" >>"$SMOKE_LOG" 2>&1
+PID=""
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  sleep 1
+  PID="$(pgrep -n -f 'PowerTokensVideoStudio.app/Contents/MacOS/PowerTokensVideoStudio' || true)"
+  if [[ -n "$PID" ]]; then
+    break
+  fi
+done
+if [[ -z "$PID" ]]; then
+  echo "open did not start PowerTokensVideoStudio" >&2
+  cat "$SMOKE_LOG" >&2 || true
+  exit 1
+fi
 echo "PID=$PID" | tee -a "$SMOKE_LOG"
 
 cleanup_app() {
