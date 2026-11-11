@@ -256,7 +256,7 @@ The first time you open the downloaded app, use one of these:
 
 The same note is written to `dist/GATEKEEPER.txt` and included in the disk image.
 
-The GitHub Actions workflow **Build macOS app** (`.github/workflows/build-macos.yml`) runs on `macos-latest` when you start it with **workflow_dispatch**, and also when a `v*` tag is pushed. It uploads the `.dmg`, the `.zip`, and the Gatekeeper note as artifacts. It does **not** create a GitHub Release and does not change the Windows EXE workflows. `workflow_dispatch` appears in the Actions tab after this workflow file is on the default branch. A Linux or Windows runner cannot produce this binary; do not substitute a fake one.
+The GitHub Actions workflow **Build macOS app** (`.github/workflows/build-macos.yml`) runs on the `macos-15` Apple Silicon runner. A pull request that touches the Mac packaging or desktop platform files builds an unsigned preview artifact before merge. The same job also runs on **workflow_dispatch** and on a `v*` tag. After the build it starts the packaged app with a throw-away data folder (no real credentials and no paid API calls) to confirm it launches, then uploads the `.dmg`, the `.zip`, and the Gatekeeper note as artifacts. It does **not** create a GitHub Release and does not change the Windows EXE workflows. `workflow_dispatch` appears in the Actions tab after this workflow file is on the default branch. A Linux or Windows runner cannot produce this binary; do not substitute a fake one.
 
 The public download page in the web companion is unchanged and does not list the Mac package yet.
 

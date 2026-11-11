@@ -22,7 +22,7 @@ Apple Silicon only. The script exits on Linux, Windows, and Intel Macs instead o
 - First launch of a downloaded copy: right-click the app and choose **Open**, or **System Settings → Privacy & Security → Open Anyway**.
 - Data directory: `~/Library/Application Support/PowerTokensWan`. Default videos: `~/Movies/PowerTokensVideoStudio`. Remembered keys: login Keychain item service `PowerTokens Video Studio`, account `remembered-api-keys`. `keys.json` on macOS stores only the marker, not the key.
 - Windows stays on `%LOCALAPPDATA%\PowerTokensWan`, DPAPI, and `Videos\PowerTokensVideoStudio`. `build-windows.yml` and `windows-exe.yml` are not part of this packaging path.
-- CI: `.github/workflows/build-macos.yml` on `macos-latest`, `workflow_dispatch`, and `v*` tags. Artifacts only. It does not create a GitHub Release. `workflow_dispatch` is listed after the workflow file is on the default branch. A cloud Linux VM cannot build this artifact.
+- CI: `.github/workflows/build-macos.yml` on `macos-15` (Apple Silicon; the Intel label is `macos-15-intel`). Triggers: `pull_request` when Mac packaging or desktop platform files change, `workflow_dispatch`, and `v*` tags. The job runs unit tests with `PT_GUI_TESTS=1`, packs the unsigned app, then `tools/macos_app_smoke.sh` mounts the DMG, checks checksums, and starts the packaged app with `LOCALAPPDATA` redirected (no secrets, no paid API calls). Artifacts only. It does not create a GitHub Release and does not use `pull_request_target` or repository secrets. `workflow_dispatch` is listed after the workflow file is on the default branch. A cloud Linux VM cannot build this artifact.
 
 ## Tag CI (`build-windows.yml` and `build-macos.yml`)
 

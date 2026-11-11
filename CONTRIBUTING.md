@@ -65,7 +65,7 @@ python -m unittest discover -s tests -v
 
 - For larger changes, open an issue first so we can agree on the approach.
 - Keep each pull request focused on one fix or feature, and add or update tests for behavior changes.
-- Run the full test suite before pushing. CI runs it on Windows with Python 3.12 and also builds the EXE and captures UI screenshots in both languages. The Mac workflow (`.github/workflows/build-macos.yml`) is separate: start **Build macOS app** manually, or let a `v*` tag upload an unsigned Apple Silicon artifact. It does not modify the Windows workflows and does not publish a GitHub Release.
+- Run the full test suite before pushing. CI runs it on Windows with Python 3.12 and also builds the EXE and captures UI screenshots in both languages. The Mac workflow (`.github/workflows/build-macos.yml`) is separate: a pull request that changes Mac packaging or desktop platform files builds an unsigned Apple Silicon preview on `macos-15`, runs the tests (including native Tk tests), and smoke-launches the packaged app. You can also start **Build macOS app** manually after the workflow is on the default branch, or let a `v*` tag upload the same artifact. It does not modify the Windows workflows and does not publish a GitHub Release.
 - Interface text lives in `i18n.py`. Add every new string to both `ZH` and `EN`, and check that labels and buttons still fit in both languages.
 - Never resubmit a task automatically when its outcome is uncertain, and never send the API key to any host other than the configured API host. These protect users from paying twice and from leaking keys.
 - Don't commit API keys, Task IDs, generated videos, `keys.json` or `cli-config.json`.

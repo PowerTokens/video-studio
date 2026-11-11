@@ -8,6 +8,7 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 - **macOS folders and open.** App data is `~/Library/Application Support/PowerTokensWan`. New videos default to `~/Movies/PowerTokensVideoStudio`. Open-folder actions use the macOS `open` command. Windows still uses `%LOCALAPPDATA%\PowerTokensWan`, `Videos\PowerTokensVideoStudio`, and `os.startfile`.
 - **Remember key on macOS** writes the key pool to the login Keychain for the current user. Windows still uses DPAPI. The checkbox copy follows the system you are on.
 - First launch follows the macOS UI language (`AppleLanguages`) as well as the Windows display language. The Mac window font stays PingFang SC.
+- **Mac preview builds on pull request.** The **Build macOS app** workflow now also runs on a pull request that touches Mac packaging or desktop platform files, on the `macos-15` Apple Silicon runner, and smoke-launches the packaged app with a throw-away data folder. It still does not publish a GitHub Release.
 
 ## [1.16](https://github.com/PowerTokens/video-studio/releases/tag/v1.16.0) - 2026-11-09
 

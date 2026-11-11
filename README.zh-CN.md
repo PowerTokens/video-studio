@@ -246,7 +246,7 @@ GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build
 
 同样的说明会写入 `dist/GATEKEEPER.txt`，并放进磁盘映像。
 
-GitHub Actions 工作流 **Build macOS app**（`.github/workflows/build-macos.yml`）在 `macos-latest` 上通过 **workflow_dispatch** 手动触发，推送 `v*` 标签时也会上传同一批产物。它只上传构建产物，**不会**创建 GitHub Release，也不修改 Windows EXE 工作流。这个工作流文件进入默认分支之后，Actions 页面才会出现手动运行入口。Linux 或 Windows 运行器无法生成这个二进制，不要用假的包代替。
+GitHub Actions 工作流 **Build macOS app**（`.github/workflows/build-macos.yml`）在 `macos-15` Apple Silicon 运行器上执行。当 pull request 改动了 Mac 打包或桌面平台相关文件时，会在合并前构建一份未签名的预览包。同一份任务也可通过 **workflow_dispatch** 手动触发，或在推送 `v*` 标签时运行。构建完成后会用临时数据目录启动打包好的应用（不使用真实凭证，也不发起付费 API 调用）以确认可以打开，再上传 `.dmg`、`.zip` 和 Gatekeeper 说明。它只上传构建产物，**不会**创建 GitHub Release，也不修改 Windows EXE 工作流。这个工作流文件进入默认分支之后，Actions 页面才会出现手动运行入口。Linux 或 Windows 运行器无法生成这个二进制，不要用假的包代替。
 
 网页版的下载页尚未列出 Mac 安装包。
 

@@ -2,24 +2,50 @@ name: Build macOS app
 
 # Unsigned Apple Silicon desktop build. No Apple Developer ID, no notarization,
 # and no signing secrets. workflow_dispatch builds a preview artifact without
-# a version tag. A v* tag also uploads the same artifacts (it does not create
-# or edit a GitHub Release). Windows EXE workflows are separate and unchanged.
+# a version tag. pull_request builds a preview when mac packaging or desktop
+# platform files change, so a package can be reviewed before merge. A v* tag
+# also uploads the same artifacts (it does not create or edit a GitHub Release).
+# Windows EXE workflows are separate and unchanged.
+#
+# This workflow uses pull_request (not pull_request_target) and only
+# contents: read. It does not read repository secrets.
 #
 # GitHub only offers workflow_dispatch in the Actions tab once this file is on
-# the default branch. Until then, the job cannot be started from the UI.
+# the default branch. Until then, pull_request on this branch is the way to
+# produce a preview artifact.
 
 on:
   workflow_dispatch:
   push:
     tags:
       - 'v*'
+  pull_request:
+    paths:
+      - '.github/workflows/build-macos.yml'
+      - 'Build-Mac.sh'
+      - 'tools/make_icns.sh'
+      - 'tools/macos_app_smoke.sh'
+      - 'platform_paths.py'
+      - 'secret_store.py'
+      - 'requirements.txt'
+      - 'assets/**'
+      - '*.py'
+      - '*.xlsx'
+      - 'tests/**'
 
 permissions:
   contents: read
 
+concurrency:
+  group: macos-app-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    runs-on: macos-latest
+    # macos-15 is GitHub's arm64 image. The Intel variant is macos-15-intel.
+    # macos-latest currently also points at an arm64 image, but the exact OS
+    # version moves; pin here so preview builds stay on a known Apple Silicon runner.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,15 +55,28 @@ jobs:
         run: |
           uname -sm
           test "$(uname -m)" = "arm64"
+          sysctl -n machdep.cpu.brand_string || true
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install "pyinstaller>=6,<7" -r requirements.txt
       - name: Run tests
+        env:
+          PYTHONUTF8: '1'
+          # Opt in to native Tk tests on this Mac runner (skipped on Linux
+          # unless PT_GUI_TESTS=1). test_no_button_or_label_is_clipped still
+          # skips on GITHUB_ACTIONS because CI font metrics are not the layout
+          # under test. No real credentials and no paid API calls.
+          PT_GUI_TESTS: '1'
         run: python -m unittest discover -s tests -v
       - name: Build unsigned app, DMG and zip
         # Same packaging as Build-Mac.sh. Tests already ran in the previous step.
         run: bash Build-Mac.sh --skip-tests --no-venv
+      - name: Verify packages and smoke-launch the app
+        env:
+          PYTHONUTF8: '1'
+          LOCALAPPDATA: ${{ runner.temp }}/pt-smoke-data
+        run: bash tools/macos_app_smoke.sh
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -48,3 +87,10 @@ jobs:
             dist/GATEKEEPER.txt
             dist/SHA256SUMS.txt
           if-no-files-found: error
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-smoke-evidence
+          path: dist/smoke/
+          if-no-files-found: ignore
