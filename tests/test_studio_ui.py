@@ -16,7 +16,7 @@ import re
 import app
 import batch_ui
 import wan_core
-from studio_ui import APP_NAME, VERSION, Columns, Card, KeyStatusPill, window_title
+from studio_ui import APP_NAME, VERSION, Columns, Card, KeyStatusPill, window_title, tab_padding
 
 
 @unittest.skipUnless(os.name == 'nt' or os.environ.get('PT_GUI_TESTS') == '1',
@@ -89,7 +89,7 @@ class StudioUITests(unittest.TestCase):
 
         for option in ('padding', 'font', 'expand'):
             self.assertEqual(tab(option, ['selected']), tab(option, ['!selected']), option)
-        self.assertEqual(tab('padding', ['selected']), ['20', '12'])
+        self.assertEqual(tab('padding', ['selected']), [str(item) for item in tab_padding()])
         self.assertFalse(any(int(item) for item in tab('expand', ['selected'])))
         for option in ('background', 'foreground'):
             self.assertNotEqual(tab(option, ['selected']), tab(option, ['!selected']), option)
