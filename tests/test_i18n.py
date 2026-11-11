@@ -60,8 +60,8 @@ class StringTableTests(unittest.TestCase):
     def test_requested_english_copy(self):
         self.assertEqual(i18n.EN['subtitle'], 'Multi-model AI video generation')
         self.assertEqual(i18n.EN['promo'], 'Wan 3.0 limited-time discount until Oct 7')
-        self.assertEqual([i18n.EN[k] for k in ('tab_generate', 'tab_batch', 'tab_keys')],
-                         ['Generate video', 'Batch import', 'API Key'])
+        self.assertEqual([i18n.EN[k] for k in ('tab_generate', 'tab_batch', 'tab_history', 'tab_keys')],
+                         ['Generate', 'Batch', 'History', 'API Key'])
 
 
 class LanguageChoiceTests(unittest.TestCase):
@@ -76,7 +76,7 @@ class LanguageChoiceTests(unittest.TestCase):
 
     def test_t_switches_immediately(self):
         i18n.set_language('en')
-        self.assertEqual(i18n.t('tab_generate'), 'Generate video')
+        self.assertEqual(i18n.t('tab_generate'), 'Generate')
         self.assertEqual(i18n.t('key_count', 2, count=2), '2 keys')
         self.assertEqual(i18n.t('key_count', 1, count=1), '1 key')
         i18n.set_language('zh')
@@ -164,7 +164,7 @@ class LanguageChoiceTests(unittest.TestCase):
 
     def test_spanish_and_portuguese_chrome(self):
         i18n.set_language('es')
-        self.assertEqual(i18n.t('tab_generate'), 'Generar vídeo')
+        self.assertEqual(i18n.t('tab_generate'), 'Generar')
         self.assertIn('cabecera', i18n.t('oauth_use_header'))
         i18n.set_language('pt')
         self.assertEqual(i18n.t('oauth_login'), 'Entrar com PowerTokens')
@@ -337,6 +337,37 @@ class EnglishImportTests(English):
         self.assertEqual(dict(LABELS)['queued'], 'Queued')
         job = build_job('S', 2, {'prompt': 0, 'duration': 1}, ['hello', '7.5'])
         self.assertEqual((job['state'], job['note']), ('invalid', 'Duration must be a whole number of seconds.'))
+
+
+class PlatformShortcutTests(unittest.TestCase):
+    def setUp(self):
+        self.addCleanup(i18n.set_language, 'zh')
+
+    def test_modifier_copy_follows_platform(self):
+        i18n.set_language('en')
+        self.assertEqual(i18n.mod_key('win32'), 'Ctrl')
+        self.assertEqual(i18n.copy_shortcut('win32'), 'Ctrl+C')
+        self.assertEqual(i18n.mod_key('darwin'), 'Command')
+        self.assertEqual(i18n.copy_shortcut('darwin'), 'Command+C')
+        self.assertEqual(
+            i18n.t('history_card_desc', platform='win32'),
+            'Ctrl / Shift to select several; Ctrl+C copies Task IDs.',
+        )
+        self.assertEqual(
+            i18n.t('history_card_desc', platform='darwin'),
+            'Command / Shift to select several; Command+C copies Task IDs.',
+        )
+        i18n.set_language('zh')
+        self.assertIn('Command+C', i18n.t('history_card_desc', platform='darwin'))
+        self.assertIn('Ctrl+C', i18n.t('history_card_desc', platform='win32'))
+        self.assertIn('Command / Shift', i18n.t('select_rows_body', platform='darwin'))
+
+    def test_window_title_is_beta_only_on_mac(self):
+        import studio_ui
+        self.assertEqual(studio_ui.window_title('win32'), 'PowerTokens Video Studio · v%s' % studio_ui.VERSION)
+        self.assertEqual(studio_ui.window_title('darwin'), 'PowerTokens Video Studio · v%s Beta' % studio_ui.VERSION)
+
+
 
 
 if __name__ == '__main__':

@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Free open-source Video Studio **1.16** ([Windows desktop](../../releases/latest), an unsigned Apple Silicon Mac app, and a [web companion](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — Excel/CSV batch, compare, storyboard, safe resume.
+Free open-source Video Studio **1.16** ([Windows desktop](../../releases/latest), an unsigned Apple Silicon Mac Beta app, and a [web companion](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — Excel/CSV batch, compare, storyboard, safe resume.
 
 ![Demo: a clip generated with Wan 3.0](docs/images/demo.gif)
 
@@ -247,7 +247,7 @@ On an Apple Silicon Mac, run `./Build-Mac.sh`. It creates a build virtualenv, in
 - `dist/PowerTokensVideoStudio-macOS-arm64.dmg`
 - `dist/PowerTokensVideoStudio-macOS-arm64.app.zip`
 
-The script does not run on Linux or Windows, and it does not produce an Intel or universal2 binary. There is **no Apple Developer ID signature and no notarization**. Do not add signing certificates to make this build look signed. PyInstaller may attach an ad-hoc signature so Apple Silicon can launch the binary; Gatekeeper still blocks a copy downloaded from the internet.
+The script does not run on Linux or Windows, and it does not produce an Intel or universal2 binary. This build is an unsigned **Beta**. There is **no Apple Developer ID signature and no notarization**. Do not add signing certificates to make this build look signed. PyInstaller may attach an ad-hoc signature so Apple Silicon can launch the binary; Gatekeeper still blocks a copy downloaded from the internet.
 
 The first time you open the downloaded app, use one of these:
 
@@ -307,7 +307,7 @@ Yes. On the [API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_med
 
 ### What is PowerTokens Video Studio?
 
-PowerTokens Video Studio **1.16** is a free, open-source (MIT) desktop app for Windows and for Apple Silicon Mac (unsigned), with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
+PowerTokens Video Studio **1.16** is a free, open-source (MIT) desktop app for Windows and for Apple Silicon Mac (unsigned Beta), with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
 
 ### Can I batch-generate videos from a spreadsheet?
 
@@ -327,7 +327,7 @@ Yes. `mcp_server.py` is an MCP server, also [listed on Glama](https://glama.ai/m
 
 ### Does it run on macOS or Linux?
 
-Yes on Windows, and on macOS for Apple Silicon. The Mac package is an unsigned `.app` inside a `.dmg` (a `.zip` of the same app is also produced). It is not notarized. Gatekeeper will block the first open of a downloaded copy until you right-click the app and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway**. The packaged app does not need Python. There is no Linux desktop package. A [web companion](https://powertokens.github.io/video-studio-web/) runs in the browser. The MCP server also runs on macOS and Linux with Python 3.11+, or in Docker on any system.
+Yes on Windows, and on macOS for Apple Silicon. The Mac package is an unsigned Beta `.app` inside a `.dmg` (a `.zip` of the same app is also produced). It is not notarized, and the window title includes **Beta**. Gatekeeper will block the first open of a downloaded copy until you right-click the app and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway**. The packaged app does not need Python. There is no Linux desktop package. A [web companion](https://powertokens.github.io/video-studio-web/) runs in the browser. The MCP server also runs on macOS and Linux with Python 3.11+, or in Docker on any system.
 
 ### How do I get a PowerTokens API key, and how are models billed?
 

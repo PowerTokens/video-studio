@@ -105,7 +105,7 @@ plist_set() {
     fi
   fi
 }
-plist_set CFBundleShortVersionString string "$VERSION"
+plist_set CFBundleShortVersionString string "$VERSION Beta"
 plist_set CFBundleVersion string "$VERSION"
 plist_set CFBundleName string "PowerTokens Video Studio"
 plist_set CFBundleDisplayName string "PowerTokens Video Studio"
@@ -152,7 +152,7 @@ if printf '%s\n' "$SIGN_INFO" | grep -E 'Authority=|Developer ID Application|App
 fi
 
 cat > dist/GATEKEEPER.txt << 'EOF'
-PowerTokens Video Studio for macOS (Apple Silicon) is unsigned.
+PowerTokens Video Studio for macOS (Apple Silicon) is an unsigned Beta.
 There is no Apple Developer ID signature and the app is not notarized.
 PyInstaller may attach an ad-hoc signature so Apple Silicon can launch the
 binary. That is not a distribution signature. Gatekeeper still blocks a
@@ -167,7 +167,7 @@ Do one of the following the first time you open the app:
 The packaged app does not need Python. Windows users should keep using
 PowerTokensVideoStudio.exe.
 
-本 macOS 版本未使用 Apple 开发者证书签名，也未经过公证。
+本 macOS 版本是未签名的 Beta，没有 Apple 开发者证书，也未经过公证。
 首次打开时，请在 Finder 中右键该 App 并选择「打开」，
 或到「系统设置 → 隐私与安全性」点击「仍要打开」。
 EOF

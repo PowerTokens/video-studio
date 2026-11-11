@@ -10,7 +10,7 @@ from tkinter import ttk, filedialog, messagebox, simpledialog
 import tkinter.font as tkfont
 import uuid
 from i18n import is_zh, t
-from studio_ui import heading, card, label, Columns, Flow, text_area, resource_path
+from studio_ui import heading, card, label, Columns, Flow, text_area, resource_path, bind_command_or_control
 from batch_import import import_jobs
 from batch_engine import BatchStore, BatchRunner, BatchLease, LABELS
 from wan_core import DATA_DIR, PRICE_CHECKED_DATE, atomic_json, fingerprint, task_url
@@ -116,8 +116,8 @@ class BatchTab:
         for state, color in STATE_COLORS.items():
             self.tree.tag_configure(state, foreground=color)
         self.tree.bind('<<TreeviewSelect>>', lambda event: self.show_detail())
-        self.tree.bind('<Control-c>', self.copy_selected_task_ids)
-        self.tree.bind('<Control-a>', self.select_all_task_rows)
+        bind_command_or_control(self.tree, 'c', self.copy_selected_task_ids)
+        bind_command_or_control(self.tree, 'a', self.select_all_task_rows)
         actions = Flow(task_box)
         actions.pack(fill='x', pady=(10, 0))
         self.start_btn = ttk.Button(actions, text=t('start_all'), style='Accent.TButton', command=self.start_all)

@@ -139,7 +139,7 @@ ZH = {
     'history_title': '任务记录 / 恢复',
     'history_desc': '继续查询原任务并下载，不会提交新生成任务。',
     'history_card': '任务记录',
-    'history_card_desc': '可用 Ctrl / Shift 多选；按 Ctrl+C 复制任务 ID。',
+    'history_card_desc': '可用 %s / Shift 多选；按 %s 复制任务 ID。',
     'col_created': '创建时间',
     'col_task': '任务 ID',
     'col_state': '状态',
@@ -362,7 +362,7 @@ ZH = {
     'import_skipped': ' · 已跳过：',
     'batch_estimate': ' · 待提交任务估算 $%.2f（PT %s 公示价；实际以账单为准）',
     'job_detail': '%s · 行 %s\n%s\n输出：%s\n\n%s',
-    'select_rows_body': '请在表格中选中需要处理的行；可按 Ctrl / Shift 多选。',
+    'select_rows_body': '请在表格中选中需要处理的行；可按 %s / Shift 多选。',
     'character_changed_title': '人物设定已更改',
     'character_changed_body': '请重新导入表格，核对每行最终 Prompt 后再开始。',
     'nothing_eligible': '没有可处理的任务。参数错误请修改源表；提交结果未知的任务请先查仪表盘并关联原任务 ID。',
@@ -571,10 +571,10 @@ EN = {
     'key_chip_quota': 'Balance or quota too low',
     'key_chip_verifying': 'Verifying key…',
     'header_get_key': 'Sign in with PowerTokens',
-    'tab_generate': 'Generate video',
+    'tab_generate': 'Generate',
     'tab_chat': 'Chat',
-    'tab_batch': 'Batch import',
-    'tab_history': 'History / Resume',
+    'tab_batch': 'Batch',
+    'tab_history': 'History',
     'tab_keys': 'API Key',
     'tab_compare': 'Compare',
     'compare_title': 'Compare models',
@@ -674,7 +674,7 @@ EN = {
     'history_title': 'History / Resume',
     'history_desc': 'Check earlier tasks and download the results. Nothing is regenerated.',
     'history_card': 'Tasks',
-    'history_card_desc': 'Ctrl / Shift to select several; Ctrl+C copies Task IDs.',
+    'history_card_desc': '%s / Shift to select several; %s copies Task IDs.',
     'col_created': 'Created',
     'col_task': 'Task ID',
     'col_state': 'Status',
@@ -897,7 +897,7 @@ EN = {
     'import_skipped': ' · Skipped: ',
     'batch_estimate': ' · Queued estimate $%.2f (PowerTokens prices as of %s; your bill is final)',
     'job_detail': '%s · row %s\n%s\nOutput: %s\n\n%s',
-    'select_rows_body': 'Select the rows to process in the table (Ctrl / Shift to select several).',
+    'select_rows_body': 'Select the rows to process in the table (%s / Shift to select several).',
     'character_changed_title': 'Character setting changed',
     'character_changed_body': 'Import the spreadsheet again and review each final prompt before starting.',
     'nothing_eligible': 'Nothing to process. Fix invalid rows in the spreadsheet; for rows with an unknown result, check the dashboard and link the original Task ID.',
@@ -1106,11 +1106,11 @@ ES_OVERLAY = {
     'key_chip_quota': 'Saldo o cuota insuficiente',
     'key_chip_verifying': 'Verificando clave…',
     'header_get_key': 'Iniciar sesión con PowerTokens',
-    'tab_generate': 'Generar vídeo',
-    'tab_batch': 'Importación por lotes',
-    'tab_history': 'Historial / Reanudar',
+    'tab_generate': 'Generar',
+    'tab_batch': 'Lotes',
+    'tab_history': 'Historial',
     'tab_keys': 'API Key',
-    'tab_compare': 'Comparar modelos',
+    'tab_compare': 'Comparar',
     'status_ready': 'Listo · Inicia sesión con PowerTokens',
     'need_key': 'Inicia sesión con PowerTokens antes de generar. La clave se rellena sola.',
     'need_key_advanced': 'Sesión iniciada, pero este equipo aún no tiene clave. Pégala en API Key → Avanzado.',
@@ -1163,9 +1163,9 @@ PT_OVERLAY = {
     'key_chip_quota': 'Saldo ou cota insuficiente',
     'key_chip_verifying': 'A verificar chave…',
     'header_get_key': 'Entrar com PowerTokens',
-    'tab_generate': 'Gerar vídeo',
-    'tab_batch': 'Importação em lote',
-    'tab_history': 'Histórico / Retomar',
+    'tab_generate': 'Gerar',
+    'tab_batch': 'Lotes',
+    'tab_history': 'Histórico',
     'tab_keys': 'API Key',
     'tab_compare': 'Comparar modelos',
     'status_ready': 'Pronto · Entre com PowerTokens',
@@ -1371,7 +1371,21 @@ def is_zh():
     return get_language() == 'zh'
 
 
-def t(key, *args, count=None):
+def is_mac(platform=None):
+    """True on macOS. Pass platform to test a value other than sys.platform."""
+    return (sys.platform if platform is None else platform) == 'darwin'
+
+
+def mod_key(platform=None):
+    """Modifier used for multi-select and shortcuts: Command on macOS, Ctrl elsewhere."""
+    return 'Command' if is_mac(platform) else 'Ctrl'
+
+
+def copy_shortcut(platform=None):
+    return 'Command+C' if is_mac(platform) else 'Ctrl+C'
+
+
+def t(key, *args, count=None, platform=None):
     """Look up key in the current language (falls back to English, then Chinese)."""
     table = STRINGS.get(get_language()) or {}
     value = table.get(key)
@@ -1381,4 +1395,9 @@ def t(key, *args, count=None):
         value = ZH[key]
     if isinstance(value, tuple) and count is not None:
         value = value[0] if count == 1 else value[1]
+    if not args and isinstance(value, str):
+        if key == 'history_card_desc' and value.count('%s') == 2:
+            return value % (mod_key(platform), copy_shortcut(platform))
+        if key == 'select_rows_body' and value.count('%s') == 1:
+            return value % (mod_key(platform),)
     return value % args if args else value

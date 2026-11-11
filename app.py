@@ -16,7 +16,7 @@ from i18n import (LANGUAGES, LANGUAGE_NAMES, get_language, is_zh, load_settings,
                   save_setting, set_language, t)
 from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE, PAGE, INK, LINE, ACCENT, LOGO_FILE,
                        apply_theme, label, heading, card, Columns, Flow, ScrollPage, text_area,
-                       load_image, header_logo_file, KeyStatusPill)
+                       load_image, header_logo_file, KeyStatusPill, window_title, bind_command_or_control)
 from input_helpers import parse_keys, infer_prompt
 from batch_ui import BatchTab
 from chat_ui import ChatTab
@@ -120,7 +120,7 @@ class App:
         self.busy = False
         self.prompt_timer = None
         self.scale = apply_theme(root)
-        root.title('%s · v%s' % (APP_NAME, VERSION))
+        root.title(window_title())
         # Keep image references on the instance; a missing logo must never stop the app.
         self.icon_image = load_image(LOGO_FILE)
         self.logo_image = load_image(header_logo_file(self.scale))
@@ -132,7 +132,8 @@ class App:
         width = min(int(1280 * self.scale), root.winfo_screenwidth() - 60)
         height = min(int(920 * self.scale), root.winfo_screenheight() - 90)
         root.geometry('%dx%d' % (width, height))
-        root.minsize(min(860, width), min(620, height))
+        min_w = 980 if sys.platform == 'darwin' else 860
+        root.minsize(min(min_w, width), min(620, height))
         self.oauth_session = None
         self.oauth_busy = False
         self.key_verify_busy = False
@@ -744,8 +745,8 @@ class App:
         sx = ttk.Scrollbar(table, orient='horizontal', command=self.tree.xview)
         sx.grid(row=1, column=0, sticky='ew')
         self.tree.configure(yscrollcommand=sy.set, xscrollcommand=sx.set)
-        self.tree.bind('<Control-c>', self.copy_selected_task_ids)
-        self.tree.bind('<Control-a>', self.select_all_task_rows)
+        bind_command_or_control(self.tree, 'c', self.copy_selected_task_ids)
+        bind_command_or_control(self.tree, 'a', self.select_all_task_rows)
         row = Flow(table_card)
         row.pack(fill='x', pady=(10, 0))
         self.resume_btn = ttk.Button(row, text=t('resume_selected'), style='Accent.TButton', command=self.resume_selected)
