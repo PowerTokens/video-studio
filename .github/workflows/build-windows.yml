@@ -29,16 +29,10 @@ jobs:
           PYTHONUTF8: '1'
           VS_ANALYTICS_DISABLE: '1'
         run: python -m unittest discover -s tests -v
-      - name: Confirm public capture token is present
-        # Prints only the key length. Refuses personal/admin keys.
-        shell: pwsh
-        env:
-          PYTHONUTF8: '1'
-        run: |
-          python -c "import analytics_config; k=analytics_config.load()['project_key']; assert analytics_config.public_project_key(k), 'missing or non-public project key'; print('public_capture_token_ok len=' + str(len(k)))"
-      - name: Bake public PostHog project key if provided
-        # Only the public capture token (phc_...) may be bundled. Leave the
-        # secret unset to ship an unconfigured (no-traffic) build.
+      - name: Bake public PostHog project key
+        # Only the public capture token (phc_...) may be bundled.
+        # Tag releases must ship a configured EXE and fail if the key is missing.
+        # workflow_dispatch builds may stay unconfigured when the secret is unset.
         shell: pwsh
         env:
           PYTHONUTF8: '1'
@@ -46,8 +40,22 @@ jobs:
           VS_POSTHOG_HOST: ${{ secrets.VS_POSTHOG_HOST }}
         run: |
           $py = if (Test-Path .\.build-venv\Scripts\python.exe) { ".\.build-venv\Scripts\python.exe" } else { "python" }
-          & $py tools/prepare_analytics_config.py --allow-empty
+          $isTag = $env:GITHUB_REF -like 'refs/tags/v*'
+          if ($isTag) {
+            & $py tools/prepare_analytics_config.py
+          } else {
+            & $py tools/prepare_analytics_config.py --allow-empty
+          }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Confirm public capture token is present
+        # After bake. Prints only the key length. Refuses personal/admin keys.
+        # Required on tag releases so a 1.17+ EXE is never published unconfigured.
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+        run: |
+          python -c "import analytics_config; k=analytics_config.load()['project_key']; assert analytics_config.public_project_key(k), 'missing or non-public project key'; print('public_capture_token_ok len=' + str(len(k)))"
 
       - name: Build executable
         # Same flags as Build-EXE.bat / windows-exe.yml (bundles ffmpeg via imageio-ffmpeg).
