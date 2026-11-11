@@ -477,6 +477,7 @@ class Client:
         """
         started = time.monotonic()
         generation_id = uuid.uuid4().hex
+        self._analytics_generation_id = generation_id
         peek = dict(request or {})
         model_id = peek.get('model') or peek.get('model_name') or DEFAULT_MODEL_ID
         ctx = self.context or {}
@@ -491,7 +492,7 @@ class Client:
                     _analytics.notify_generation_finish(
                         generation_id, True, model=str(model_id or ''),
                         surface=surface, duration_ms=duration_ms)
-                else:
+                elif _analytics.is_final_generation_failure(kind):
                     _analytics.notify_generation_finish(
                         generation_id, False, model=str(model_id or ''),
                         surface=surface, duration_ms=duration_ms, error_code=kind)
@@ -534,7 +535,7 @@ class Client:
             probe.touch()
         finally:
             probe.unlink(missing_ok=True)
-        self.record = dict(local_id=uuid.uuid4().hex, task_id='', created=time.strftime('%Y-%m-%d %H:%M:%S'),
+        self.record = dict(local_id=getattr(self, '_analytics_generation_id', None) or uuid.uuid4().hex, task_id='', created=time.strftime('%Y-%m-%d %H:%M:%S'),
                            output=str(Path(out_path).absolute()), state=t('state_preparing'), key_hash='', key_hint='',
                            model=model_id, poll_kind=poll_kind)
         self.record.update(self.context)
@@ -605,11 +606,49 @@ class Client:
         raise TaskError(t('all_rejected'), 'REJECTED')
 
     def resume(self, key, task_id, out_path, record=None):
+        """Resume an existing task. This is not a new generation_start.
+
+        If the original submit already recorded a start, a later success is
+        attached to the same local_id / generation_id. Intermediate pauses and
+        timeouts are not terminal failures, so they do not block that success.
+        """
         task_url(task_id)
+        started = time.monotonic()
         self.record = dict(record) if record else dict(local_id=uuid.uuid4().hex,
             created=time.strftime('%Y-%m-%d %H:%M:%S'), task_id=task_id)
         self.save(state=t('state_resuming'), output=str(Path(out_path).absolute()), key_hash=fingerprint(key), key_hint='****' + key[-4:])
-        return self.wait(key, task_id, out_path)
+        generation_id = str((self.record or {}).get('local_id') or '')
+        model_id = str((self.record or {}).get('model') or '')
+        ctx = self.context or {}
+        surface = ctx.get('surface') or ('batch' if ctx.get('batch_id') else 'generate')
+
+        def _notify(ok, kind=None):
+            if not generation_id:
+                return
+            try:
+                import analytics as _analytics
+                duration_ms = int(max(0, (time.monotonic() - started) * 1000))
+                if ok:
+                    _analytics.notify_generation_finish(
+                        generation_id, True, model=model_id, surface=surface,
+                        duration_ms=duration_ms)
+                elif _analytics.is_final_generation_failure(kind):
+                    _analytics.notify_generation_finish(
+                        generation_id, False, model=model_id, surface=surface,
+                        duration_ms=duration_ms, error_code=kind)
+            except Exception:
+                return
+
+        try:
+            result = self.wait(key, task_id, out_path)
+        except TaskError as exc:
+            _notify(False, exc.kind)
+            raise
+        except Exception:
+            _notify(False, 'UNKNOWN')
+            raise
+        _notify(True)
+        return result
 
     def resume_download_url(self, key, task_id, out_path, video_url, record=None):
         task_url(task_id)
@@ -626,6 +665,13 @@ class Client:
         self.save(**changes)
         result = self.try_download(key, video_url, out_path)
         if result == 'ok':
+            try:
+                import analytics as _analytics
+                _analytics.notify_video_download(
+                    model=str((self.record or {}).get('model') or ''),
+                    surface='generate')
+            except Exception:
+                pass
             return self.record
         self.save(state=t('state_download_pending'))
         raise TaskError(self.last_download_error or t('link_unavailable'),

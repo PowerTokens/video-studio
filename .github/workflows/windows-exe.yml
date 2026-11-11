@@ -32,13 +32,28 @@ jobs:
           PYTHONUTF8: '1'
         run: .\.build-venv\Scripts\python.exe -m unittest discover -s tests -v
 
+      - name: Bake public PostHog project key if provided
+        # Only the public capture token (phc_...) may be bundled. Leave the
+        # secret unset to ship an unconfigured (no-traffic) build.
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+          VS_POSTHOG_PROJECT_KEY: ${{ secrets.VS_POSTHOG_PROJECT_KEY }}
+          VS_POSTHOG_HOST: ${{ secrets.VS_POSTHOG_HOST }}
+        run: |
+          $py = if (Test-Path .\.build-venv\Scripts\python.exe) { ".\.build-venv\Scripts\python.exe" } else { "python" }
+          & $py tools/prepare_analytics_config.py --allow-empty
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build executable
         # Same PyInstaller invocation as Build-EXE.bat, without the trailing pause.
         shell: pwsh
         env:
           PYTHONUTF8: '1'
         run: |
-          .\.build-venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name PowerTokensVideoStudio --icon assets\logo.ico --add-data "assets;assets" --add-data "*.xlsx;." --collect-all imageio_ffmpeg app.py
+          $flags = (.\.build-venv\Scripts\python.exe tools/pyinstaller_analytics_flags.py).Trim()
+          $cmd = ".\.build-venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name PowerTokensVideoStudio --icon assets\logo.ico --add-data `"assets;assets`" --add-data `"*.xlsx;.`" $flags --collect-all imageio_ffmpeg app.py"
+          Invoke-Expression $cmd
 
       - name: Print executable size
         shell: pwsh

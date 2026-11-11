@@ -16,7 +16,13 @@ if errorlevel 1 goto fail
 if errorlevel 1 goto fail
 REM Bundle imageio-ffmpeg package data (includes platform ffmpeg binary,
 REM ~70–80 MB on Windows x86_64). See BUILD-NOTES.md.
-.build-venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name PowerTokensVideoStudio --icon assets\logo.ico --add-data "assets;assets" --add-data "*.xlsx;." --collect-all imageio_ffmpeg app.py
+REM Optional public capture key (phc_ only). Never pass a personal/admin key.
+if defined VS_POSTHOG_PROJECT_KEY (
+  .build-venv\Scripts\python.exe tools\prepare_analytics_config.py --allow-empty
+  if errorlevel 1 goto fail
+)
+for /f "delims=" %%I in ('.build-venv\Scripts\python.exe tools\pyinstaller_analytics_flags.py') do set "PT_ANALYTICS_FLAGS=%%I"
+.build-venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name PowerTokensVideoStudio --icon assets\logo.ico --add-data "assets;assets" --add-data "*.xlsx;." %PT_ANALYTICS_FLAGS% --collect-all imageio_ffmpeg app.py
 if errorlevel 1 goto fail
 echo Done: dist\PowerTokensVideoStudio.exe
 pause

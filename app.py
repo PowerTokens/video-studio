@@ -1260,10 +1260,7 @@ class App:
         except tk.TclError:
             pass
         try:
-            profile = (self.oauth_session or {}).get('profile') or {}
-            analytics.notify_login_success(
-                profile.get('user_id') or profile.get('sub'),
-                key_applied=key_applied)
+            analytics.notify_login_success(key_applied=key_applied)
         except Exception:
             pass
         if key_applied:

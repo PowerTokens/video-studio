@@ -7,13 +7,16 @@ allowlist; prompts, keys, tokens, emails, user assets, raw error text, OAuth
 codes, and URL query strings are never accepted.
 
 Network failures fail open (the UI is never blocked). The outbound queue is
-bounded. Telemetry is off until the user grants consent, and stays off when
-the project key is missing.
+bounded and only used after opt-in when a destination exists. No identifiers
+or events are stored before consent. Account linkage is not used in this MVP:
+distinct_id is a random install UUID. The ingest host may still see the client
+IP; this client sets $geoip_disable and $process_person_profile=false, and
+does not claim IP anonymity.
 """
 from __future__ import annotations
 
-import hashlib
 import json
+import re
 import os
 import threading
 import time
@@ -22,6 +25,8 @@ import urllib.request
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Optional
+
+import analytics_config
 
 EVENTS = frozenset({
     'app_open',
@@ -44,7 +49,8 @@ ALLOWED_PROPS = frozenset({
     'generation_id',
     'requested_duration_s',
     'key_applied',
-    'account_linked',
+    'environment',
+    'test_run_id',
 })
 
 # Rejected even if someone later adds them to ALLOWED_PROPS by mistake.
@@ -65,15 +71,32 @@ SAFE_ERROR_CODES = frozenset({
     'DOWNLOAD', 'PAUSED', 'TIMEOUT', 'UNKNOWN', 'SERVER_FAILED', 'QUERY_DOWN',
     'QUERY_AUTH', 'READY_NO_URL', 'UNCERTAIN', 'STOPPED', 'CANCELLED',
     'VALIDATION', 'POOL_EXHAUSTED', 'REJECTED', 'STORAGE', 'RANGE_UNSUPPORTED',
-    'NO_RESUME', 'QUERY_FORBIDDEN',
+    'NO_RESUME', 'QUERY_FORBIDDEN', 'FAILED', 'QUERY_UNAVAILABLE',
 })
 
 SAFE_SURFACES = frozenset({'generate', 'compare', 'batch'})
 
+# Official ingest hosts from https://posthog.com/docs/api/capture
+ALLOWED_INGEST_HOSTS = frozenset({
+    'https://us.i.posthog.com',
+    'https://eu.i.posthog.com',
+})
+
+# Model ids are catalog-like tokens only (no spaces, no URLs, no sentences).
+MODEL_ID_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')
+
+# Failures that close a generation. Timeout / paused / query-down can be resumed
+# and must not consume the terminal slot, or later success would be dropped.
+FINAL_FAILURE_CODES = frozenset({
+    'AUTH', 'QUOTA', 'NOT_ALLOWED', 'PARAM', 'VALIDATION', 'REJECTED',
+    'POOL_EXHAUSTED', 'SERVER_FAILED', 'FAILED', 'CANCELLED', 'STORAGE',
+    'UNCERTAIN', 'UNKNOWN',
+})
+
 PLATFORM = 'desktop'
 QUEUE_MAX = 50
 SESSION_IDLE_S = 30 * 60
-FLUSH_TIMEOUT_S = 3
+FLUSH_TIMEOUT_S = 8
 LIB_NAME = 'video-studio-analytics'
 LIB_VERSION = '1.0.0'
 STATE_NAME = 'analytics.json'
@@ -88,16 +111,13 @@ def _now() -> float:
     return time.time()
 
 
-def opaque_account_id(user_id: Any) -> Optional[str]:
-    """Hash an internal user id so the raw identifier never leaves the device.
-
-    Returns None for empty values, emails, or whitespace-bearing strings.
-    """
-    raw = str(user_id or '').strip()
-    if not raw or '@' in raw or any(ch.isspace() for ch in raw) or len(raw) < 2:
+def sanitize_model(value: Any) -> Optional[str]:
+    """Return a catalog-like model token, or None if it could carry content."""
+    text = str(value or '').strip()
+    if not text or not MODEL_ID_RE.match(text) or '@' in text:
         return None
-    digest = hashlib.sha256(('vs-analytics:' + raw).encode('utf-8')).hexdigest()[:16]
-    return 'ptu_' + digest
+    return text
+
 
 
 def normalize_error_code(code: Any) -> str:
@@ -106,13 +126,37 @@ def normalize_error_code(code: Any) -> str:
         return text
     aliases = {
         'SERVER_FAILED': 'SERVER_FAILED',
+        'FAILED': 'SERVER_FAILED',
         'QUERY_AUTH': 'QUERY_AUTH',
         'QUERY_DOWN': 'QUERY_DOWN',
+        'QUERY_UNAVAILABLE': 'QUERY_DOWN',
         'READY_NO_URL': 'READY_NO_URL',
         'UNCERTAIN_RELOAD': 'UNCERTAIN',
         'CANCELED': 'CANCELLED',
     }
     return aliases.get(text, 'UNKNOWN')
+
+
+def is_final_generation_failure(code: Any) -> bool:
+    """True when a generation cannot be resumed and should close the funnel."""
+    return normalize_error_code(code) in FINAL_FAILURE_CODES | {'SERVER_FAILED'}
+
+
+
+SAFE_ENVIRONMENTS = frozenset({'synthetic', 'test', 'production'})
+TEST_RUN_ID_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')
+
+
+def sanitize_environment(value: Any) -> Optional[str]:
+    text = str(value or '').strip().lower()
+    return text if text in SAFE_ENVIRONMENTS else None
+
+
+def sanitize_test_run_id(value: Any) -> Optional[str]:
+    text = str(value or '').strip()
+    if not text or not TEST_RUN_ID_RE.match(text):
+        return None
+    return text
 
 
 def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
@@ -148,13 +192,18 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
                 continue
         elif key == 'key_applied':
             value = bool(value)
-        elif key == 'account_linked':
-            value = bool(value)
-        elif key == 'model':
-            text = str(value or '').strip()
-            if not text or len(text) > 80 or any(ch.isspace() for ch in text) or '@' in text:
+        elif key == 'environment':
+            value = sanitize_environment(value)
+            if not value:
                 continue
-            value = text
+        elif key == 'test_run_id':
+            value = sanitize_test_run_id(value)
+            if not value:
+                continue
+        elif key == 'model':
+            value = sanitize_model(value)
+            if not value:
+                continue
         elif key in ('generation_id', 'session_id', 'install_id', 'app_version', 'platform'):
             text = str(value or '').strip()
             if not text or len(text) > 80:
@@ -163,6 +212,31 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
         clean[key] = value
     clean['platform'] = PLATFORM
     return clean
+
+
+
+def build_capture_payload(item: dict, api_key: str) -> dict:
+    """Shape documented at https://posthog.com/docs/api/capture (single event).
+
+    Required: api_key, event, distinct_id. Optional: properties, timestamp.
+    Anonymous events must set $process_person_profile=false. $geoip_disable
+    skips GeoIP enrichment. $ip is intentionally omitted: the official docs
+    say PostHog still sees the request IP, and discarding stored IPs is a
+    project setting, not a client field.
+    """
+    props = dict(item.get('properties') or {})
+    props.pop('$ip', None)
+    props['$lib'] = LIB_NAME
+    props['$lib_version'] = LIB_VERSION
+    props['$geoip_disable'] = True
+    props['$process_person_profile'] = False
+    return {
+        'api_key': api_key,
+        'event': item['event'],
+        'distinct_id': item['distinct_id'],
+        'properties': props,
+        'timestamp': item.get('timestamp'),
+    }
 
 
 class Analytics:
@@ -176,7 +250,6 @@ class Analytics:
         self._transport = transport
         self._config = dict(config or {})
         self._state = self._load_state()
-        self._ensure_install_id()
         self._flush_thread: Optional[threading.Thread] = None
         self._flush_lock = threading.Lock()
 
@@ -187,9 +260,21 @@ class Analytics:
     def _load_state(self) -> dict:
         try:
             data = json.loads(self._state_path().read_text(encoding='utf-8'))
-            return data if isinstance(data, dict) else {}
+            if not isinstance(data, dict):
+                return {}
         except (OSError, ValueError):
             return {}
+        consent = str(data.get('consent') or CONSENT_UNSET).strip()
+        # Never keep a pre-consent queue or identifiers from an older build.
+        data['account_distinct_id'] = ''
+        if consent != CONSENT_GRANTED:
+            data['queue'] = []
+            if consent != CONSENT_DENIED:
+                data.pop('install_id', None)
+                data.pop('session_id', None)
+                data['app_open_session'] = ''
+                data['login_success_token'] = ''
+        return data
 
     def _save_state(self) -> None:
         path = self._state_path()
@@ -207,6 +292,8 @@ class Analytics:
         os.replace(tmp, path)
 
     def _ensure_install_id(self) -> str:
+        if self.consent_state() != CONSENT_GRANTED:
+            return ''
         install_id = str(self._state.get('install_id') or '').strip()
         if not install_id:
             install_id = uuid.uuid4().hex
@@ -231,14 +318,16 @@ class Analytics:
     def set_consent(self, granted: bool) -> None:
         with self._lock:
             self._state['consent'] = CONSENT_GRANTED if granted else CONSENT_DENIED
+            self._state['queue'] = []
+            self._state['account_distinct_id'] = ''
             if not granted:
-                self._state['queue'] = []
-                self._state['account_distinct_id'] = ''
+                # Keep a local denial flag only. Do not invent identifiers.
+                self._save_state()
+                return
             self._save_state()
-            if granted:
-                self.ensure_session()
-                self.capture_app_open()
-                self._schedule_flush()
+        self.ensure_session()
+        self.capture_app_open()
+        self._schedule_flush()
 
     # ----- session -----
     def ensure_session(self) -> str:
@@ -247,6 +336,8 @@ class Analytics:
         apply here; callers must not invoke capture_app_open on focus/tab change.
         """
         with self._lock:
+            if self.consent_state() != CONSENT_GRANTED:
+                return ''
             now = self.clock()
             session_id = str(self._state.get('session_id') or '').strip()
             last = float(self._state.get('last_activity') or 0)
@@ -262,38 +353,73 @@ class Analytics:
     def session_id(self) -> str:
         return self.ensure_session()
 
-    # ----- account -----
-    def identify_account(self, user_id: Any) -> Optional[str]:
-        opaque = opaque_account_id(user_id)
-        with self._lock:
-            self._state['account_distinct_id'] = opaque or ''
-            self._save_state()
-        return opaque
+    # ----- identity (anonymous install UUID only; no account linkage) -----
+    def identify_account(self, user_id: Any = None) -> Optional[str]:
+        """MVP: no account linkage. Kept as a no-op so older call sites stay safe."""
+        return None
+
 
     def clear_account(self) -> None:
-        with self._lock:
-            self._state['account_distinct_id'] = ''
-            self._save_state()
+        return
 
     def distinct_id(self) -> str:
         with self._lock:
-            account = str(self._state.get('account_distinct_id') or '').strip()
-            return account or self._ensure_install_id()
+            return self._ensure_install_id()
 
     # ----- config / transport -----
     def _resolved_config(self) -> dict:
         if self._config.get('project_key') or self._config.get('host'):
             key = str(self._config.get('project_key') or '').strip()
             host = str(self._config.get('host') or '').strip().rstrip('/')
-            return {'project_key': key, 'host': host or 'https://us.i.posthog.com'}
+        else:
+            try:
+                loaded = analytics_config.load()
+            except Exception:
+                loaded = {'project_key': '', 'host': 'https://us.i.posthog.com'}
+            key = str(loaded.get('project_key') or '').strip()
+            host = str(loaded.get('host') or '').strip().rstrip('/')
         try:
-            import analytics_config
-            return analytics_config.load()
+            key = analytics_config.public_project_key(key)
+            host = analytics_config.official_host(host)
         except Exception:
-            return {'project_key': '', 'host': 'https://us.i.posthog.com'}
+            if key and not str(key).startswith('phc_'):
+                key = ''
+        if host and host not in ALLOWED_INGEST_HOSTS:
+            host = ''
+        if not host:
+            host = 'https://us.i.posthog.com'
+        return {
+            'project_key': key,
+            'host': host,
+            'environment': self._config.get('environment') or '',
+            'test_run_id': self._config.get('test_run_id') or '',
+        }
+
+    def _marker_environment(self) -> str:
+        explicit = sanitize_environment(self._config.get('environment'))
+        if explicit:
+            return explicit
+        try:
+            loaded = analytics_config.load()
+            return sanitize_environment(loaded.get('environment')) or ''
+        except Exception:
+            return ''
+
+    def _marker_test_run_id(self) -> str:
+        explicit = sanitize_test_run_id(self._config.get('test_run_id'))
+        if explicit:
+            return explicit
+        try:
+            loaded = analytics_config.load()
+            return sanitize_test_run_id(loaded.get('test_run_id')) or ''
+        except Exception:
+            return ''
 
     def has_destination(self) -> bool:
-        return bool(self._resolved_config().get('project_key')) or self._transport is not None
+        if self._transport is not None:
+            return True
+        cfg = self._resolved_config()
+        return bool(cfg.get('project_key') and cfg.get('host') in ALLOWED_INGEST_HOSTS)
 
     def project_key_configured(self) -> bool:
         return bool(self._resolved_config().get('project_key')) or self._transport is not None
@@ -302,8 +428,8 @@ class Analytics:
     def track(self, event: str, props: Optional[dict] = None) -> bool:
         """Queue an allowlisted event. Returns True if it was accepted.
 
-        Events are held while consent is unset, dropped when denied, and only
-        flushed when consent is granted and a destination exists.
+        Events are dropped unless the user has already opted in. They are only
+        queued when a destination (project key or test transport) exists.
         """
         try:
             return self._track(event, props)
@@ -314,31 +440,34 @@ class Analytics:
         clean = sanitize_properties(event, props)
         if clean is None:
             return False
-        consent = self.consent_state()
-        if consent == CONSENT_DENIED:
+        if self.consent_state() != CONSENT_GRANTED:
             return False
         with self._lock:
             session_id = self.ensure_session()
             install_id = self._ensure_install_id()
+            if not session_id or not install_id:
+                return False
             if not self._accept_unique(event, clean):
                 return False
             clean['session_id'] = session_id
             clean['install_id'] = install_id
             if self.app_version:
                 clean['app_version'] = self.app_version
-            account = str(self._state.get('account_distinct_id') or '').strip()
-            if account:
-                clean['account_linked'] = True
+            env_name = sanitize_environment(clean.get('environment') or self._marker_environment())
+            if env_name:
+                clean['environment'] = env_name
+            run_id = sanitize_test_run_id(clean.get('test_run_id') or self._marker_test_run_id())
+            if run_id:
+                clean['test_run_id'] = run_id
             body = {
                 'event': event,
-                'distinct_id': account or install_id,
+                'distinct_id': install_id,
                 'properties': clean,
                 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(self.clock())),
             }
-            if consent == CONSENT_UNSET:
-                # Hold until the user chooses. Still bounded.
-                self._enqueue(body)
-                self._save_state()
+            if not self.has_destination():
+                # Consented but unconfigured: accept in memory for tests only if
+                # a transport exists. Otherwise do not persist a send backlog.
                 return True
             self._enqueue(body)
             self._save_state()
@@ -371,7 +500,7 @@ class Analytics:
             return True
         if event == 'login_success':
             # One login_success per session + account (or anonymous session).
-            token = '%s:%s' % (self._state.get('session_id') or '', self._state.get('account_distinct_id') or 'anon')
+            token = str(self._state.get('session_id') or '')
             if self._state.get('login_success_token') == token:
                 return False
             self._state['login_success_token'] = token
@@ -389,8 +518,7 @@ class Analytics:
         return self.track('app_open', {})
 
     def notify_login_success(self, user_id: Any = None, key_applied: Optional[bool] = None) -> bool:
-        if user_id:
-            self.identify_account(user_id)
+        # user_id is ignored in this MVP (no account linkage).
         props: dict[str, Any] = {}
         if key_applied is not None:
             props['key_applied'] = bool(key_applied)
@@ -496,24 +624,12 @@ class Analytics:
             return
         config = self._resolved_config()
         key = config.get('project_key') or ''
-        host = config.get('host') or ''
-        if not key or not host:
+        host = (config.get('host') or '').rstrip('/')
+        if not key or host not in ALLOWED_INGEST_HOSTS:
             raise RuntimeError('no destination')
-        props = dict(item.get('properties') or {})
-        props['$lib'] = LIB_NAME
-        props['$lib_version'] = LIB_VERSION
-        props['$geoip_disable'] = True
-        props['$ip'] = None
-        props['$process_person_profile'] = False
-        body = {
-            'api_key': key,
-            'event': item['event'],
-            'distinct_id': item['distinct_id'],
-            'properties': props,
-            'timestamp': item.get('timestamp'),
-        }
+        body = build_capture_payload(item, key)
         payload = json.dumps(body, ensure_ascii=False).encode('utf-8')
-        url = host.rstrip('/') + '/i/v0/e/'
+        url = host + '/i/v0/e/'
         request = urllib.request.Request(
             url, data=payload, method='POST',
             headers={'Content-Type': 'application/json', 'User-Agent': LIB_NAME + '/' + LIB_VERSION},
@@ -557,8 +673,9 @@ def boot(data_dir: Optional[Path] = None, app_version: str = '',
             config=config,
             app_version=app_version,
         )
-        _client.ensure_session()
-        _client.capture_app_open()
+        if _client.is_enabled():
+            _client.ensure_session()
+            _client.capture_app_open()
         return _client
 
 

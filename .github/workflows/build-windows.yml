@@ -27,16 +27,30 @@ jobs:
         env:
           PYTHONUTF8: '1'
         run: python -m unittest discover -s tests -v
+      - name: Bake public PostHog project key if provided
+        # Only the public capture token (phc_...) may be bundled. Leave the
+        # secret unset to ship an unconfigured (no-traffic) build.
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+          VS_POSTHOG_PROJECT_KEY: ${{ secrets.VS_POSTHOG_PROJECT_KEY }}
+          VS_POSTHOG_HOST: ${{ secrets.VS_POSTHOG_HOST }}
+        run: |
+          $py = if (Test-Path .\.build-venv\Scripts\python.exe) { ".\.build-venv\Scripts\python.exe" } else { "python" }
+          & $py tools/prepare_analytics_config.py --allow-empty
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Build executable
         # Same flags as Build-EXE.bat / windows-exe.yml (bundles ffmpeg via imageio-ffmpeg).
         shell: pwsh
         env:
           PYTHONUTF8: '1'
-        run: >
-          python -m PyInstaller --noconfirm --clean --onefile --windowed
-          --name PowerTokensVideoStudio --icon assets/logo.ico
-          --add-data "assets;assets" --add-data "*.xlsx;."
-          --collect-all imageio_ffmpeg app.py
+        run: |
+          $flags = (python tools/pyinstaller_analytics_flags.py).Trim()
+          $args = @('--noconfirm','--clean','--onefile','--windowed','--name','PowerTokensVideoStudio','--icon','assets/logo.ico','--add-data','assets;assets','--add-data','*.xlsx;.')
+          $args += ($flags -split ' ')
+          $args += @('--collect-all','imageio_ffmpeg','app.py')
+          python -m PyInstaller @args
       - name: Check bundled files
         shell: pwsh
         env:
@@ -47,6 +61,11 @@ jobs:
           if ((Select-String -Path bundle.txt -Encoding utf8 -Pattern '\.xlsx').Count -lt 2) { throw 'Chinese template missing from EXE' }
           if (-not (Select-String -Path bundle.txt -Pattern 'logo.png' -Quiet)) { throw 'Logo missing from EXE' }
           if (-not (Select-String -Path bundle.txt -Pattern 'imageio_ffmpeg' -Quiet)) { throw 'imageio_ffmpeg missing from EXE' }
+          if (-not (Select-String -Path bundle.txt -Pattern 'analytics.py' -Quiet)) { throw 'analytics.py missing from EXE' }
+          if (-not (Select-String -Path bundle.txt -Pattern 'analytics_config.py' -Quiet)) { throw 'analytics_config.py missing from EXE' }
+          if (Test-Path analytics_config_local.py) {
+            if (-not (Select-String -Path bundle.txt -Pattern 'analytics_config_local' -Quiet)) { throw 'analytics_config_local missing from EXE after bake' }
+          }
           Get-FileHash dist/PowerTokensVideoStudio.exe -Algorithm SHA256 | Format-List
           Get-Item dist/PowerTokensVideoStudio.exe | Format-List FullName, Length
       - name: Upload executable

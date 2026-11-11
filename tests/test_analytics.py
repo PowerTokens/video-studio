@@ -88,33 +88,52 @@ class AnalyticsCoreTests(unittest.TestCase):
         self.assertEqual(props['error_code'], 'UNKNOWN')
         self.assertNotIn('sk-secret', json.dumps(props))
 
-    def test_opaque_account_id_hashes_and_rejects_email(self):
-        a = analytics.opaque_account_id('usr_12345')
-        b = analytics.opaque_account_id('usr_12345')
-        self.assertEqual(a, b)
-        self.assertTrue(a.startswith('ptu_'))
-        self.assertNotIn('usr_12345', a)
-        self.assertIsNone(analytics.opaque_account_id('ada@example.com'))
-        self.assertIsNone(analytics.opaque_account_id(''))
-        self.assertIsNone(analytics.opaque_account_id(None))
+    def test_sanitize_model_rejects_content_and_unknown_shapes(self):
+        self.assertEqual(analytics.sanitize_model('wan3.0-video'), 'wan3.0-video')
+        self.assertEqual(analytics.sanitize_model('MiniMax-H3'), 'MiniMax-H3')
+        self.assertIsNone(analytics.sanitize_model('a long prompt about a golden retriever'))
+        self.assertIsNone(analytics.sanitize_model('user@example.com'))
+        self.assertIsNone(analytics.sanitize_model('https://cdn.example/video.mp4'))
+        self.assertIsNone(analytics.sanitize_model(''))
+        props = analytics.sanitize_properties('generation_start', {
+            'generation_id': 'g',
+            'model': 'please generate a cat in a hat',
+            'surface': 'generate',
+        })
+        self.assertNotIn('model', props)
+        self.assertNotIn('cat in a hat', json.dumps(props))
 
     def test_opt_out_drops_events_and_clears_queue(self):
-        self.client.track('app_open', {})
-        self.assertTrue(self.client.pending())
+        self.assertFalse(self.client.track('app_open', {}))
+        self.assertEqual(self.client.pending(), [])
+        self.grant()
+        self.sent.clear()
+        self.client.notify_generation_start('gx', model='kling-v3')
+        self.client.flush()
+        self.assertTrue(self.sent)
         self.client.set_consent(False)
         self.assertEqual(self.client.pending(), [])
         self.assertFalse(self.client.track('app_open', {}))
-        self.assertFalse(self.client.notify_login_success('usr_1'))
-        self.assertEqual(self.sent, [])
+        self.assertFalse(self.client.notify_login_success(key_applied=True))
+        after = list(self.sent)
+        self.client.flush()
+        self.assertEqual(self.sent, after)
 
-    def test_consent_unset_holds_then_flush_on_grant(self):
+    def test_consent_unset_does_not_queue_or_identify(self):
         self.client.capture_app_open()
         self.assertEqual(self.sent, [])
-        self.assertEqual(len(self.client.pending()), 1)
+        self.assertEqual(self.client.pending(), [])
+        self.assertFalse((self.tmp / 'analytics.json').exists() or (self.tmp / analytics.STATE_NAME).exists())
+        # No install id is minted before opt-in.
+        self.assertEqual(self.client.install_id(), '')
         self.client.set_consent(True)
         self.client.flush()
         events = [item['event'] for item in self.sent]
         self.assertEqual(events.count('app_open'), 1)
+        self.assertTrue(self.client.install_id())
+        # Events use the random install id, never a hashed account id.
+        self.assertEqual(self.sent[0]['distinct_id'], self.client.install_id())
+        self.assertFalse(self.sent[0]['distinct_id'].startswith('ptu_'))
 
     def test_app_open_once_per_session(self):
         self.grant()
@@ -141,7 +160,7 @@ class AnalyticsCoreTests(unittest.TestCase):
         self.assertEqual(names, ['generation_start', 'generation_success'])
         self.assertEqual(self.sent[1]['properties']['duration_ms'], 1200)
 
-    def test_login_success_once_per_session_and_hashes_user(self):
+    def test_login_success_once_per_session_without_account_link(self):
         self.grant()
         self.sent.clear()
         self.assertTrue(self.client.notify_login_success('usr_99', key_applied=True))
@@ -150,10 +169,11 @@ class AnalyticsCoreTests(unittest.TestCase):
         self.assertEqual(len(self.sent), 1)
         item = self.sent[0]
         self.assertEqual(item['event'], 'login_success')
-        self.assertTrue(item['distinct_id'].startswith('ptu_'))
+        self.assertEqual(item['distinct_id'], self.client.install_id())
         self.assertNotIn('usr_99', json.dumps(item))
+        self.assertFalse(item['distinct_id'].startswith('ptu_'))
         self.assertTrue(item['properties']['key_applied'])
-        self.assertTrue(item['properties']['account_linked'])
+        self.assertNotIn('account_linked', item['properties'])
         self.assertNotIn('email', item['properties'])
 
     def test_transport_failure_fails_open_and_keeps_queue(self):
@@ -186,8 +206,8 @@ class AnalyticsCoreTests(unittest.TestCase):
             client.capture_app_open()
             client.flush()
         self.assertEqual(hits, [])
-        # Event stays queued locally but is not sent.
-        self.assertTrue(client.pending())
+        # Unconfigured: no HTTP and no persistent send queue.
+        self.assertEqual(client.pending(), [])
 
     def test_queue_is_bounded(self):
         self.client.set_consent(True)
@@ -211,7 +231,64 @@ class AnalyticsCoreTests(unittest.TestCase):
         self.assertNotIn('a@b.c', blob)
         for item in self.sent:
             keys = set(item['properties'])
-            self.assertTrue(keys.issubset(analytics.ALLOWED_PROPS | {'platform', 'app_version', 'session_id', 'install_id', 'account_linked', 'key_applied'}))
+            self.assertTrue(keys.issubset(analytics.ALLOWED_PROPS | {'platform', 'app_version', 'session_id', 'install_id', 'key_applied'}))
+
+    def test_official_capture_payload_flags(self):
+        body = analytics.build_capture_payload({
+            'event': 'app_open',
+            'distinct_id': 'install123',
+            'properties': {'platform': 'desktop', '$ip': '1.2.3.4'},
+            'timestamp': '2026-11-11T15:00:00Z',
+        }, 'phc_test')
+        self.assertEqual(body['api_key'], 'phc_test')
+        self.assertEqual(body['event'], 'app_open')
+        self.assertEqual(body['distinct_id'], 'install123')
+        self.assertTrue(body['properties']['$geoip_disable'])
+        self.assertIs(body['properties']['$process_person_profile'], False)
+        self.assertNotIn('$ip', body['properties'])
+        blob = json.dumps(body)
+        self.assertNotIn('1.2.3.4', blob)
+
+    def test_environment_marker_is_enum_only(self):
+        self.assertEqual(analytics.sanitize_environment('synthetic'), 'synthetic')
+        self.assertEqual(analytics.sanitize_environment('TEST'), 'test')
+        self.assertIsNone(analytics.sanitize_environment('please generate a cat'))
+        self.assertIsNone(analytics.sanitize_environment('staging'))
+        self.assertIsNone(analytics.sanitize_test_run_id('not a run id with spaces'))
+        self.assertEqual(analytics.sanitize_test_run_id('syn-20261111-abc'), 'syn-20261111-abc')
+        props = analytics.sanitize_properties('app_open', {
+            'environment': 'please generate a cat',
+            'test_run_id': 'ok-run_1',
+        })
+        self.assertNotIn('environment', props)
+        self.assertEqual(props['test_run_id'], 'ok-run_1')
+
+    def test_environment_marker_auto_attached(self):
+        client = analytics.Analytics(
+            self.tmp / 'marked', transport=self.sent.append, clock=self.clock,
+            app_version='1.16',
+            config={'project_key': 'phc_test', 'host': 'https://us.i.posthog.com',
+                    'environment': 'synthetic', 'test_run_id': 'syn-unit-1'},
+        )
+        client.set_consent(True)
+        client.flush()
+        self.sent.clear()
+        self.assertTrue(client.notify_login_success(key_applied=False))
+        client.flush()
+        props = self.sent[0]['properties']
+        self.assertEqual(props['environment'], 'synthetic')
+        self.assertEqual(props['test_run_id'], 'syn-unit-1')
+
+    def test_personal_api_key_is_rejected(self):
+        import analytics_config
+        self.assertEqual(analytics_config.public_project_key('phx_personal_secret'), '')
+        self.assertEqual(analytics_config.public_project_key('sk-admin'), '')
+        self.assertTrue(analytics_config.public_project_key('phc_testkey1'))
+        client = analytics.Analytics(
+            self.tmp / 'phx', transport=None, clock=self.clock, app_version='1.16',
+            config={'project_key': 'phx_personal_secret', 'host': 'https://us.i.posthog.com'},
+        )
+        self.assertFalse(client.has_destination())
 
     def test_video_download_allowlisted(self):
         self.grant()
@@ -292,6 +369,30 @@ class ClientSubmitHookTests(unittest.TestCase):
         failed = next(item for item in self.sent if item['event'] == 'generation_failed')
         self.assertEqual(failed['properties']['error_code'], 'UNCERTAIN')
         self.assertEqual(failed['properties']['surface'], 'generate')
+
+    def test_timeout_then_resume_counts_single_success(self):
+        import wan_core as w
+        out = self.tmp / 'out.mp4'
+        client = w.Client(data_dir=self.tmp, report=lambda *_: None)
+        with unittest.mock.patch.object(w, 'api', return_value=(201, {'id': 'task_123'})), \
+             unittest.mock.patch.object(client, 'wait', side_effect=w.TaskError('timeout', 'TIMEOUT', 'task_123')):
+            with self.assertRaises(w.TaskError) as caught:
+                client.submit(['key'], w.payload('hi', model='wan3.0-video'), out)
+            self.assertEqual(caught.exception.kind, 'TIMEOUT')
+        analytics.get_client().flush()
+        names = [item['event'] for item in self.sent]
+        self.assertIn('generation_start', names)
+        self.assertNotIn('generation_failed', names)
+        self.assertNotIn('generation_success', names)
+        gen_id = client.record['local_id']
+        self.sent.clear()
+        with unittest.mock.patch.object(client, 'wait', return_value=client.record):
+            client.resume('key', 'task_123', out, record=client.record)
+        analytics.get_client().flush()
+        names = [item['event'] for item in self.sent]
+        self.assertEqual(names, ['generation_success'])
+        self.assertEqual(self.sent[0]['properties']['generation_id'], gen_id)
+        self.assertNotIn('generation_start', names)
 
     def test_resume_is_not_counted_as_generation_start(self):
         import wan_core as w
