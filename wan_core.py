@@ -469,6 +469,54 @@ class Client:
             self.on_record(dict(self.record))
 
     def submit(self, keys, request, out_path):
+        """Submit a new generation and wait until it finishes or fails.
+
+        Product analytics hooks fire here so generate / compare / batch share one
+        start-success-failure path. Resume and download-from-link do not use this
+        method, so they are not counted as new generations.
+        """
+        started = time.monotonic()
+        generation_id = uuid.uuid4().hex
+        peek = dict(request or {})
+        model_id = peek.get('model') or peek.get('model_name') or DEFAULT_MODEL_ID
+        ctx = self.context or {}
+        surface = ctx.get('surface') or ('batch' if ctx.get('batch_id') else 'generate')
+        requested = peek.get('duration')
+
+        def _notify(ok, kind=None):
+            try:
+                import analytics as _analytics
+                duration_ms = int(max(0, (time.monotonic() - started) * 1000))
+                if ok:
+                    _analytics.notify_generation_finish(
+                        generation_id, True, model=str(model_id or ''),
+                        surface=surface, duration_ms=duration_ms)
+                else:
+                    _analytics.notify_generation_finish(
+                        generation_id, False, model=str(model_id or ''),
+                        surface=surface, duration_ms=duration_ms, error_code=kind)
+            except Exception:
+                return
+
+        try:
+            import analytics as _analytics
+            _analytics.notify_generation_start(
+                generation_id, model=str(model_id or ''), surface=surface,
+                requested_duration_s=requested)
+        except Exception:
+            pass
+        try:
+            result = self._submit_impl(keys, request, out_path)
+        except TaskError as exc:
+            _notify(False, exc.kind)
+            raise
+        except Exception:
+            _notify(False, 'UNKNOWN')
+            raise
+        _notify(True)
+        return result
+
+    def _submit_impl(self, keys, request, out_path):
         request = dict(request)
         poll_kind = request.pop('_poll_kind', None)
         model_id = request.get('model') or request.get('model_name') or DEFAULT_MODEL_ID

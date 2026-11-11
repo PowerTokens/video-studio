@@ -12,3 +12,6 @@ cli-config.json
 *.mp4
 *.tmp
 .DS_Store
+
+# Local PostHog project key (never commit)
+analytics_config_local.py
