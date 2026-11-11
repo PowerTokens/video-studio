@@ -1,7 +1,8 @@
 """PostHog project settings for Video Studio desktop.
 
-Leave the project key empty in git. Fill it at build or runtime; an empty key
-means no events are sent. Do not put personal credentials here.
+The committed key is the public PostHog *project* capture token (phc_...) that
+ships in the client. It is not a personal or admin key. An empty or rejected
+key means no events are sent.
 
 Config names (first non-empty wins for the key and host):
 
@@ -67,8 +68,19 @@ def _marker_test_run(*candidates) -> str:
     return ''
 
 
+def _disabled() -> bool:
+    return os.environ.get('VS_ANALYTICS_DISABLE', '').strip().lower() in {'1', 'true', 'yes'}
+
+
 def load():
     """Resolve key and host without logging or returning secrets to callers' logs."""
+    if _disabled():
+        return {
+            'project_key': '',
+            'host': 'https://us.i.posthog.com',
+            'environment': '',
+            'test_run_id': '',
+        }
     key = public_project_key(os.environ.get('VS_POSTHOG_PROJECT_KEY'))
     host = official_host(os.environ.get('VS_POSTHOG_HOST'))
     environment = _marker_environment(os.environ.get('VS_ANALYTICS_ENVIRONMENT'))
@@ -92,6 +104,8 @@ def load():
         os.environ.get('ANALYTICS_TEST_RUN_ID'),
         getattr(local, 'ANALYTICS_TEST_RUN_ID', '') if local is not None else '',
     )
+    if not environment:
+        environment = 'production'
     return {
         'project_key': key,
         'host': host,

@@ -30,6 +30,7 @@ jobs:
         shell: pwsh
         env:
           PYTHONUTF8: '1'
+          VS_ANALYTICS_DISABLE: '1'
         run: .\.build-venv\Scripts\python.exe -m unittest discover -s tests -v
 
       - name: Bake public PostHog project key if provided

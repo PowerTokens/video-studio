@@ -7,10 +7,11 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
+    timeout-minutes: 20
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +27,15 @@ jobs:
         shell: pwsh
         env:
           PYTHONUTF8: '1'
+          VS_ANALYTICS_DISABLE: '1'
         run: python -m unittest discover -s tests -v
+      - name: Confirm public capture token is present
+        # Prints only the key length. Refuses personal/admin keys.
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+        run: |
+          python -c "import analytics_config; k=analytics_config.load()['project_key']; assert analytics_config.public_project_key(k), 'missing or non-public project key'; print('public_capture_token_ok len=' + str(len(k)))"
       - name: Bake public PostHog project key if provided
         # Only the public capture token (phc_...) may be bundled. Leave the
         # secret unset to ship an unconfigured (no-traffic) build.
@@ -74,8 +83,31 @@ jobs:
           name: PowerTokensVideoStudio-Windows
           path: dist/PowerTokensVideoStudio.exe
           if-no-files-found: error
+      - name: Attach EXE to the GitHub Release for this tag
+        # Previous tag builds succeeded the EXE job, then hung on ui-screenshots
+        # for six hours and never published the asset. Attach here, on the
+        # triggering tag only — never overwrite an older release in place.
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $hash = (Get-FileHash dist/PowerTokensVideoStudio.exe -Algorithm SHA256).Hash.ToLower()
+          Write-Host "sha256=$hash"
+          if (gh release view $env:TAG --repo $env:GITHUB_REPOSITORY 2>$null) {
+            gh release upload $env:TAG dist/PowerTokensVideoStudio.exe --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $env:TAG dist/PowerTokensVideoStudio.exe --title "PowerTokens Video Studio $($env:TAG.TrimStart('v'))" --notes "Windows desktop build $env:TAG. SHA-256: $hash" --verify-tag --repo $env:GITHUB_REPOSITORY
+          }
+          Set-Content -Path sha256.txt -Value $hash
+          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY --json assets --jq ".assets[].name"
 
   ui-screenshots:
+    # Optional layout check only. Do not run on tag releases: the 1.16 tag build
+    # hung here for six hours and cancelled the workflow after a successful EXE.
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 15
     # Launches the app in Chinese and English with a throw-away data folder and a dummy key,
     # screenshots every tab and reports any clipped button / label (layout-<lang>.txt).
     runs-on: windows-latest

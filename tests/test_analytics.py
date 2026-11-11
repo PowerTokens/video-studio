@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import time
 import unittest
@@ -8,6 +9,9 @@ import unittest.mock
 
 import analytics
 
+
+
+os.environ.setdefault('VS_ANALYTICS_DISABLE', '1')
 
 class MemoryClock:
     def __init__(self, start=1_700_000_000.0):
@@ -21,6 +25,12 @@ class MemoryClock:
 
 
 class AnalyticsCoreTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Never let unit tests talk to the live project, even if a public
+        # capture token is present in committed config.
+        os.environ['VS_ANALYTICS_DISABLE'] = '1'
+
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.sent = []
@@ -290,6 +300,75 @@ class AnalyticsCoreTests(unittest.TestCase):
         )
         self.assertFalse(client.has_destination())
 
+
+    def test_chat_submit_is_not_server_success(self):
+        self.grant()
+        self.sent.clear()
+        self.assertTrue(self.client.notify_chat_submit('c1', model='glm-4.7-flash'))
+        self.client.flush()
+        self.assertEqual(self.sent[0]['event'], 'chat_submit')
+        self.assertEqual(self.sent[0]['properties']['chat_id'], 'c1')
+        self.assertEqual(self.sent[0]['properties']['surface'], 'chat')
+        self.assertEqual(self.sent[0]['properties']['model'], 'glm-4.7-flash')
+        self.assertNotEqual(self.sent[0]['event'], 'chat_success')
+        self.sent.clear()
+        self.assertTrue(self.client.notify_chat_finish('c1', True, model='glm-4.7-flash'))
+        self.client.flush()
+        self.assertEqual(self.sent[0]['event'], 'chat_success')
+        self.assertEqual(self.sent[0]['properties']['chat_id'], 'c1')
+
+    def test_chat_events_drop_text_and_old_names(self):
+        self.assertIsNone(analytics.sanitize_properties('chat_user_message', {'len_bucket': 'short'}))
+        self.assertIsNone(analytics.sanitize_properties('chat_flash_ok', {'model': 'glm-4.7-flash'}))
+        props = analytics.sanitize_properties('chat_submit', {
+            'chat_id': 'c2',
+            'prompt': 'secret prompt text',
+            'message': 'hello',
+            'model': 'write me a cinematic prompt about a cat',
+            'surface': 'chat',
+        })
+        self.assertNotIn('prompt', props)
+        self.assertNotIn('message', props)
+        self.assertNotIn('model', props)  # sentence rejected
+        blob = json.dumps(props)
+        self.assertNotIn('secret prompt text', blob)
+        self.assertNotIn('hello', blob)
+
+    def test_chat_failed_uses_safe_error_code(self):
+        self.grant()
+        self.sent.clear()
+        self.client.notify_chat_submit('c3')
+        self.client.flush()
+        self.sent.clear()
+        self.assertTrue(self.client.notify_chat_finish(
+            'c3', False, error_code='HTTP 401: sk-live-secret please generate a cat'))
+        self.client.flush()
+        self.assertEqual(self.sent[0]['event'], 'chat_failed')
+        self.assertEqual(self.sent[0]['properties']['error_code'], 'UNKNOWN')
+        self.assertNotIn('sk-live-secret', json.dumps(self.sent))
+        self.assertNotIn('please generate', json.dumps(self.sent))
+
+    def test_chat_dedup_per_id(self):
+        self.grant()
+        self.sent.clear()
+        self.assertTrue(self.client.notify_chat_submit('c4'))
+        self.assertFalse(self.client.notify_chat_submit('c4'))
+        self.assertTrue(self.client.notify_chat_finish('c4', False, error_code='TIMEOUT'))
+        self.assertFalse(self.client.notify_chat_finish('c4', True))
+        self.client.flush()
+        names = [x['event'] for x in self.sent]
+        self.assertEqual(names, ['chat_submit', 'chat_failed'])
+
+    def test_share_and_install_events_not_invented(self):
+        # No in-app social share or PWA install CTA exists; do not allow
+        # unverified "published" or "installed" events.
+        for name in ('share_click', 'share_resolved', 'share_published',
+                     'pwa_prompt_shown', 'pwa_install_accepted', 'pwa_installed'):
+            self.assertIsNone(analytics.sanitize_properties(name, {'platform': 'web'}))
+        # Desktop has no standalone web display; the event is not in the
+        # desktop allowlist (web-only observable).
+        self.assertIsNone(analytics.sanitize_properties('pwa_standalone_launch', {}))
+
     def test_video_download_allowlisted(self):
         self.grant()
         self.sent.clear()
@@ -302,6 +381,8 @@ class AnalyticsCoreTests(unittest.TestCase):
         with patch.dict('os.environ', {
             'VS_POSTHOG_PROJECT_KEY': 'phc_from_env',
             'VS_POSTHOG_HOST': 'https://eu.i.posthog.com',
+            'VS_ANALYTICS_DISABLE': '',
+            'VS_ANALYTICS_ENVIRONMENT': 'test',
         }, clear=False):
             import importlib
             import analytics_config
@@ -309,12 +390,17 @@ class AnalyticsCoreTests(unittest.TestCase):
             loaded = analytics_config.load()
         self.assertEqual(loaded['project_key'], 'phc_from_env')
         self.assertEqual(loaded['host'], 'https://eu.i.posthog.com')
-        # Default committed config is empty (no fabricated live key).
         import importlib
         import analytics_config
         # Restore module defaults after env patch is gone.
         importlib.reload(analytics_config)
-        self.assertEqual(analytics_config.POSTHOG_PROJECT_KEY, '')
+        # Shipped config may contain the public capture token only.
+        self.assertTrue(analytics_config.POSTHOG_PROJECT_KEY.startswith('phc_'))
+        self.assertEqual(
+            analytics_config.public_project_key(analytics_config.POSTHOG_PROJECT_KEY),
+            analytics_config.POSTHOG_PROJECT_KEY,
+        )
+        self.assertFalse(analytics_config.POSTHOG_PROJECT_KEY.startswith('phx_'))
 
     def test_boot_singleton_fail_open(self):
         analytics.reset_client()

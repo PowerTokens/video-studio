@@ -35,6 +35,9 @@ EVENTS = frozenset({
     'generation_success',
     'generation_failed',
     'video_download',
+    'chat_submit',
+    'chat_success',
+    'chat_failed',
 })
 
 ALLOWED_PROPS = frozenset({
@@ -51,6 +54,7 @@ ALLOWED_PROPS = frozenset({
     'key_applied',
     'environment',
     'test_run_id',
+    'chat_id',
 })
 
 # Rejected even if someone later adds them to ALLOWED_PROPS by mistake.
@@ -74,7 +78,7 @@ SAFE_ERROR_CODES = frozenset({
     'NO_RESUME', 'QUERY_FORBIDDEN', 'FAILED', 'QUERY_UNAVAILABLE',
 })
 
-SAFE_SURFACES = frozenset({'generate', 'compare', 'batch'})
+SAFE_SURFACES = frozenset({'generate', 'compare', 'batch', 'chat'})
 
 # Official ingest hosts from https://posthog.com/docs/api/capture
 ALLOWED_INGEST_HOSTS = frozenset({
@@ -204,7 +208,7 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
             value = sanitize_model(value)
             if not value:
                 continue
-        elif key in ('generation_id', 'session_id', 'install_id', 'app_version', 'platform'):
+        elif key in ('generation_id', 'chat_id', 'session_id', 'install_id', 'app_version', 'platform'):
             text = str(value or '').strip()
             if not text or len(text) > 80:
                 continue
@@ -481,6 +485,26 @@ class Analytics:
                 return False
             self._state['app_open_session'] = session_id
             return True
+        if event in ('chat_submit', 'chat_success', 'chat_failed'):
+            chat_id = str(clean.get('chat_id') or '').strip()
+            if not chat_id:
+                return False
+            seen = dict(self._state.get('chat_seen') or {})
+            already = set(seen.get(chat_id) or [])
+            if event == 'chat_submit':
+                if 'submit' in already:
+                    return False
+                already.add('submit')
+            else:
+                if 'terminal' in already:
+                    return False
+                already.add('terminal')
+            seen[chat_id] = sorted(already)
+            if len(seen) > 200:
+                keep_ids = list(seen.keys())[-200:]
+                seen = {k: seen[k] for k in keep_ids}
+            self._state['chat_seen'] = seen
+            return True
         if event in ('generation_start', 'generation_success', 'generation_failed'):
             gen_id = str(clean.get('generation_id') or '').strip()
             if not gen_id:
@@ -558,6 +582,24 @@ class Analytics:
         if model:
             props['model'] = model
         return self.track('video_download', props)
+
+    def notify_chat_submit(self, chat_id: str, model: str = '') -> bool:
+        """User confirmed Send. Does not mean a server reply completed."""
+        props: dict[str, Any] = {'chat_id': chat_id, 'surface': 'chat'}
+        if model:
+            props['model'] = model
+        return self.track('chat_submit', props)
+
+    def notify_chat_finish(self, chat_id: str, ok: bool, model: str = '',
+                           error_code: Any = None) -> bool:
+        """Server/model reply completed or failed. Never pass message text."""
+        props: dict[str, Any] = {'chat_id': chat_id, 'surface': 'chat'}
+        if model:
+            props['model'] = model
+        event = 'chat_success' if ok else 'chat_failed'
+        if not ok:
+            props['error_code'] = normalize_error_code(error_code)
+        return self.track(event, props)
 
     # ----- flush -----
     def pending(self) -> list:
@@ -721,6 +763,14 @@ def notify_generation_finish(generation_id: str, ok: bool, model: str = '', surf
 
 def notify_video_download(model: str = '', surface: str = 'generate') -> bool:
     return bool(_call('notify_video_download', model=model, surface=surface))
+
+
+def notify_chat_submit(chat_id: str, model: str = '') -> bool:
+    return bool(_call('notify_chat_submit', chat_id, model=model))
+
+
+def notify_chat_finish(chat_id: str, ok: bool, model: str = '', error_code: Any = None) -> bool:
+    return bool(_call('notify_chat_finish', chat_id, ok, model=model, error_code=error_code))
 
 
 def identify_account(user_id: Any) -> Optional[str]:

@@ -12,7 +12,9 @@ if errorlevel 1 (
 if errorlevel 1 goto fail
 .build-venv\Scripts\python.exe -m pip install "pyinstaller>=6,<7" -r requirements.txt
 if errorlevel 1 goto fail
+set VS_ANALYTICS_DISABLE=1
 .build-venv\Scripts\python.exe -m unittest discover -s tests -v
+set VS_ANALYTICS_DISABLE=
 if errorlevel 1 goto fail
 REM Bundle imageio-ffmpeg package data (includes platform ffmpeg binary,
 REM ~70–80 MB on Windows x86_64). See BUILD-NOTES.md.

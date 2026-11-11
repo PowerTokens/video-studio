@@ -4,6 +4,9 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+## [1.17](https://github.com/PowerTokens/video-studio/releases/tag/v1.17.0) - 2026-11-11
+
+- **Optional anonymous usage analytics (PostHog).** After a first-run consent choice, the app can send allowlisted events for daily opens, login, chat Send vs a completed model reply (`chat_submit` / `chat_success` / `chat_failed`, no message text), generation start/success/failure, and an explicit download-from-link. Prompts, API keys, tokens, media, email, and raw errors are never sent. Consent defaults to unset (no identifiers, no queue, no traffic) until the user accepts or declines. Shipped events are tagged `environment=production`. Automatic save after a successful generate is `generation_success`, not `video_download`. There is no in-app PWA install flow and no social-share feature to instrument; those steps are documented as observable gaps, not completed events.
 ## [1.16](https://github.com/PowerTokens/video-studio/releases/tag/v1.16.0) - 2026-11-09
 
 - **Chat and From script text models.** Dropped `qwen3-max` (the chat endpoint does not serve it). Chat and Batch **From script** share five models: `glm-4.7-flash` (free default), `seed-1-6-flash-250715`, `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`. A saved choice of the removed model falls back to `glm-4.7-flash`.

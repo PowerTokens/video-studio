@@ -75,6 +75,10 @@ after 30 minutes idle.
 | `generation_success` | That submit, or a later **resume** of the same `local_id`, finishes | `duration_ms` |
 | `generation_failed` | Only irreversible failures (`AUTH`, `QUOTA`, `PARAM`, `REJECTED`, `UNCERTAIN` with no task, `SERVER_FAILED`, …). Pause, timeout, and query-down are not terminal, so a later resume can still record success | safe `error_code` only |
 | `video_download` | Not used for the automatic save inside a successful generate. Fired only for an explicit download-from-link | `model`, `surface` |
+| `chat_submit` | User confirmed **Send** with a non-empty message after the login/key gate. This is the click, not a completed reply | `chat_id`, `surface=chat`, optional `model` |
+| `chat_success` | The chat API/model reply for that `chat_id` completed | `chat_id`, `surface=chat`, optional `model` |
+| `chat_failed` | The chat API/model reply for that `chat_id` failed | `chat_id`, safe `error_code` only |
+
 
 Compare/batch: each model or job is its own `generation_start` / terminal pair
 (the correct per-generation denominator). Chat-pilot events are not sent.
@@ -132,4 +136,16 @@ Windows builder before a release.
 Set `VS_ANALYTICS_ENVIRONMENT=synthetic` (or `test`) and
 `VS_ANALYTICS_TEST_RUN_ID=<token>` to tag events so they can be excluded from
 production insights. Those properties are enum/token-allowlisted; arbitrary
-text is dropped. Production clients omit the markers unless configured.
+text is dropped. Shipped clients set `environment=production` by default. Filter production dashboards with `environment = production` (or `environment != synthetic`).
+
+## Step chain (nonlinear)
+
+These are independent steps related by the same anonymous `install_id` / `session_id`. There is no required order, and none of the later steps is implied by an earlier one.
+
+1. **Daily opens** — `app_open` (`platform=desktop` or `web`).
+2. **Actual chat occurred** — `chat_submit` means the user confirmed Send. `chat_success` means a server reply completed for that `chat_id`. A local typo-clarify (web) can emit `chat_submit` with no success/failure, because no model call ran. Old `chat_*` pilot events (for example `chat_user_message`, `chat_flash_ok`) are still dropped by the PostHog allowlist.
+3. **Video generated** — `generation_start` then `generation_success` (or `generation_failed` for an irreversible failure). Compare/batch is one start per model/job.
+4. **Added the web app to the phone home screen** — **not observable as an in-product install.** The web app has no Web App Manifest, no service worker, and no install CTA, so `beforeinstallprompt` / `appinstalled` / accepted-or-dismissed are not instrumented and must not be faked. iOS "Add to Home Screen" cannot be reliably confirmed. Web may emit `pwa_standalone_launch` when the page is already running as `display-mode: standalone` or `navigator.standalone` (a later launch signal only). Desktop has no such event.
+5. **Social sharing** — **no existing share feature.** There is no `navigator.share`, no social-network buttons, and no share-complete callback. Clipboard copy of task IDs or prompts is not a social publish and is not captured. Do not invent `share_published`.
+
+Dashboard notes: filter `environment = production` for live traffic (exclude `synthetic` / `test`). Do not treat GitHub download counts as DAU. Do not compute revenue from these events.
