@@ -61,8 +61,20 @@ fi
 "$PYTHON" -m pip install "pyinstaller>=6,<7" -r requirements.txt
 
 if [[ "$SKIP_TESTS" -eq 0 ]]; then
-  "$PYTHON" -m unittest discover -s tests -v
+  VS_ANALYTICS_DISABLE=1 "$PYTHON" -m unittest discover -s tests -v
 fi
+
+# Optional public capture key (phc_ only). Never pass a personal or admin key.
+# CI bakes this before calling the script on workflow_dispatch and v* tags.
+# Pull-request builds typically have no key and stay unconfigured.
+if [[ -n "${VS_POSTHOG_PROJECT_KEY:-}" || -n "${VS_POSTHOG_HOST:-}" ]]; then
+  if [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+    "$PYTHON" tools/prepare_analytics_config.py
+  else
+    "$PYTHON" tools/prepare_analytics_config.py --allow-empty
+  fi
+fi
+PT_ANALYTICS_FLAGS="$("$PYTHON" tools/pyinstaller_analytics_flags.py)"
 
 bash tools/make_icns.sh
 ICON="build/logo.icns"
@@ -73,6 +85,7 @@ fi
 
 # --windowed (not --onefile) so the deliverable is a real .app bundle.
 # The glob must stay quoted: bash would otherwise expand *.xlsx itself.
+# shellcheck disable=SC2086
 "$PYTHON" -m PyInstaller --noconfirm --clean --windowed \
   --name PowerTokensVideoStudio \
   --icon "$ICON" \
@@ -80,6 +93,7 @@ fi
   --target-arch arm64 \
   --add-data "assets:assets" \
   --add-data "*.xlsx:." \
+  $PT_ANALYTICS_FLAGS \
   --collect-all imageio_ffmpeg \
   app.py
 
@@ -141,6 +155,7 @@ if ! find "$APP" -iname '*ffmpeg*' | grep -q .; then
   echo "Bundled ffmpeg (imageio-ffmpeg) is missing from the app bundle" >&2
   exit 1
 fi
+"$PYTHON" tools/check_analytics_bundle.py "$BIN"
 
 # Ad-hoc signing (Signature=adhoc, no Authority=) is PyInstaller's arm64
 # requirement. A Developer ID or Apple Development identity must not appear.

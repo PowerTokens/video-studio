@@ -8,7 +8,9 @@ name: Build macOS app
 # Windows EXE workflows are separate and unchanged.
 #
 # This workflow uses pull_request (not pull_request_target) and only
-# contents: read. It does not read repository secrets.
+# contents: read. Pull-request runs do not read repository secrets.
+# workflow_dispatch and v* tag runs bake the public PostHog project
+# capture token (phc_... only) from VS_POSTHOG_PROJECT_KEY.
 #
 # GitHub only offers workflow_dispatch in the Actions tab once this file is on
 # the default branch. Until then, pull_request on this branch is the way to
@@ -27,6 +29,9 @@ on:
       - 'tools/macos_app_smoke.sh'
       - 'tools/macos_acceptance.py'
       - 'tools/https_fixture.py'
+      - 'tools/prepare_analytics_config.py'
+      - 'tools/pyinstaller_analytics_flags.py'
+      - 'tools/check_analytics_bundle.py'
       - 'platform_paths.py'
       - 'secret_store.py'
       - 'requirements.txt'
@@ -70,7 +75,31 @@ jobs:
           # skips on GITHUB_ACTIONS because CI font metrics are not the layout
           # under test. No real credentials and no paid API calls.
           PT_GUI_TESTS: '1'
+          VS_ANALYTICS_DISABLE: '1'
         run: python -m unittest discover -s tests -v
+      - name: Bake public PostHog project key
+        # Only the public capture token (phc_...) may be bundled.
+        # Pull-request builds do not receive this secret and stay unconfigured.
+        # workflow_dispatch and tag builds must ship a configured app.
+        if: github.event_name != 'pull_request'
+        env:
+          PYTHONUTF8: '1'
+          VS_POSTHOG_PROJECT_KEY: ${{ secrets.VS_POSTHOG_PROJECT_KEY }}
+          VS_POSTHOG_HOST: ${{ secrets.VS_POSTHOG_HOST }}
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            python tools/prepare_analytics_config.py
+          else
+            python tools/prepare_analytics_config.py --allow-empty
+          fi
+      - name: Confirm public capture token is present
+        # Required on tag and workflow_dispatch so a 1.17+ Mac package
+        # meant for the GitHub Release is never published unconfigured.
+        if: github.event_name != 'pull_request'
+        env:
+          PYTHONUTF8: '1'
+        run: |
+          python -c "import analytics_config; k=analytics_config.load()['project_key']; assert analytics_config.public_project_key(k), 'missing or non-public project key'; print('public_capture_token_ok len=' + str(len(k)))"
       - name: Build unsigned app, DMG and zip
         # Same packaging as Build-Mac.sh. Tests already ran in the previous step.
         run: bash Build-Mac.sh --skip-tests --no-venv
