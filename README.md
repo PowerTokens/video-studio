@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Free open-source Video Studio **1.17** ([Windows desktop](../../releases/latest), an unsigned Apple Silicon Mac Beta app, and a [web companion](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — Excel/CSV batch, compare, storyboard, safe resume.
+Free open-source Video Studio **1.17** ([Windows desktop](../../releases/latest), an unsigned Apple Silicon Mac Beta app, and a [web companion](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — chat, Excel/CSV batch, compare, storyboard, safe resume.
 
 ![Demo: a clip generated with Wan 3.0](docs/images/demo.gif)
 
@@ -144,10 +144,11 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 
 ## Quick start (no Python needed)
 
-1. Download `PowerTokensVideoStudio.exe` from the [Releases](../../releases/latest) page.
-2. Double-click it. The EXE is not code-signed, so Windows SmartScreen may show "Windows protected your PC". Click **More info → Run anyway**.
-3. Click **Sign in with PowerTokens** (header). Your default API key and credits fill in automatically. Paste keys only under **API Key → Advanced** if you need to.
-4. Write a prompt on **Generate video**, chat on **Chat**, or import a spreadsheet on **Batch import**.
+1. Download the desktop app from the [Releases](../../releases/latest) page, or from the [download page](https://powertokens.github.io/video-studio-web/download.html):
+   - **Windows:** `PowerTokensVideoStudio.exe`. The EXE is not code-signed, so Windows SmartScreen may show "Windows protected your PC". Click **More info → Run anyway**.
+   - **macOS (Apple Silicon, unsigned Beta):** `PowerTokensVideoStudio-macOS-arm64.dmg`. Intel Macs are not supported. Open the disk image and drag `PowerTokensVideoStudio.app` into Applications. This build is not signed or notarized, and the window title includes **Beta**. The first time you open it, right-click the app and choose **Open**, or go to **System Settings → Privacy & Security** and click **Open Anyway**.
+2. Click **Sign in with PowerTokens** (header). Your default API key and credits fill in automatically. Paste keys only under **API Key → Advanced** if you need to.
+3. Write a prompt on **Generate video**, chat on **Chat**, or import a spreadsheet on **Batch import**.
 
 A three-episode sample spreadsheet is included in short-drama (`short-drama-batch-template.xlsx` / `短剧批量示例模板.xlsx`) and product (`product-batch-template.xlsx` / `产品批量示例模板.xlsx`). In the app, **Save short-drama sample…** / **Save product sample…** on the Batch import tab. Columns: `Title`, `Duration (s)`, `Resolution`, `Aspect ratio`, `Prompt` (only the prompt column is required; legacy `Wan 3.0 Prompt` still works). An optional `Model` column accepts a model ID or display name.
 
@@ -258,7 +259,7 @@ The same note is written to `dist/GATEKEEPER.txt` and included in the disk image
 
 The GitHub Actions workflow **Build macOS app** (`.github/workflows/build-macos.yml`) runs on the `macos-15` Apple Silicon runner. A pull request that touches the Mac packaging or desktop platform files builds an unsigned preview artifact before merge. The same job also runs on **workflow_dispatch** and on a `v*` tag. After the build it starts the packaged app with a throw-away data folder (no real credentials and no paid API calls) to confirm it launches, then uploads the `.dmg`, the `.zip`, and the Gatekeeper note as artifacts. It does **not** create a GitHub Release and does not change the Windows EXE workflows. `workflow_dispatch` appears in the Actions tab after this workflow file is on the default branch. A Linux or Windows runner cannot produce this binary; do not substitute a fake one.
 
-The public download page in the web companion is unchanged and does not list the Mac package yet.
+The [public download page](https://powertokens.github.io/video-studio-web/download.html) in the web companion lists both the Windows installer and this Mac Beta `.dmg`.
 
 ## Pricing
 
@@ -307,7 +308,7 @@ Yes. On the [API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_med
 
 ### What is PowerTokens Video Studio?
 
-PowerTokens Video Studio **1.17** is a free, open-source (MIT) desktop app for Windows and for Apple Silicon Mac (unsigned Beta), with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
+PowerTokens Video Studio **1.17** is a free, open-source (MIT) desktop app for Windows and for Apple Silicon Mac (unsigned Beta), with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with chat, batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
 ### Can I batch-generate videos from a spreadsheet?
 
 Yes. On the **Batch import** tab, load an Excel or CSV file with one row per clip; only the `Prompt` column is required (legacy `Wan 3.0 Prompt` still works), and English or Chinese headers both work. An optional `Model` column picks the model per row (blank = Wan 3.0). Rows run with 1–8 concurrent generations, and you can export the results to CSV.
