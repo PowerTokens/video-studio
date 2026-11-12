@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import uuid
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -192,6 +193,33 @@ class ChatTab:
         if callable(starter):
             starter()
 
+
+    def _analytics_chat_submit(self, model=''):
+        try:
+            import analytics
+            chat_id = uuid.uuid4().hex
+            self._analytics_chat_id = chat_id
+            analytics.notify_chat_submit(chat_id, model=model or '')
+            return chat_id
+        except Exception:
+            return ''
+
+    def _analytics_chat_finish(self, ok, error_code=None):
+        try:
+            import analytics
+            chat_id = getattr(self, '_analytics_chat_id', '') or ''
+            if not chat_id:
+                return
+            model = ''
+            try:
+                model = self._selected_text_model() or ''
+            except Exception:
+                model = ''
+            analytics.notify_chat_finish(chat_id, ok, model=model, error_code=error_code)
+            self._analytics_chat_id = ''
+        except Exception:
+            return
+
     def send(self, *_):
         if self._busy:
             return
@@ -216,6 +244,7 @@ class ChatTab:
             self.messages, lang=get_language(), catalog=_catalog_hint())
         text_model = self._selected_text_model()
         self._set_busy(True)
+        self._analytics_chat_submit(text_model)
         self._schedule_poll()
 
         def worker():
@@ -261,6 +290,7 @@ class ChatTab:
             self._schedule_poll()
 
     def _on_reply(self, content):
+        self._analytics_chat_finish(True)
         parsed = parse_assistant_payload(content, fallback_message=t('chat_bad_json'))
         display = parsed['assistant_message'] or t('chat_bad_json')
         self._append_bubble('assistant', display)
@@ -274,6 +304,8 @@ class ChatTab:
         self._set_busy(False)
 
     def _on_error(self, detail):
+        # Never pass raw exception text into analytics.
+        self._analytics_chat_finish(False, error_code='UNKNOWN')
         self._append_bubble('assistant', t('chat_error', detail))
         self.status_var.set('')
         self._set_busy(False)

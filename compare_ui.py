@@ -270,6 +270,7 @@ class CompareTab:
                     report=lambda text: self.app.events.put(('log', text)),
                     stop=self.app.stop,
                     data_dir=None,
+                    context={'surface': 'compare'},
                 )
 
             def report(text):

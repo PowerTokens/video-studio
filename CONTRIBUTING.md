@@ -8,7 +8,7 @@ Please follow our [Code of Conduct](CODE_OF_CONDUCT.md). For security issues, se
 
 Open a [bug report](../../issues/new?template=bug_report.yml) and include:
 
-- The app version (shown in the window title, e.g. `v1.16`) and whether you use the Windows EXE, the unsigned Mac app, or run from source.
+- The app version (shown in the window title, e.g. `v1.17 Beta` on Mac) and whether you use the Windows EXE, the unsigned Mac app, or run from source.
 - Your Windows or macOS version and, when running from source, your Python version (`python --version` or `python3 --version`).
 - What you did, what you expected and what happened instead. Screenshots and the exact error text help a lot.
 - For generation problems: the prompt, duration, resolution and aspect ratio.

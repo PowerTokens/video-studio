@@ -7,10 +7,11 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
+    timeout-minutes: 20
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,17 +27,47 @@ jobs:
         shell: pwsh
         env:
           PYTHONUTF8: '1'
+          VS_ANALYTICS_DISABLE: '1'
         run: python -m unittest discover -s tests -v
+      - name: Bake public PostHog project key
+        # Only the public capture token (phc_...) may be bundled.
+        # Tag releases must ship a configured EXE and fail if the key is missing.
+        # workflow_dispatch builds may stay unconfigured when the secret is unset.
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+          VS_POSTHOG_PROJECT_KEY: ${{ secrets.VS_POSTHOG_PROJECT_KEY }}
+          VS_POSTHOG_HOST: ${{ secrets.VS_POSTHOG_HOST }}
+        run: |
+          $py = if (Test-Path .\.build-venv\Scripts\python.exe) { ".\.build-venv\Scripts\python.exe" } else { "python" }
+          $isTag = $env:GITHUB_REF -like 'refs/tags/v*'
+          if ($isTag) {
+            & $py tools/prepare_analytics_config.py
+          } else {
+            & $py tools/prepare_analytics_config.py --allow-empty
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Confirm public capture token is present
+        # After bake. Prints only the key length. Refuses personal/admin keys.
+        # Required on tag releases so a 1.17+ EXE is never published unconfigured.
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+        run: |
+          python -c "import analytics_config; k=analytics_config.load()['project_key']; assert analytics_config.public_project_key(k), 'missing or non-public project key'; print('public_capture_token_ok len=' + str(len(k)))"
+
       - name: Build executable
         # Same flags as Build-EXE.bat / windows-exe.yml (bundles ffmpeg via imageio-ffmpeg).
         shell: pwsh
         env:
           PYTHONUTF8: '1'
-        run: >
-          python -m PyInstaller --noconfirm --clean --onefile --windowed
-          --name PowerTokensVideoStudio --icon assets/logo.ico
-          --add-data "assets;assets" --add-data "*.xlsx;."
-          --collect-all imageio_ffmpeg app.py
+        run: |
+          $flags = (python tools/pyinstaller_analytics_flags.py).Trim()
+          $args = @('--noconfirm','--clean','--onefile','--windowed','--name','PowerTokensVideoStudio','--icon','assets/logo.ico','--add-data','assets;assets','--add-data','*.xlsx;.')
+          $args += ($flags -split ' ')
+          $args += @('--collect-all','imageio_ffmpeg','app.py')
+          python -m PyInstaller @args
       - name: Check bundled files
         shell: pwsh
         env:
@@ -47,6 +78,16 @@ jobs:
           if ((Select-String -Path bundle.txt -Encoding utf8 -Pattern '\.xlsx').Count -lt 2) { throw 'Chinese template missing from EXE' }
           if (-not (Select-String -Path bundle.txt -Pattern 'logo.png' -Quiet)) { throw 'Logo missing from EXE' }
           if (-not (Select-String -Path bundle.txt -Pattern 'imageio_ffmpeg' -Quiet)) { throw 'imageio_ffmpeg missing from EXE' }
+          # PyInstaller lists PYZ modules by import name (analytics), not analytics.py.
+          function Has-Module([string]$name) {
+            $pattern = '(^|[^A-Za-z0-9_])' + [regex]::Escape($name) + '([^A-Za-z0-9_]|$)'
+            return [bool](Select-String -Path bundle.txt -Pattern $pattern -Quiet)
+          }
+          if (-not (Has-Module 'analytics')) { throw 'analytics module missing from EXE' }
+          if (-not (Has-Module 'analytics_config')) { throw 'analytics_config module missing from EXE' }
+          if (Test-Path analytics_config_local.py) {
+            if (-not (Has-Module 'analytics_config_local')) { throw 'analytics_config_local missing from EXE after bake' }
+          }
           Get-FileHash dist/PowerTokensVideoStudio.exe -Algorithm SHA256 | Format-List
           Get-Item dist/PowerTokensVideoStudio.exe | Format-List FullName, Length
       - name: Upload executable
@@ -55,8 +96,31 @@ jobs:
           name: PowerTokensVideoStudio-Windows
           path: dist/PowerTokensVideoStudio.exe
           if-no-files-found: error
+      - name: Attach EXE to the GitHub Release for this tag
+        # Previous tag builds succeeded the EXE job, then hung on ui-screenshots
+        # for six hours and never published the asset. Attach here, on the
+        # triggering tag only — never overwrite an older release in place.
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $hash = (Get-FileHash dist/PowerTokensVideoStudio.exe -Algorithm SHA256).Hash.ToLower()
+          Write-Host "sha256=$hash"
+          if (gh release view $env:TAG --repo $env:GITHUB_REPOSITORY 2>$null) {
+            gh release upload $env:TAG dist/PowerTokensVideoStudio.exe --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $env:TAG dist/PowerTokensVideoStudio.exe --title "PowerTokens Video Studio $($env:TAG.TrimStart('v'))" --notes "Windows desktop build $env:TAG. SHA-256: $hash" --verify-tag --repo $env:GITHUB_REPOSITORY
+          }
+          Set-Content -Path sha256.txt -Value $hash
+          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY --json assets --jq ".assets[].name"
 
   ui-screenshots:
+    # Optional layout check only. Do not run on tag releases: the 1.16 tag build
+    # hung here for six hours and cancelled the workflow after a successful EXE.
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 15
     # Launches the app in Chinese and English with a throw-away data folder and a dummy key,
     # screenshots every tab and reports any clipped button / label (layout-<lang>.txt).
     runs-on: windows-latest
