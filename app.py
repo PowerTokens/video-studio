@@ -228,7 +228,6 @@ class App:
         self.build_history(pages[4].body)
         self.build_keys(pages[5].body)
         self.status = tk.StringVar(value=t('status_ready'))
-        self._build_analytics_banner(shell)
         label(shell, variable=self.status, style='Page.TLabel').pack(fill='x', padx=28, pady=(8, 12))
         self._bind_analytics_surfaces()
         if self._update_offer and not self._update_dismissed_session:
@@ -939,8 +938,6 @@ class App:
         label(save, remember_note_text()).pack(fill='x')
         ttk.Separator(save).pack(fill='x', pady=16)
         label(save, t('no_repeat_note')).pack(fill='x')
-        ttk.Separator(save).pack(fill='x', pady=16)
-        self._build_analytics_toggle(save)
         self._refresh_oauth_header()
 
     def prompt_changed(self, event=None):
@@ -1225,68 +1222,6 @@ class App:
             analytics.boot(app_version=VERSION)
         except Exception:
             return
-        self._refresh_analytics_ui()
-
-    def _analytics_consent(self):
-        try:
-            return analytics.consent_state()
-        except Exception:
-            return analytics.CONSENT_UNSET
-
-    def _set_analytics_consent(self, granted):
-        try:
-            analytics.set_consent(bool(granted))
-        except Exception:
-            pass
-        self._refresh_analytics_ui()
-
-    def _refresh_analytics_ui(self):
-        consent = self._analytics_consent()
-        enabled = consent == analytics.CONSENT_GRANTED
-        if hasattr(self, 'analytics_enabled'):
-            try:
-                self.analytics_enabled.set(enabled)
-            except tk.TclError:
-                pass
-        banner = getattr(self, 'analytics_banner', None)
-        if banner is None:
-            return
-        try:
-            if consent == analytics.CONSENT_UNSET:
-                if not banner.winfo_manager():
-                    banner.pack(fill='x', padx=28, pady=(0, 4))
-            else:
-                banner.pack_forget()
-        except tk.TclError:
-            pass
-
-    def _build_analytics_banner(self, parent):
-        box = ttk.Frame(parent, style='Page.TFrame')
-        self.analytics_banner = box
-        label(box, t('analytics_notice'), style='Muted.TLabel').pack(fill='x', pady=(0, 6))
-        actions = ttk.Frame(box, style='Update.TFrame')
-        actions.pack(side='right')
-        self.update_progress_bar = ttk.Progressbar(box, length=100, maximum=100)
-        ttk.Button(actions, text=t('analytics_accept'), style='Accent.TButton',
-                   command=lambda: self._set_analytics_consent(True)).pack(side='left')
-        ttk.Button(actions, text=t('analytics_decline'), style='Link.TButton',
-                   command=lambda: self._set_analytics_consent(False)).pack(side='left', padx=(12, 0))
-        if self._analytics_consent() == analytics.CONSENT_UNSET:
-            box.pack(fill='x', padx=28, pady=(0, 4))
-
-    def _build_analytics_toggle(self, parent):
-        heading = label(parent, t('analytics_title'), style='Muted.TLabel')
-        heading.pack(fill='x', pady=(0, 6))
-        self.analytics_enabled = tk.BooleanVar(value=self._analytics_consent() == analytics.CONSENT_GRANTED)
-        ttk.Checkbutton(
-            parent, text=t('analytics_toggle'), variable=self.analytics_enabled,
-            command=self._on_analytics_toggle,
-        ).pack(anchor='w')
-        label(parent, t('analytics_privacy')).pack(fill='x', pady=(6, 0))
-
-    def _on_analytics_toggle(self):
-        granted = bool(self.analytics_enabled.get()) if hasattr(self, 'analytics_enabled') else False
-        self._set_analytics_consent(granted)
 
     def _map_login_error(self, code):
         text = str(code or '').strip().lower().replace('-', '_').replace(' ', '_')

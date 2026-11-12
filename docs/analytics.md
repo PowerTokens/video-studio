@@ -3,7 +3,7 @@
 Minimal PostHog *capture* of critical events. This is not a PostHog SDK install:
 autocapture, session replay, heatmaps, and person-profile enrichment are off.
 
-No events are stored or sent until the user opts in **and** a project key is
+Capture starts automatically when a project key is
 configured for an official ingest host. The committed key is empty; nothing is
 live, and offline tests are not a verified backend integration.
 
@@ -20,7 +20,7 @@ Set one of the following. Do not commit a real key.
 
 The client posts to `{host}/i/v0/e/` with the documented single-event fields
 `api_key`, `event`, `distinct_id`, optional `properties` and `timestamp`. Any
-other host is ignored (no traffic). Until a key is present, opted-in events are
+other host is ignored (no traffic). Until a key is present, events are
 not queued for later upload.
 
 ### Desktop packaging
@@ -29,8 +29,7 @@ not queued for later upload.
 module level so PyInstaller can see both. Build-EXE.bat and the Windows
 workflows also pass `--hidden-import analytics --hidden-import analytics_config`.
 The project key is still injected at build or runtime; it is not baked into
-git. A release EXE will not send traffic until that key is present *and* the
-user has opted in.
+git. A release EXE will not send traffic until that key is present.
 
 ### Project settings (after a key exists, before claiming anonymity)
 
@@ -46,17 +45,15 @@ and [data storage](https://posthog.com/docs/privacy/data-storage):
   transformation in the project.
 - This client does **not** claim IP anonymity.
 
-## Consent
+## Default-on policy (2026-11-12)
 
-- Default is unset: no `install_id`, no session, no event queue, no network.
-- The first-run notice must be accepted before any identifier is minted.
-- Denied: only the local denial flag is kept; the send queue is dropped.
-- The persistent checkbox lives on the API Key tab.
-- Opting in later does not upload activity that happened before consent.
+Analytics starts automatically with an official public project key. Stored denied
+and unset states migrate to granted on load. There is no consent banner or
+account toggle. Without a destination, no events are queued or sent.
 
 ## Identity (MVP)
 
-`distinct_id` is a random install UUID created only after opt-in, plus a
+`distinct_id` is a random install UUID created locally, plus a
 process/session UUID. This MVP does **not** link events to a PowerTokens
 account. A short sequential `user_id` would not be anonymous even if hashed.
 Login still emits `login_success` as a funnel step, without an account id.
@@ -72,8 +69,8 @@ ends an unterminated previous session (crash recovery) before `app_open`.
 
 | Event | When it fires | Extra properties |
 | --- | --- | --- |
-| `app_open` | Once per session, after opt-in (or on startup if already opted in) | — |
-| `session_end` | Once per `session_id` on window close, after 30 minutes idle, or on the next consented start if a previous session was not ended (crash) | `duration_ms` (wall time), `active_ms` (time the window was focused/visible). Integers, each capped at 12 hours |
+| `app_open` | Once per session, on startup | — |
+| `session_end` | Once per `session_id` on window close, after 30 minutes idle, or on the next start if a previous session was not ended (crash) | `duration_ms` (wall time), `active_ms` (time the window was focused/visible). Integers, each capped at 12 hours |
 | `login_start` | User started the OAuth sign-in (login button). Not a completed sign-in | — |
 | `login_success` | Once per session after a successful OAuth sign-in, not on session restore | `key_applied` (boolean only) |
 | `login_failed` | OAuth/login finished unsuccessfully | safe `error_code` only |

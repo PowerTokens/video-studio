@@ -113,37 +113,42 @@ class AnalyticsCoreTests(unittest.TestCase):
         self.assertNotIn('model', props)
         self.assertNotIn('cat in a hat', json.dumps(props))
 
-    def test_opt_out_drops_events_and_clears_queue(self):
-        self.assertFalse(self.client.track('app_open', {}))
-        self.assertEqual(self.client.pending(), [])
-        self.grant()
-        self.sent.clear()
-        self.client.notify_generation_start('gx', model='kling-v3')
+    def test_default_capture_and_legacy_setter_cannot_disable(self):
+        self.assertTrue(self.client.capture_app_open())
         self.client.flush()
-        self.assertTrue(self.sent)
+        self.assertEqual(self.sent[0]['event'], 'app_open')
         self.client.set_consent(False)
-        self.assertEqual(self.client.pending(), [])
-        self.assertFalse(self.client.track('app_open', {}))
-        self.assertFalse(self.client.notify_login_success(key_applied=True))
-        after = list(self.sent)
+        self.assertTrue(self.client.notify_login_success(key_applied=True))
         self.client.flush()
-        self.assertEqual(self.sent, after)
+        self.assertEqual(self.sent[-1]['event'], 'login_success')
 
-    def test_consent_unset_does_not_queue_or_identify(self):
-        self.client.capture_app_open()
-        self.assertEqual(self.sent, [])
-        self.assertEqual(self.client.pending(), [])
-        self.assertFalse((self.tmp / 'analytics.json').exists() or (self.tmp / analytics.STATE_NAME).exists())
-        # No install id is minted before opt-in.
-        self.assertEqual(self.client.install_id(), '')
-        self.client.set_consent(True)
-        self.client.flush()
-        events = [item['event'] for item in self.sent]
-        self.assertEqual(events.count('app_open'), 1)
-        self.assertTrue(self.client.install_id())
-        # Events use the random install id, never a hashed account id.
-        self.assertEqual(self.sent[0]['distinct_id'], self.client.install_id())
-        self.assertFalse(self.sent[0]['distinct_id'].startswith('ptu_'))
+    def test_denied_and_unset_migrate_on_boot(self):
+        for old in ('denied', 'unset'):
+            directory = self.tmp / old
+            directory.mkdir()
+            (directory / analytics.STATE_NAME).write_text(json.dumps({'consent': old}))
+            client = analytics.Analytics(directory, transport=self.sent.append,
+                                         config={'project_key': 'phc_test'})
+            self.assertEqual(client.consent_state(), 'granted')
+            self.assertEqual(json.loads((directory / analytics.STATE_NAME).read_text())['consent'], 'granted')
+            self.assertTrue(client.capture_app_open())
+            client.flush()
+        self.assertEqual(len(self.sent), 2)
+
+    def test_no_consent_ui_and_update_bar_has_one_owner(self):
+        import ast
+        source = Path('app.py').read_text()
+        self.assertNotIn('_build_analytics_banner', source)
+        self.assertNotIn('_build_analytics_toggle', source)
+        tree = ast.parse(source)
+        owners = [n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
+                  and any(isinstance(x, ast.Assign) and any(isinstance(t, ast.Attribute)
+                          and t.attr == 'update_progress_bar' for t in x.targets)
+                          for x in ast.walk(n))]
+        self.assertEqual(owners, ['_build_update_banner'])
+        builder = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_build_update_banner')
+        self.assertIn("ttk.Progressbar(box", ast.get_source_segment(source, builder))
+        self.assertIn("style='Update.TFrame'", ast.get_source_segment(source, builder))
 
     def test_app_open_once_per_session(self):
         self.grant()

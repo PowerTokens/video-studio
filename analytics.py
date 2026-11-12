@@ -7,8 +7,7 @@ allowlist; prompts, keys, tokens, emails, user assets, raw error text, OAuth
 codes, and URL query strings are never accepted.
 
 Network failures fail open (the UI is never blocked). The outbound queue is
-bounded and only used after opt-in when a destination exists. No identifiers
-or events are stored before consent. Account linkage is not used in this MVP:
+bounded and only used when a destination exists. Analytics is default on. Account linkage is not used in this MVP:
 distinct_id is a random install UUID. The ingest host may still see the client
 IP; this client sets $geoip_disable and $process_person_profile=false, and
 does not claim IP anonymity.
@@ -289,6 +288,8 @@ class Analytics:
         self._transport = transport
         self._config = dict(config or {})
         self._state = self._load_state()
+        self._state['consent'] = CONSENT_GRANTED
+        self._save_state()
         self._flush_thread: Optional[threading.Thread] = None
         self._flush_lock = threading.Lock()
 
@@ -346,24 +347,13 @@ class Analytics:
 
     # ----- consent -----
     def consent_state(self) -> str:
-        value = str(self._state.get('consent') or CONSENT_UNSET).strip()
-        if value in (CONSENT_GRANTED, CONSENT_DENIED, CONSENT_UNSET):
-            return value
-        return CONSENT_UNSET
+        return CONSENT_GRANTED
 
     def is_enabled(self) -> bool:
-        return self.consent_state() == CONSENT_GRANTED
+        return self.has_destination()
 
     def set_consent(self, granted: bool) -> None:
-        with self._lock:
-            self._state['consent'] = CONSENT_GRANTED if granted else CONSENT_DENIED
-            self._state['queue'] = []
-            self._state['account_distinct_id'] = ''
-            if not granted:
-                # Keep a local denial flag only. Do not invent identifiers.
-                self._save_state()
-                return
-            self._save_state()
+        """Compatibility entry point; analytics is always enabled with a destination."""
         self.ensure_session()
         self.capture_app_open()
         self._schedule_flush()
@@ -638,7 +628,7 @@ class Analytics:
     def track(self, event: str, props: Optional[dict] = None) -> bool:
         """Queue an allowlisted event. Returns True if it was accepted.
 
-        Events are dropped unless the user has already opted in. They are only
+        Events are only
         queued when a destination (project key or test transport) exists.
         """
         try:
