@@ -4,6 +4,8 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+- **In-app update check.** On startup the desktop app checks the latest GitHub release in the background (at most once every 24 hours). If a newer version is available, a non-blocking banner offers Download or Later. Windows saves the official EXE to the Downloads folder and can quit to open it; macOS downloads the official arm64 DMG and can open the installer. If a download fails after the user asked for it, the banner offers a retry. Network errors during the silent check are not shown.
+
 ## [1.17](https://github.com/PowerTokens/video-studio/releases/tag/v1.17.0) - 2026-11-12
 
 - **Unsigned macOS Beta (Apple Silicon).** The Mac package is a public unsigned Beta. There is no Apple Developer ID signature and no notarization, and none is planned until an Apple Developer account exists. The window title shows **v1.17 Beta**. Gatekeeper blocks a downloaded copy until you right-click the app and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway**. The same note is in `GATEKEEPER.txt` inside the `.dmg`. The packaged app does not need Python. Windows EXE scripts and workflows are unchanged. The Mac build workflow still does not create a GitHub Release by itself.

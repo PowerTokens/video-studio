@@ -30,6 +30,7 @@ from platform_paths import default_output_dir, reveal_path
 import secret_store
 import oauth_desktop
 import analytics
+import update_check
 
 OFFICIAL_KEY_URL = 'https://powertokens.ai/zh-Hans/api-keys?' + UTM
 OFFICIAL_KEY_URL_EN = 'https://powertokens.ai/api-keys?' + UTM
@@ -139,6 +140,14 @@ class App:
         self.oauth_busy = False
         self.key_verify_busy = False
         self.key_status_kind = 'soft'  # soft|ok|warn|bad — traffic-light
+        self._update_offer = None
+        self._update_dest = None
+        self._update_stop = threading.Event()
+        self._update_downloading = False
+        self._update_phase = None
+        self._update_progress_text = ''
+        self._update_fail_kind = None
+        self._update_dismissed_session = False
         self.build_ui()
         self.load_keys()
         self._load_oauth_session()
@@ -147,6 +156,8 @@ class App:
         root.after(150, self.drain)
         root.protocol('WM_DELETE_WINDOW', self.close)
         self._bind_analytics_focus()
+        if not update_check.skip_update_check():
+            root.after(800, self._start_update_check)
 
     def build_ui(self):
         """Build every widget in the current language; rebuilt in place by switch_language()."""
@@ -202,6 +213,7 @@ class App:
         # Not packed yet: soft "Sign in" duplicates the OAuth button; shown after a real key state.
         self._header_toolbar = toolbar
         self._refresh_oauth_header()
+        self._build_update_banner(shell)
         tabs = ttk.Notebook(shell)
         tabs.pack(fill='both', expand=True)
         pages = [ScrollPage(tabs) for _ in range(6)]
@@ -219,6 +231,8 @@ class App:
         self._build_analytics_banner(shell)
         label(shell, variable=self.status, style='Page.TLabel').pack(fill='x', padx=28, pady=(8, 12))
         self._bind_analytics_surfaces()
+        if self._update_offer and not self._update_dismissed_session:
+            self._show_update_offer(self._update_offer, restore=True)
 
     def _bind_analytics_surfaces(self):
         if not hasattr(self, 'tabs'):
@@ -1780,10 +1794,321 @@ class App:
         self.stop.set()
         self.status.set(t('stopping_status'))
 
+
+    def _start_update_check(self):
+        """Background GitHub check, or a fixture release for previews (`VS_UPDATE_FIXTURE=1`)."""
+        if self._update_dismissed_session:
+            return
+        data_dir = DATA_DIR
+        current_version = VERSION
+        platform = sys.platform
+
+        def worker():
+            info = None
+            try:
+                if update_check.use_update_fixture():
+                    info = update_check.fixture_release(platform=platform)
+                else:
+                    state = update_check.load_state(data_dir)
+                    if update_check.should_check(state):
+                        info = update_check.fetch_latest(current_version, platform)
+                        update_check.mark_checked(state, data_dir=data_dir, release=info)
+                    else:
+                        info = update_check.cached_release(state)
+                if info is None or not update_check.is_newer(info.tag, current_version):
+                    return
+                state = update_check.load_state(data_dir)
+                if not update_check.should_prompt(state, info.tag):
+                    return
+                self.events.put(('update_available', info))
+            except Exception:
+                return
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _build_update_banner(self, parent):
+        box = ttk.Frame(parent, style='Page.TFrame')
+        self.update_banner = box
+        self.update_message = tk.StringVar(value='')
+        label(box, variable=self.update_message, style='Page.TLabel').pack(fill='x', pady=(0, 6))
+        actions = ttk.Frame(box, style='Page.TFrame')
+        actions.pack(fill='x')
+        self.update_download_btn = ttk.Button(actions, text=t('update_download'), style='Accent.TButton',
+                                              command=self._download_update)
+        self.update_later_btn = ttk.Button(actions, text=t('update_later'), style='Link.TButton',
+                                           command=self._dismiss_update)
+        self.update_retry_btn = ttk.Button(actions, text=t('update_retry'), style='Accent.TButton',
+                                           command=self._download_update)
+        self.update_page_btn = ttk.Button(actions, text=t('update_open_page'), style='Link.TButton',
+                                          command=self._open_update_page)
+        self.update_quit_btn = ttk.Button(actions, text=t('update_quit_and_open'), style='Accent.TButton',
+                                          command=self._quit_and_run_update)
+        self.update_open_btn = ttk.Button(actions, text=t('update_open_installer'), style='Accent.TButton',
+                                          command=self._open_downloaded_package)
+        self.update_reveal_btn = ttk.Button(actions, text=t('update_reveal'), style='Link.TButton',
+                                            command=self._reveal_download)
+        self._update_action_buttons = (
+            self.update_download_btn, self.update_later_btn, self.update_retry_btn,
+            self.update_page_btn, self.update_quit_btn, self.update_open_btn, self.update_reveal_btn,
+        )
+
+    def _update_banner_visible(self):
+        banner = getattr(self, 'update_banner', None)
+        if banner is None:
+            return False
+        try:
+            return bool(banner.winfo_manager())
+        except tk.TclError:
+            return False
+
+    def _pack_update_banner(self):
+        banner = getattr(self, 'update_banner', None)
+        if banner is None:
+            return
+        try:
+            if hasattr(self, 'tabs') and self.tabs.winfo_manager():
+                banner.pack(fill='x', padx=28, pady=(0, 8), before=self.tabs)
+            elif not banner.winfo_manager():
+                banner.pack(fill='x', padx=28, pady=(0, 8))
+        except tk.TclError:
+            return
+
+    def _pack_update_actions(self, *buttons):
+        for button in getattr(self, '_update_action_buttons', ()):
+            try:
+                button.pack_forget()
+            except tk.TclError:
+                pass
+        first = True
+        for button in buttons:
+            try:
+                button.configure(state='normal')
+                if first:
+                    button.pack(side='left')
+                    first = False
+                else:
+                    button.pack(side='left', padx=(12, 0))
+            except tk.TclError:
+                continue
+
+    def _refresh_update_banner_copy(self):
+        offer = self._update_offer
+        if offer is None or not hasattr(self, 'update_message'):
+            return
+        phase = self._update_phase or 'offer'
+        version = offer.version or offer.tag
+        current = VERSION
+        if phase == 'downloading':
+            name = offer.asset_name or version
+            text = t('update_downloading', name)
+            if self._update_progress_text:
+                text = text + '  ' + self._update_progress_text
+            self.update_message.set(text)
+            self._pack_update_actions(self.update_later_btn)
+            try:
+                self.update_later_btn.configure(state='disabled')
+            except tk.TclError:
+                pass
+            return
+        if phase == 'ready':
+            if sys.platform == 'darwin':
+                self.update_message.set(t('update_ready_mac'))
+                self._pack_update_actions(self.update_open_btn, self.update_reveal_btn, self.update_later_btn)
+            else:
+                self.update_message.set(t('update_ready_win'))
+                self._pack_update_actions(self.update_quit_btn, self.update_reveal_btn, self.update_later_btn)
+            return
+        if phase == 'fail':
+            if self._update_fail_kind == 'hash':
+                self.update_message.set(t('update_hash_fail'))
+            else:
+                self.update_message.set(t('update_fail'))
+            buttons = [self.update_retry_btn, self.update_page_btn, self.update_later_btn]
+            if not offer.asset_url:
+                buttons = [self.update_page_btn, self.update_later_btn]
+            self._pack_update_actions(*buttons)
+            return
+        self.update_message.set(t('update_available', version, current))
+        if offer.asset_url:
+            self._pack_update_actions(self.update_download_btn, self.update_later_btn)
+        else:
+            self._pack_update_actions(self.update_download_btn, self.update_later_btn)
+
+    def _show_update_offer(self, info, restore=False):
+        if info is None or self._update_dismissed_session:
+            return
+        if not restore or self._update_offer is None:
+            self._update_offer = info
+        if not restore or not self._update_phase:
+            self._update_phase = 'offer'
+        if not hasattr(self, 'update_banner'):
+            return
+        self._refresh_update_banner_copy()
+        self._pack_update_banner()
+
+    def _dismiss_update(self):
+        self._update_dismissed_session = True
+        offer = self._update_offer
+        if offer is not None:
+            try:
+                update_check.mark_dismissed(offer.tag, data_dir=DATA_DIR)
+            except Exception:
+                pass
+        banner = getattr(self, 'update_banner', None)
+        if banner is not None:
+            try:
+                banner.pack_forget()
+            except tk.TclError:
+                pass
+
+    def _open_update_page(self):
+        offer = self._update_offer
+        url = update_check.offer_page_url(offer)
+        if offer is not None and not offer.asset_url and offer.html_url:
+            # Linux / unknown: official public page first; release page is already a fine fallback
+            # if the public page is unavailable. Prefer the documented public download page.
+            url = update_check.PUBLIC_DOWNLOAD_PAGE
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+
+    def _download_update(self):
+        offer = self._update_offer
+        if offer is None:
+            return
+        if not offer.asset_url:
+            self._open_update_page()
+            return
+        if self._update_downloading:
+            return
+        self._update_stop.clear()
+        self._update_downloading = True
+        self._update_phase = 'downloading'
+        self._update_progress_text = ''
+        self._update_fail_kind = None
+        self._refresh_update_banner_copy()
+        dest = update_check.destination_path(
+            update_check.downloads_dir(data_dir=DATA_DIR),
+            offer.asset_name or 'PowerTokensVideoStudio.bin',
+            offer.version or offer.tag,
+        )
+
+        def report(received, total):
+            self.events.put(('update_progress', (received, total)))
+
+        def worker():
+            try:
+                path = update_check.download_asset(
+                    offer.asset_url, dest, sha256=offer.sha256,
+                    timeout=update_check.DEFAULT_TIMEOUT, progress=report,
+                    stop=self._update_stop,
+                )
+                self.events.put(('update_ready', str(path)))
+            except update_check.UpdateError as exc:
+                self.events.put(('update_fail', exc.code))
+            except Exception:
+                self.events.put(('update_fail', 'network'))
+            finally:
+                self._update_downloading = False
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _update_progress(self, payload):
+        received, total = payload if isinstance(payload, (tuple, list)) and len(payload) == 2 else (payload, None)
+        try:
+            received = int(received or 0)
+        except (TypeError, ValueError):
+            received = 0
+        self._update_progress_text = update_check.format_progress(received, total)
+        if self._update_phase != 'downloading':
+            self._update_phase = 'downloading'
+        self._refresh_update_banner_copy()
+
+    def _update_ready(self, path):
+        self._update_downloading = False
+        self._update_dest = Path(path) if path else self._update_dest
+        self._update_phase = 'ready'
+        self._refresh_update_banner_copy()
+        self._pack_update_banner()
+
+    def _update_fail(self, kind):
+        self._update_downloading = False
+        if kind == 'cancelled':
+            return
+        self._update_fail_kind = str(kind or 'network')
+        self._update_phase = 'fail'
+        self._refresh_update_banner_copy()
+        self._pack_update_banner()
+
+    def _quit_and_run_update(self):
+        path = self._update_dest
+        if not path:
+            self._update_fail('launch')
+            return
+        try:
+            analytics.end_session()
+        except Exception:
+            pass
+        try:
+            update_check.launch_package(path, sys.platform)
+        except Exception:
+            self._update_fail('launch')
+            return
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            pass
+
+    def _open_downloaded_package(self):
+        path = self._update_dest
+        if not path:
+            self._update_fail('launch')
+            return
+        try:
+            update_check.launch_package(path, sys.platform)
+        except Exception:
+            self._update_fail('launch')
+
+    def _reveal_download(self):
+        path = self._update_dest
+        if not path:
+            return
+        folder = Path(path).parent
+        folder.mkdir(parents=True, exist_ok=True)
+        try:
+            if os.name == 'nt':
+                os.startfile(str(folder))
+            elif sys.platform == 'darwin':
+                import subprocess
+                subprocess.Popen(['open', '-R', str(path)])
+            else:
+                import subprocess
+                subprocess.Popen(['xdg-open', str(folder)])
+        except Exception:
+            try:
+                messagebox.showinfo(t('save_location'), str(folder))
+            except Exception:
+                pass
+
     def drain(self):
         try:
             while True:
                 kind, text = self.events.get_nowait()
+                if kind == 'update_available':
+                    self._show_update_offer(text)
+                    continue
+                if kind == 'update_progress':
+                    self._update_progress(text)
+                    continue
+                if kind == 'update_ready':
+                    self._update_ready(text)
+                    continue
+                if kind == 'update_fail':
+                    self._update_fail(text)
+                    continue
+                if isinstance(kind, str) and kind.startswith('update_'):
+                    continue
                 if kind == 'oauth_ok':
                     self._apply_oauth_result(text)
                     continue
@@ -1881,6 +2206,9 @@ class App:
             self.stop_wait()
             messagebox.showinfo(t('closing_title'), t('closing_body'))
             return
+        stop = getattr(self, '_update_stop', None)
+        if stop is not None:
+            stop.set()
         try:
             analytics.end_session()
         except Exception:

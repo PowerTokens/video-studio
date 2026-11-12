@@ -13,6 +13,9 @@ from unittest.mock import patch
 import datetime
 import re
 
+# In-app update check would schedule a GitHub request after 800ms; keep these UI tests offline.
+os.environ.setdefault('VS_SKIP_UPDATE_CHECK', '1')
+
 import app
 import batch_ui
 import wan_core
