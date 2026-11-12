@@ -406,6 +406,9 @@ class App:
         self.onboard_card = box
         for key in ('onboard_step1', 'onboard_step2', 'onboard_step3'):
             label(box, t(key)).pack(fill='x', pady=(0, 4))
+        from payment_copy import COPY
+        ttk.Button(box, text=COPY.get(get_language(), COPY['en'])[14] + ': service@powertokens.ai',
+                   style='Link.TButton', command=lambda: webbrowser.open('mailto:service@powertokens.ai')).pack(anchor='w')
         actions = Flow(box)
         actions.pack(fill='x', pady=(8, 0))
         ttk.Button(actions, text=t('onboard_get_key'), style='Accent.TButton', command=self.start_oauth_login)
@@ -1261,8 +1264,9 @@ class App:
         box = ttk.Frame(parent, style='Page.TFrame')
         self.analytics_banner = box
         label(box, t('analytics_notice'), style='Muted.TLabel').pack(fill='x', pady=(0, 6))
-        actions = ttk.Frame(box, style='Page.TFrame')
-        actions.pack(fill='x')
+        actions = ttk.Frame(box, style='Update.TFrame')
+        actions.pack(side='right')
+        self.update_progress_bar = ttk.Progressbar(box, length=100, maximum=100)
         ttk.Button(actions, text=t('analytics_accept'), style='Accent.TButton',
                    command=lambda: self._set_analytics_consent(True)).pack(side='left')
         ttk.Button(actions, text=t('analytics_decline'), style='Link.TButton',
@@ -1393,12 +1397,7 @@ class App:
         self.status.set(t('oauth_logged_out'))
 
     def open_key_quota_tip(self):
-        url = key_quota_tip_url()
-        try:
-            if not webbrowser.open(url):
-                messagebox.showinfo(t('official_site'), url)
-        except OSError:
-            messagebox.showinfo(t('official_site'), url)
+        self.open_billing('quota_tip')
 
     def open_official_keys(self):
         try:
@@ -1408,17 +1407,13 @@ class App:
             messagebox.showinfo(t('official_site'), official_key_url())
 
     def open_billing(self, source='credits_chip'):
-        """Open official billing/top-up with product-forced VS UTM."""
+        """Open the OAuth-gated in-app plan picker."""
         try:
             analytics.notify_billing_click(source)
         except Exception:
             pass
-        url = billing_url()
-        try:
-            if not webbrowser.open(url):
-                messagebox.showinfo(t('official_site'), url)
-        except OSError:
-            messagebox.showinfo(t('official_site'), url)
+        import payment_ui
+        payment_ui.show(self)
 
     def choose_folder(self):
         folder = filedialog.askdirectory()
@@ -1827,12 +1822,21 @@ class App:
         threading.Thread(target=worker, daemon=True).start()
 
     def _build_update_banner(self, parent):
-        box = ttk.Frame(parent, style='Page.TFrame')
-        self.update_banner = box
+        from studio_ui import Card
+        surface = Card(parent)
+        box = surface.body
+        style = ttk.Style()
+        style.configure('Update.TFrame', background='#eaf7f3')
+        style.configure('Update.TLabel', background='#eaf7f3', foreground=INK)
+        box.configure(style='Update.TFrame')
+        surface.bind('<Configure>', lambda event: surface.itemconfigure('surface', fill='#eaf7f3'), add='+')
+        self.update_banner = surface
+        label(box, '↑  Video Studio', style='Update.TLabel').pack(side='left', padx=(0, 16))
         self.update_message = tk.StringVar(value='')
-        label(box, variable=self.update_message, style='Page.TLabel').pack(fill='x', pady=(0, 6))
-        actions = ttk.Frame(box, style='Page.TFrame')
-        actions.pack(fill='x')
+        label(box, variable=self.update_message, style='Update.TLabel').pack(side='left', fill='x', expand=True, padx=(0, 12))
+        actions = ttk.Frame(box, style='Update.TFrame')
+        actions.pack(side='right')
+        self.update_progress_bar = ttk.Progressbar(box, length=100, maximum=100)
         self.update_download_btn = ttk.Button(actions, text=t('update_download'), style='Accent.TButton',
                                               command=self._download_update)
         self.update_later_btn = ttk.Button(actions, text=t('update_later'), style='Link.TButton',
@@ -1896,6 +1900,11 @@ class App:
         if offer is None or not hasattr(self, 'update_message'):
             return
         phase = self._update_phase or 'offer'
+        if hasattr(self, 'update_progress_bar'):
+            if phase == 'downloading':
+                self.update_progress_bar.pack(side='bottom', fill='x', pady=(8, 0))
+            else:
+                self.update_progress_bar.pack_forget()
         version = offer.version or offer.tag
         current = VERSION
         if phase == 'downloading':
@@ -2021,6 +2030,8 @@ class App:
         except (TypeError, ValueError):
             received = 0
         self._update_progress_text = update_check.format_progress(received, total)
+        if hasattr(self, 'update_progress_bar') and total:
+            self.update_progress_bar.configure(value=min(100, 100 * received / total))
         if self._update_phase != 'downloading':
             self._update_phase = 'downloading'
         self._refresh_update_banner_copy()
