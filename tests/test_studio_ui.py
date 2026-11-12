@@ -16,7 +16,7 @@ import re
 import app
 import batch_ui
 import wan_core
-from studio_ui import APP_NAME, VERSION, Columns, Card, KeyStatusPill
+from studio_ui import APP_NAME, VERSION, Columns, Card, KeyStatusPill, window_title, tab_padding
 
 
 @unittest.skipUnless(os.name == 'nt' or os.environ.get('PT_GUI_TESTS') == '1',
@@ -89,13 +89,13 @@ class StudioUITests(unittest.TestCase):
 
         for option in ('padding', 'font', 'expand'):
             self.assertEqual(tab(option, ['selected']), tab(option, ['!selected']), option)
-        self.assertEqual(tab('padding', ['selected']), ['20', '12'])
+        self.assertEqual(tab('padding', ['selected']), [str(item) for item in tab_padding()])
         self.assertFalse(any(int(item) for item in tab('expand', ['selected'])))
         for option in ('background', 'foreground'):
             self.assertNotEqual(tab(option, ['selected']), tab(option, ['!selected']), option)
 
     def test_requested_copy_and_key_pool_work(self):
-        self.assertEqual(self.root.title(), '%s · v%s' % (APP_NAME, VERSION))
+        self.assertEqual(self.root.title(), window_title())
         self.assertEqual(self.gui.stop_btn.cget('text'), '停止等待')
         texts = []
         for widget in self.widgets(self.root):
@@ -274,7 +274,7 @@ class LanguageSwitchTests(unittest.TestCase):
         self.root.update()
         self.assertEqual(i18n.get_language(), 'en')
         self.assertEqual(i18n.load_settings()['language'], 'en')
-        self.assertEqual(self.tab_names(), ['Generate video', 'Chat', 'Compare', 'Batch import', 'History / Resume', 'API Key'])
+        self.assertEqual(self.tab_names(), ['Generate', 'Chat', 'Compare', 'Batch', 'History', 'API Key'])
         self.assertEqual(self.gui.tabs.index('current'), 5)
         self.assertEqual(self.gui.keys, ['sk-test-only-one'])
         self.assertEqual(self.gui.key_count.get(), '1 key')

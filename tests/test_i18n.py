@@ -60,8 +60,8 @@ class StringTableTests(unittest.TestCase):
     def test_requested_english_copy(self):
         self.assertEqual(i18n.EN['subtitle'], 'Multi-model AI video generation')
         self.assertEqual(i18n.EN['promo'], 'Wan 3.0 limited-time discount until Oct 7')
-        self.assertEqual([i18n.EN[k] for k in ('tab_generate', 'tab_batch', 'tab_keys')],
-                         ['Generate video', 'Batch import', 'API Key'])
+        self.assertEqual([i18n.EN[k] for k in ('tab_generate', 'tab_batch', 'tab_history', 'tab_keys')],
+                         ['Generate', 'Batch', 'History', 'API Key'])
 
 
 class LanguageChoiceTests(unittest.TestCase):
@@ -76,7 +76,7 @@ class LanguageChoiceTests(unittest.TestCase):
 
     def test_t_switches_immediately(self):
         i18n.set_language('en')
-        self.assertEqual(i18n.t('tab_generate'), 'Generate video')
+        self.assertEqual(i18n.t('tab_generate'), 'Generate')
         self.assertEqual(i18n.t('key_count', 2, count=2), '2 keys')
         self.assertEqual(i18n.t('key_count', 1, count=1), '1 key')
         i18n.set_language('zh')
@@ -101,6 +101,7 @@ class LanguageChoiceTests(unittest.TestCase):
                 with patch.object(i18n, 'windows_ui_language', return_value=langid):
                     self.assertEqual(i18n.system_language(), expected, hex(langid))
             with patch.object(i18n, 'windows_ui_language', return_value=None), \
+                    patch.object(i18n, 'macos_ui_language', return_value=None), \
                     patch.dict(os.environ, {'LC_ALL': '', 'LC_MESSAGES': '', 'LANG': 'zh_CN.UTF-8'}):
                 self.assertEqual(i18n.system_language(), 'zh')
             with patch.object(i18n, 'windows_ui_language', return_value=0x0409):
@@ -113,13 +114,57 @@ class LanguageChoiceTests(unittest.TestCase):
         with patch.object(i18n, '_current', None), patch.object(i18n, 'system_language', return_value='en'):
             self.assertEqual(i18n.get_language(), 'en')
 
+    def test_default_follows_macos_ui_language(self):
+        samples = (
+            '(\n    "zh-Hans-CN",\n    "en-US"\n)',
+            '(\n    "zh-Hant-TW"\n)',
+        )
+        for text in samples:
+            self.assertEqual(i18n.parse_apple_languages(text).split('-', 1)[0], 'zh')
+        self.assertEqual(i18n.parse_apple_languages('(\n    "es-ES",\n    "en"\n)'), 'es-ES')
+        self.assertEqual(i18n.parse_apple_languages('(\n    "pt-BR"\n)'), 'pt-BR')
+        self.assertIsNone(i18n.parse_apple_languages(''))
+        self.assertIsNone(i18n.parse_apple_languages('(\n)'))
+        with patch.object(i18n, '_current', None), \
+                patch.object(i18n, 'windows_ui_language', return_value=None), \
+                patch.object(i18n, 'macos_ui_language', return_value='zh-Hans-CN'), \
+                patch.dict(os.environ, {'LC_ALL': 'en_US.UTF-8', 'LANG': 'en_US.UTF-8', 'LANGUAGE': ''}):
+            self.assertEqual(i18n.system_language(), 'zh')
+        for tag, expected in (('en-US', 'en'), ('es-MX', 'es'), ('pt-PT', 'pt')):
+            with patch.object(i18n, 'windows_ui_language', return_value=None), \
+                    patch.object(i18n, 'macos_ui_language', return_value=tag):
+                self.assertEqual(i18n.system_language(), expected, tag)
+        # An unsupported AppleLanguages tag falls through to POSIX LANG.
+        with patch.object(i18n, 'windows_ui_language', return_value=None), \
+                patch.object(i18n, 'macos_ui_language', return_value='fr-FR'), \
+                patch.dict(os.environ, {'LC_ALL': '', 'LC_MESSAGES': '', 'LANG': 'zh_CN.UTF-8', 'LANGUAGE': ''}):
+            self.assertEqual(i18n.system_language(), 'zh')
+
+    def test_remember_copy_follows_platform(self):
+        self.assertEqual(i18n.ZH['remember_note'], '默认只在本次运行中保留 Key。勾选后使用 Windows DPAPI 加密保存。')
+        self.assertEqual(i18n.ZH['dpapi_badge'], 'Windows 账户加密')
+        i18n.set_language('en')
+        with patch('i18n.os.name', 'nt'), patch('i18n.sys.platform', 'win32'):
+            self.assertIn('DPAPI', i18n.remember_note_text())
+            self.assertEqual(i18n.remember_badge_text(), 'Windows account encryption')
+        with patch('i18n.os.name', 'posix'), patch('i18n.sys.platform', 'darwin'):
+            self.assertIn('Keychain', i18n.remember_note_text())
+            self.assertEqual(i18n.remember_badge_text(), 'Login Keychain')
+            i18n.set_language('zh')
+            self.assertIn('钥匙串', i18n.remember_note_text())
+            self.assertEqual(i18n.remember_badge_text(), '登录钥匙串加密')
+        i18n.set_language('en')
+        with patch('i18n.os.name', 'posix'), patch('i18n.sys.platform', 'linux'):
+            self.assertIn('not available', i18n.remember_note_text())
+            self.assertEqual(i18n.remember_badge_text(), 'Cannot save encrypted keys here')
+
     def test_rejects_unknown_language(self):
         with self.assertRaises(ValueError):
             i18n.set_language('fr')
 
     def test_spanish_and_portuguese_chrome(self):
         i18n.set_language('es')
-        self.assertEqual(i18n.t('tab_generate'), 'Generar vídeo')
+        self.assertEqual(i18n.t('tab_generate'), 'Generar')
         self.assertIn('cabecera', i18n.t('oauth_use_header'))
         i18n.set_language('pt')
         self.assertEqual(i18n.t('oauth_login'), 'Entrar com PowerTokens')
@@ -292,6 +337,37 @@ class EnglishImportTests(English):
         self.assertEqual(dict(LABELS)['queued'], 'Queued')
         job = build_job('S', 2, {'prompt': 0, 'duration': 1}, ['hello', '7.5'])
         self.assertEqual((job['state'], job['note']), ('invalid', 'Duration must be a whole number of seconds.'))
+
+
+class PlatformShortcutTests(unittest.TestCase):
+    def setUp(self):
+        self.addCleanup(i18n.set_language, 'zh')
+
+    def test_modifier_copy_follows_platform(self):
+        i18n.set_language('en')
+        self.assertEqual(i18n.mod_key('win32'), 'Ctrl')
+        self.assertEqual(i18n.copy_shortcut('win32'), 'Ctrl+C')
+        self.assertEqual(i18n.mod_key('darwin'), 'Command')
+        self.assertEqual(i18n.copy_shortcut('darwin'), 'Command+C')
+        self.assertEqual(
+            i18n.t('history_card_desc', platform='win32'),
+            'Ctrl / Shift to select several; Ctrl+C copies Task IDs.',
+        )
+        self.assertEqual(
+            i18n.t('history_card_desc', platform='darwin'),
+            'Command / Shift to select several; Command+C copies Task IDs.',
+        )
+        i18n.set_language('zh')
+        self.assertIn('Command+C', i18n.t('history_card_desc', platform='darwin'))
+        self.assertIn('Ctrl+C', i18n.t('history_card_desc', platform='win32'))
+        self.assertIn('Command / Shift', i18n.t('select_rows_body', platform='darwin'))
+
+    def test_window_title_is_beta_only_on_mac(self):
+        import studio_ui
+        self.assertEqual(studio_ui.window_title('win32'), 'PowerTokens Video Studio · v%s' % studio_ui.VERSION)
+        self.assertEqual(studio_ui.window_title('darwin'), 'PowerTokens Video Studio · v%s Beta' % studio_ui.VERSION)
+
+
 
 
 if __name__ == '__main__':

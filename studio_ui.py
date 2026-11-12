@@ -35,8 +35,46 @@ KEY_DOT_WARN = '#f59e0b'
 KEY_DOT_OK = '#22c55e'
 KEY_PILL_SOFT_BG = '#f7fcfa'
 KEY_PILL_SOFT_BORDER = '#c9e4dc'
-TAB_PADDING = (20, 12)  # Same for every notebook tab state.
-FONT = 'Microsoft YaHei UI' if sys.platform == 'win32' else 'PingFang SC'
+TAB_PADDING = (20, 12)  # Same for every notebook tab state on Windows and others.
+
+
+def tab_padding(platform=None):
+    """Aqua tabs are wider; use tighter padding so all six labels fit."""
+    platform = sys.platform if platform is None else platform
+    if platform == 'darwin':
+        return (10, 10)
+    return TAB_PADDING
+
+
+def window_title(platform=None):
+    """Window title. The unsigned Mac build is labeled Beta."""
+    platform = sys.platform if platform is None else platform
+    if platform == 'darwin':
+        return '%s · v%s Beta' % (APP_NAME, VERSION)
+    return '%s · v%s' % (APP_NAME, VERSION)
+
+
+def bind_command_or_control(widget, key, handler):
+    """Bind Control-<key> everywhere, and also Command-<key> on macOS."""
+    widget.bind('<Control-%s>' % key, handler)
+    if sys.platform == 'darwin':
+        widget.bind('<Command-%s>' % key, handler)
+
+
+
+def ui_font(platform=None):
+    """UI font family. Windows keeps Microsoft YaHei UI; macOS uses PingFang SC.
+
+    PingFang SC ships with macOS and covers Chinese and Latin interface text.
+    Other systems keep the same non-Windows fallback as before.
+    """
+    platform = sys.platform if platform is None else platform
+    if platform == 'win32':
+        return 'Microsoft YaHei UI'
+    return 'PingFang SC'
+
+
+FONT = ui_font()
 
 
 def apply_theme(root):
@@ -87,12 +125,12 @@ def apply_theme(root):
     style.configure('TCheckbutton', background=WHITE, padding=(0, 4))
     style.map('TCheckbutton', background=[('active', WHITE)], indicatorbackground=[('selected', ACCENT)])
     style.configure('TNotebook', background=PAGE, borderwidth=0, tabmargins=(0, 0, 0, 10))
-    style.configure('TNotebook.Tab', padding=TAB_PADDING, font=(FONT, 10), background=WHITE,
+    style.configure('TNotebook.Tab', padding=tab_padding(), font=(FONT, 10), background=WHITE,
                     foreground=MUTED, borderwidth=0, expand=(0, 0, 0, 0))
     # clam ships its own map of padding {6 4 6 2} for the selected tab, which beats the configured
     # padding and makes the active tab shrink and sit lower. Pin every state to the same geometry and
     # let colour alone mark the selected tab.
-    style.map('TNotebook.Tab', padding=[('selected', TAB_PADDING)],
+    style.map('TNotebook.Tab', padding=[('selected', tab_padding())],
               expand=[('selected', (0, 0, 0, 0))],
               background=[('selected', PALE), ('active', '#f0f7f5')],
               foreground=[('selected', '#268b7e')])

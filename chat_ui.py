@@ -25,7 +25,7 @@ from storyboard import (
     storyboard_from_script,
     text_model_label,
 )
-from studio_ui import Flow, card, heading, label, text_area
+from studio_ui import Flow, card, heading, label, text_area, bind_command_or_control
 
 
 def _catalog_hint():
@@ -58,7 +58,7 @@ class ChatTab:
         composer = card(self.frame, t('chat_composer_card'))
         self.input = text_area(composer, height=4, undo=True)
         self.input.pack(fill='x', pady=(0, 8))
-        self.input.bind('<Control-Return>', lambda *_: self.send())
+        bind_command_or_control(self.input, 'Return', lambda *_: self.send())
 
         tools = ttk.Frame(composer)
         tools.pack(fill='x')

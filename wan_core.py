@@ -1,10 +1,11 @@
-"""Shared Windows UI / CLI engine. Standard library only; no automatic POST retries."""
+"""Shared desktop UI / CLI engine. Standard library only; no automatic POST retries."""
 import datetime
 import hashlib
 import http.client
 import json
 import os
 import re
+import ssl
 import threading
 import time
 import urllib.error
@@ -14,6 +15,7 @@ import uuid
 from pathlib import Path
 
 from i18n import t
+from platform_paths import user_data_dir
 
 APP_VERSION = '1.17'
 USER_AGENT = 'PowerTokensVideoStudio/' + APP_VERSION
@@ -69,7 +71,7 @@ def list_prices(today=None, model_id=None):
 
 PRICE_SOURCE_URL = get_model(DEFAULT_MODEL_ID).model_page_url_zh
 PRICE_SOURCE_URL_EN = get_model(DEFAULT_MODEL_ID).model_page_url
-DATA_DIR = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / '.local' / 'share'))) / 'PowerTokensWan'
+DATA_DIR = user_data_dir()
 
 
 class TaskError(Exception):
@@ -136,7 +138,28 @@ class SafeRedirect(urllib.request.HTTPRedirectHandler):
         return result
 
 
-OPENER = urllib.request.build_opener(SafeRedirect())
+def _ssl_context_from_env():
+    """Optional extra CA for a local HTTPS fixture. Off unless PT_WAN_CA_FILE is set.
+
+    The file is passed to ssl.create_default_context(cafile=...); this does not
+    disable certificate verification and does not allow HTTP. Used only by
+    labeled simulation tests and Mac acceptance.
+    """
+    ca = (os.environ.get('PT_WAN_CA_FILE') or '').strip()
+    if not ca:
+        return None
+    return ssl.create_default_context(cafile=ca)
+
+
+def build_opener():
+    handlers = [SafeRedirect()]
+    ctx = _ssl_context_from_env()
+    if ctx is not None:
+        handlers.append(urllib.request.HTTPSHandler(context=ctx))
+    return urllib.request.build_opener(*handlers)
+
+
+OPENER = build_opener()
 
 
 def api(method, url, key, payload=None, timeout=30):

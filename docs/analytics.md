@@ -128,20 +128,21 @@ timeout-then-resume success.
 
 The committed `analytics_config.py` key stays empty, so a default unconfigured
 build sends no traffic. To bake the *public* project capture token (`phc_...`)
-into a release EXE:
+into a release EXE or Mac app:
 
 1. Set `VS_POSTHOG_PROJECT_KEY` (and optionally `VS_POSTHOG_HOST`) on the build
    machine, or write an untracked `analytics_config_local.py` with those names.
-2. `Build-EXE.bat` and the Windows workflows call
+2. `Build-EXE.bat`, `Build-Mac.sh`, and the Windows and macOS workflows call
    `tools/prepare_analytics_config.py` and add `--hidden-import analytics_config_local`
-   when that file exists. `build-windows.yml` also checks that the `analytics` and
-   `analytics_config.py` are present in the PyInstaller archive, and the local
-   module if it was baked.
+   when that file exists. `build-windows.yml` and `Build-Mac.sh` also check that
+   `analytics` and `analytics_config` are present in the PyInstaller archive, and
+   the local module if it was baked. The Mac workflow bakes the token on
+   `workflow_dispatch` and `v*` tags, not on pull-request builds.
 3. Personal or admin keys (`phx_...` and anything that is not `phc_`) are
    refused by `public_project_key()` and will not be written or used.
 
-A Linux box cannot produce the Windows EXE; confirm the bundle list on the
-Windows builder before a release.
+A Linux box cannot produce the Windows EXE or the Mac app; confirm the bundle
+list on the respective builder before a release.
 
 ## Synthetic / test markers
 

@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Free open-source Video Studio **1.17** ([Windows desktop](../../releases/latest) + [web](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — Excel/CSV batch, compare, storyboard, safe resume.
+Free open-source Video Studio **1.17** ([Windows desktop](../../releases/latest), an unsigned Apple Silicon Mac Beta app, and a [web companion](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — Excel/CSV batch, compare, storyboard, safe resume.
 
 ![Demo: a clip generated with Wan 3.0](docs/images/demo.gif)
 
@@ -26,9 +26,9 @@ Pick a model in the desktop UI, pass `--model` on the CLI, set `model` on MCP to
 
 ## Features
 
-- **English and Chinese interface**: switch any time with the **中文 / English** toggle in the top-right corner. On first launch the app follows your Windows display language.
+- **English and Chinese interface**: switch any time with the **中文 / English** toggle in the top-right corner. On first launch the app follows the Windows display language, or the macOS UI language.
 - **Use cases:** short-drama batch production remains a headline use case; also product demos, talking-head clips and social posts.
-- **Continue from previous clip:** optional Batch checkbox uses the previous row’s last frame as the next first frame (Seedance/Kling use embedded images; Wan data-URL support needs a live-key check). The Windows build bundles the frame tool (~70–80 MB).
+- **Continue from previous clip:** optional Batch checkbox uses the previous row’s last frame as the next first frame (Seedance/Kling use embedded images; Wan data-URL support needs a live-key check). The Windows and Mac builds bundle the frame tool (about 70–80 MB on Windows).
 - **Chat tab (对话):** refine what to shoot with a text model, then **Fill Generate** (prefill the single-clip form) or **Split to batch** (storyboard into Batch preview). Five text models: `glm-4.7-flash` (free default), `seed-1-6-flash-250715`, `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`.
 - **From script** (Batch tab): paste a script/outline; the same five text models split it into clip prompts for the preview table (`glm-4.7-flash` free default).
 - **Compare models**: send one prompt to 2–3 models (Compare tab, CLI `compare`, or MCP `compare_videos`), see side-by-side status and open the best file. Outputs land in a `compare/` subfolder as `name_model-short.mp4`.
@@ -40,7 +40,7 @@ Pick a model in the desktop UI, pass `--model` on the CLI, set `model` on MCP to
 - **Resumable downloads**: `.part` files with HTTP Range, overlap and size checks.
 - **Key pool**: add several keys; batch rows rotate the preferred key.
 - **No double charging**: a new key is tried only when a submission is explicitly rejected before any Task ID exists. Timeouts, 5xx and unclear responses are never retried automatically.
-- **Encrypted key storage**: keys stay in memory by default, or are saved with Windows DPAPI (bound to your Windows account).
+- **Encrypted key storage**: keys stay in memory by default. On Windows, "remember" saves them with DPAPI (bound to your Windows account). On macOS, "remember" saves them in the login Keychain (this macOS user only).
 - Optional CLI (`pt_wan.py`) and MCP server (`mcp_server.py`).
 
 ## Screenshots
@@ -168,13 +168,15 @@ Most users click **Sign in with PowerTokens** in the app header (OAuth + PKCE). 
 
 ## Run from source
 
-Requires Windows and Python 3.11+ (with Tcl/Tk and "Add python.exe to PATH"). No third-party packages are needed.
+The packaged Windows EXE and Mac app do not need Python. Running from source needs Python 3.11+ with Tcl/Tk.
+
+On Windows, install Python with **Add python.exe to PATH** and Tcl/Tk selected, then run `Start.bat` or `python app.py`.
+
+On macOS, use a Python.org installer (it includes Tcl/Tk) and run `python3 app.py`. No `pip install` is required for the desktop app itself.
 
 ```bat
 Start.bat
 ```
-
-or `python app.py`.
 
 ## Use with AI assistants (MCP)
 
@@ -235,7 +237,28 @@ Tips:
 
 On Windows, run `Build-EXE.bat`. It creates a build virtualenv, installs PyInstaller, runs the tests and writes `dist\PowerTokensVideoStudio.exe`, with the PowerTokens icon and the `assets` folder bundled.
 
-The GitHub Actions workflow **Build Windows executable** (`.github/workflows/build-windows.yml`) builds the same EXE when you push a `v*` tag or start it manually.
+The GitHub Actions workflow **Build Windows executable** (`.github/workflows/build-windows.yml`) builds the same EXE when you push a `v*` tag or start it manually. That workflow is unchanged.
+
+## Build the Mac app
+
+On an Apple Silicon Mac, run `./Build-Mac.sh`. It creates a build virtualenv, installs PyInstaller, runs the tests, and writes an unsigned app:
+
+- `dist/PowerTokensVideoStudio.app`
+- `dist/PowerTokensVideoStudio-macOS-arm64.dmg`
+- `dist/PowerTokensVideoStudio-macOS-arm64.app.zip`
+
+The script does not run on Linux or Windows, and it does not produce an Intel or universal2 binary. This build is an unsigned **Beta**. There is **no Apple Developer ID signature and no notarization**. Do not add signing certificates to make this build look signed. PyInstaller may attach an ad-hoc signature so Apple Silicon can launch the binary; Gatekeeper still blocks a copy downloaded from the internet.
+
+The first time you open the downloaded app, use one of these:
+
+1. In Finder, right-click (or Control-click) `PowerTokensVideoStudio.app` and choose **Open**, then **Open** again.
+2. Try to open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+
+The same note is written to `dist/GATEKEEPER.txt` and included in the disk image.
+
+The GitHub Actions workflow **Build macOS app** (`.github/workflows/build-macos.yml`) runs on the `macos-15` Apple Silicon runner. A pull request that touches the Mac packaging or desktop platform files builds an unsigned preview artifact before merge. The same job also runs on **workflow_dispatch** and on a `v*` tag. After the build it starts the packaged app with a throw-away data folder (no real credentials and no paid API calls) to confirm it launches, then uploads the `.dmg`, the `.zip`, and the Gatekeeper note as artifacts. It does **not** create a GitHub Release and does not change the Windows EXE workflows. `workflow_dispatch` appears in the Actions tab after this workflow file is on the default branch. A Linux or Windows runner cannot produce this binary; do not substitute a fake one.
+
+The public download page in the web companion is unchanged and does not list the Mac package yet.
 
 ## Pricing
 
@@ -245,12 +268,12 @@ Costs are charged by PowerTokens and depend on the model, duration and resolutio
 
 - The API key is only sent to the configured API host (`https://api.powertokens.ai` by default). It is stripped from redirects and never sent to CDN / storage hosts.
 - Task records store a key fingerprint (first 16 hex characters of SHA-256) and the last 4 characters, never the full key.
-- Desktop keys are kept in memory unless you tick "remember"; then they are encrypted with Windows DPAPI.
-- **The CLI config stores keys in plain text.** `python pt_wan.py config --add-key` writes the key unencrypted to `%LOCALAPPDATA%\PowerTokensWan\cli-config.json` (or the `PT_WAN_CONFIG` path), and file permissions cannot be restricted on Windows. Prefer the `POWERTOKENS_API_KEY` / `POWERTOKENS_API_KEYS` environment variables, and never commit that file.
+- Desktop keys are kept in memory unless you tick "remember". Windows then encrypts them with DPAPI (current Windows account). macOS stores them in the login Keychain (current macOS user). Other systems keep them for the session only.
+- **The CLI config stores keys in plain text.** `python pt_wan.py config --add-key` writes the key unencrypted to `%LOCALAPPDATA%\PowerTokensWan\cli-config.json` on Windows, or `~/Library/Application Support/PowerTokensWan/cli-config.json` on macOS (or the `PT_WAN_CONFIG` path). File permissions cannot be restricted on Windows. Prefer the `POWERTOKENS_API_KEY` / `POWERTOKENS_API_KEYS` environment variables, and never commit that file.
 - Signed video download links are stored in the local task record until the download completes, then cleared. If a download never completes they remain there; they expire on their own.
 - To use another HTTPS gateway, set `POWERTOKENS_API_BASE` (HTTPS only).
 
-Local data lives in `%LOCALAPPDATA%\PowerTokensWan` (the folder name is kept from earlier versions so existing records keep working).
+Local data lives in `%LOCALAPPDATA%\PowerTokensWan` on Windows, and in `~/Library/Application Support/PowerTokensWan` on macOS (the folder name is kept from earlier versions so existing Windows records keep working). New videos default to `Videos\PowerTokensVideoStudio` on Windows and `~/Movies/PowerTokensVideoStudio` on macOS.
 
 ## Troubleshooting
 
@@ -267,7 +290,7 @@ No. Only the local wait stops; the task keeps running in the cloud and may be ch
 The app could not confirm whether the task was created, so it will not resubmit. Look up the task in the PowerTokens dashboard and use **Link existing Task ID** on that row.
 
 **How do I change the language?**
-Click **中文** or **English** in the top-right corner. The window switches immediately and keeps your prompt, keys and imported batch; the choice is saved in `%LOCALAPPDATA%\PowerTokensWan\settings.json`.
+Click **中文** or **English** in the top-right corner. The window switches immediately and keeps your prompt, keys and imported batch. The choice is saved in `%LOCALAPPDATA%\PowerTokensWan\settings.json` on Windows, or `~/Library/Application Support/PowerTokensWan/settings.json` on macOS. The first launch follows the Windows display language, or the macOS UI language (`AppleLanguages`).
 
 More details are in the Chinese user guide: [使用说明.md](使用说明.md). Release notes: [CHANGELOG.md](CHANGELOG.md).
 
@@ -284,8 +307,7 @@ Yes. On the [API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_med
 
 ### What is PowerTokens Video Studio?
 
-PowerTokens Video Studio **1.17** is a free, open-source (MIT) Windows desktop app, with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
-
+PowerTokens Video Studio **1.17** is a free, open-source (MIT) desktop app for Windows and for Apple Silicon Mac (unsigned Beta), with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
 ### Can I batch-generate videos from a spreadsheet?
 
 Yes. On the **Batch import** tab, load an Excel or CSV file with one row per clip; only the `Prompt` column is required (legacy `Wan 3.0 Prompt` still works), and English or Chinese headers both work. An optional `Model` column picks the model per row (blank = Wan 3.0). Rows run with 1–8 concurrent generations, and you can export the results to CSV.
@@ -304,7 +326,7 @@ Yes. `mcp_server.py` is an MCP server, also [listed on Glama](https://glama.ai/m
 
 ### Does it run on macOS or Linux?
 
-The desktop app and the EXE are Windows only. There is also a [web companion](https://powertokens.github.io/video-studio-web/) in the browser. The MCP server also runs on macOS and Linux with Python 3.11+, or in Docker on any system.
+Yes on Windows, and on macOS for Apple Silicon. The Mac package is an unsigned Beta `.app` inside a `.dmg` (a `.zip` of the same app is also produced). It is not notarized, and the window title includes **Beta**. Gatekeeper will block the first open of a downloaded copy until you right-click the app and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway**. The packaged app does not need Python. There is no Linux desktop package. A [web companion](https://powertokens.github.io/video-studio-web/) runs in the browser. The MCP server also runs on macOS and Linux with Python 3.11+, or in Docker on any system.
 
 ### How do I get a PowerTokens API key, and how are models billed?
 

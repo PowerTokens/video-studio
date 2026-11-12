@@ -6,7 +6,7 @@ API key). Matches the web client_id powerbaze_desktop_v1.
 
 Access tokens last ~1800s with no refresh_token. Session persistence stores the
 token and display profile only — never the API key (that goes into the existing
-key pool / DPAPI path in the app).
+key pool, then DPAPI on Windows or the login Keychain on macOS).
 """
 from __future__ import annotations
 

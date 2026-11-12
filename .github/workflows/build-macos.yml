@@ -1,0 +1,142 @@
+name: Build macOS app
+
+# Unsigned Apple Silicon desktop build. No Apple Developer ID, no notarization,
+# and no signing secrets. workflow_dispatch builds a preview artifact without
+# a version tag. pull_request builds a preview when mac packaging or desktop
+# platform files change, so a package can be reviewed before merge. A v* tag
+# also uploads the same artifacts (it does not create or edit a GitHub Release).
+# Windows EXE workflows are separate and unchanged.
+#
+# This workflow uses pull_request (not pull_request_target) and only
+# contents: read. Pull-request runs do not read repository secrets.
+# workflow_dispatch and v* tag runs bake the public PostHog project
+# capture token (phc_... only) from VS_POSTHOG_PROJECT_KEY.
+#
+# GitHub only offers workflow_dispatch in the Actions tab once this file is on
+# the default branch. Until then, pull_request on this branch is the way to
+# produce a preview artifact.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - '.github/workflows/build-macos.yml'
+      - 'Build-Mac.sh'
+      - 'tools/make_icns.sh'
+      - 'tools/macos_app_smoke.sh'
+      - 'tools/macos_acceptance.py'
+      - 'tools/https_fixture.py'
+      - 'tools/prepare_analytics_config.py'
+      - 'tools/pyinstaller_analytics_flags.py'
+      - 'tools/check_analytics_bundle.py'
+      - 'platform_paths.py'
+      - 'secret_store.py'
+      - 'requirements.txt'
+      - 'assets/**'
+      - '*.py'
+      - '*.xlsx'
+      - 'tests/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-app-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # macos-15 is GitHub's arm64 image. The Intel variant is macos-15-intel.
+    # macos-latest currently also points at an arm64 image, but the exact OS
+    # version moves; pin here so preview builds stay on a known Apple Silicon runner.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require Apple Silicon
+        run: |
+          uname -sm
+          test "$(uname -m)" = "arm64"
+          sysctl -n machdep.cpu.brand_string || true
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pyinstaller>=6,<7" -r requirements.txt
+      - name: Run tests
+        env:
+          PYTHONUTF8: '1'
+          # Opt in to native Tk tests on this Mac runner (skipped on Linux
+          # unless PT_GUI_TESTS=1). test_no_button_or_label_is_clipped still
+          # skips on GITHUB_ACTIONS because CI font metrics are not the layout
+          # under test. No real credentials and no paid API calls.
+          PT_GUI_TESTS: '1'
+          VS_ANALYTICS_DISABLE: '1'
+        run: python -m unittest discover -s tests -v
+      - name: Bake public PostHog project key
+        # Only the public capture token (phc_...) may be bundled.
+        # Pull-request builds do not receive this secret and stay unconfigured.
+        # workflow_dispatch and tag builds must ship a configured app.
+        if: github.event_name != 'pull_request'
+        env:
+          PYTHONUTF8: '1'
+          VS_POSTHOG_PROJECT_KEY: ${{ secrets.VS_POSTHOG_PROJECT_KEY }}
+          VS_POSTHOG_HOST: ${{ secrets.VS_POSTHOG_HOST }}
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            python tools/prepare_analytics_config.py
+          else
+            python tools/prepare_analytics_config.py --allow-empty
+          fi
+      - name: Confirm public capture token is present
+        # Required on tag and workflow_dispatch so a 1.17+ Mac package
+        # meant for the GitHub Release is never published unconfigured.
+        if: github.event_name != 'pull_request'
+        env:
+          PYTHONUTF8: '1'
+        run: |
+          python -c "import analytics_config; k=analytics_config.load()['project_key']; assert analytics_config.public_project_key(k), 'missing or non-public project key'; print('public_capture_token_ok len=' + str(len(k)))"
+      - name: Build unsigned app, DMG and zip
+        # Same packaging as Build-Mac.sh. Tests already ran in the previous step.
+        run: bash Build-Mac.sh --skip-tests --no-venv
+      - name: Verify packages and smoke-launch the app
+        env:
+          PYTHONUTF8: '1'
+          LOCALAPPDATA: ${{ runner.temp }}/pt-smoke-data
+        run: bash tools/macos_app_smoke.sh
+      - name: Mac acceptance (Keychain, GUI, fixture sim, DMG)
+        env:
+          PYTHONUTF8: '1'
+          # Isolated Keychain item names so this job never reads or writes
+          # a real remembered-key item. Dummy values only.
+          PT_KEYCHAIN_SERVICE: PowerTokens Video Studio CI ${{ github.run_id }}
+          PT_KEYCHAIN_ACCOUNT: accept-dummy-${{ github.run_id }}
+        run: python tools/macos_acceptance.py --app dist/PowerTokensVideoStudio.app --dmg dist/PowerTokensVideoStudio-macOS-arm64.dmg --out dist/acceptance
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PowerTokensVideoStudio-macOS-arm64
+          path: |
+            dist/PowerTokensVideoStudio-macOS-arm64.dmg
+            dist/PowerTokensVideoStudio-macOS-arm64.app.zip
+            dist/GATEKEEPER.txt
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-smoke-evidence
+          path: dist/smoke/
+          if-no-files-found: ignore
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-acceptance
+          path: dist/acceptance/
+          if-no-files-found: ignore
