@@ -4,7 +4,9 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
-- **In-app update check.** On startup the desktop app checks the latest GitHub release in the background (at most once every 24 hours). If a newer version is available, a non-blocking banner offers Download or Later. Windows saves the official EXE to the Downloads folder and can quit to open it; macOS downloads the official arm64 DMG and can open the installer. If a download fails after the user asked for it, the banner offers a retry. Network errors during the silent check are not shown.
+## [1.18](https://github.com/PowerTokens/video-studio/releases/tag/v1.18.0) - 2026-11-12
+
+- **In-app update check.** On startup the desktop app checks the latest GitHub release in the background (at most once every 24 hours). If a newer version is available, a non-blocking banner offers Download or Later. Windows saves the official EXE to the Downloads folder and can quit to open it; macOS downloads the official arm64 DMG and can open the installer. If a download fails after the user asked for it, the banner offers a retry. Network errors during the silent check are not shown. This is the first version that can check for later releases from inside the app; already-installed 1.17 and earlier still need a one-time manual download of 1.18.
 
 ## [1.17](https://github.com/PowerTokens/video-studio/releases/tag/v1.17.0) - 2026-11-12
 
