@@ -1,5 +1,9 @@
 """Payment transport. No cookie, token logging, or runtime package scraping."""
+import analytics
+import urllib.error
 import json
+import logging
+import re
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse
 PACKAGES = [{'id': 22, 'amount_type': 1, 'package_name': '01', 'sales_price': 20, 'credits_amount': 20000, 'is_recommended': 1, 'status': 1, 'currency': 'USD'}, {'id': 23, 'amount_type': 1, 'package_name': '02', 'sales_price': 50, 'credits_amount': 50000, 'is_recommended': 0, 'status': 1, 'currency': 'USD'}, {'id': 24, 'amount_type': 1, 'package_name': '03', 'sales_price': 200, 'credits_amount': 200000, 'is_recommended': 0, 'status': 1, 'currency': 'USD'}, {'id': 33, 'amount_type': 2, 'package_name': '15', 'sales_price': 0, 'min_recharge_amount': 5, 'max_recharge_amount': 2000, 'credits_amount': 0, 'is_recommended': 0, 'status': 1, 'currency': 'USD'}]
@@ -22,16 +26,54 @@ def payload(package_id, amount, channel):
     return dict(amount=value, package_id=package['id'], payment_channel=channel)
 
 def post(path, token, body):
+    logging.getLogger(__name__).info(
+        '[payment] headerUsesRawToken: false, headerUsesBearer: true')
     req = Request(BASE + path, data=json.dumps(body).encode(), headers={
-        'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+        'Authorization': 'Bearer ' + re.sub(r'^(?:Bearer\s+)+', '', token.strip(), flags=re.I), 'Content-Type': 'application/json'})
     with urlopen(req, timeout=15) as response:
         return json.load(response)
 
+def _notify(event, **props):
+    try:
+        getattr(analytics, 'notify_payment_' + event)(**props)
+    except Exception:
+        pass
+
+
+def track_paid_status(state, status):
+    # Only confirmed paid status qualifies; a balance change alone does not.
+    if status == 1 and not state.get('payment_success_tracked'):
+        _notify('success', package_id=state.get('package_id'), channel=state.get('channel'))
+        state['payment_success_tracked'] = True
+
+
 def create(token, body):
-    result = post('/v1/payment/create', token, body)
-    data = result.get('data') or {}
-    if result.get('code') != 200 or not data.get('orderNo') or not valid_redirect(data.get('redirectUrl', '')):
-        raise ValueError(str(result.get('msg') or 'Could not start checkout.')[:200])
+    props = dict(package_id=body.get('package_id'), channel=body.get('payment_channel'))
+    _notify('start', **props, source='dialog')
+    try:
+        try:
+            result = post('/v1/payment/create', token, body)
+        except ValueError:
+            _notify('failed', **props, error_code='VALIDATION')
+            raise
+        data = result.get('data') or {}
+        if result.get('code') != 200:
+            _notify('failed', **props, error_code='AUTH' if result.get('code') in (401, 403) else 'UNKNOWN')
+            raise ValueError('Could not start checkout.')
+        try:
+            valid = data.get('orderNo') and valid_redirect(data.get('redirectUrl', ''))
+        except (ValueError, TypeError, AttributeError):
+            valid = False
+        if not valid:
+            _notify('failed', **props, error_code='VALIDATION')
+            raise ValueError('Could not start checkout.')
+    except ValueError:
+        raise
+    except Exception as exc:
+        code = 'AUTH' if isinstance(exc, urllib.error.HTTPError) and exc.code in (401, 403) else 'NETWORK' if isinstance(exc, (OSError, TimeoutError)) else 'UNKNOWN'
+        _notify('failed', **props, error_code=code)
+        raise
+    _notify('checkout_opened', **props)
     return data
 
 def status(token, order):

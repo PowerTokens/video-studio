@@ -40,6 +40,15 @@ class AnalyticsCoreTests(unittest.TestCase):
             config={'project_key': 'phc_test', 'host': 'https://example.invalid'},
         )
 
+    def test_utm_sanitizer(self):
+        clean = analytics.sanitize_properties('app_open', {
+            'utm_source': ' safe-source ', 'initial_utm_source': 'unsafe/value',
+            'utm_term': 'x' * 81, 'utm_content': 'unsafe value',
+        })
+        self.assertEqual(clean['utm_source'], 'safe-source')
+        for key in ('initial_utm_source', 'utm_term', 'utm_content'):
+            self.assertNotIn(key, clean)
+
     def grant(self):
         self.client.set_consent(True)
         # set_consent already captures app_open and flushes. Drain sent for later asserts.

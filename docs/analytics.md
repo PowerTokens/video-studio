@@ -159,3 +159,14 @@ These are independent steps related by the same anonymous `install_id` / `sessio
 5. **Social sharing** — **no existing share feature.** There is no `navigator.share`, no social-network buttons, and no share-complete callback. Clipboard copy of task IDs or prompts is not a social publish and is not captured. Do not invent `share_published`.
 
 Dashboard notes: filter `environment = production` for live traffic (exclude `synthetic` / `test`). Do not treat GitHub download counts as DAU. Do not compute revenue from these events.
+
+Desktop attribution is attached centrally at enqueue for every event, including
+session_end. First and last touch come from utm_attr in the client data directory.
+Only the five UTM fields are accepted, using plain initial_utm_* for first touch.
+Values are trimmed ASCII tokens of at most 80 characters; unsafe values are dropped
+and source/medium/campaign fall back to product defaults. Click IDs are excluded.
+
+Payment funnel: payment_start, payment_checkout_opened (validated create redirect),
+payment_failed (normalized code), payment_success (confirmed paid polling status).
+Only catalog package IDs and limeng/paypal channels are recorded. No monetary,
+order, checkout URL, account, or credential data is included. Tracking fails open.
