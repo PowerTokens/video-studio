@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-免费开源 Video Studio **1.18**（[Windows 桌面端](../../releases/latest)、未签名的 Apple Silicon Mac Beta 应用，以及[网页版](https://powertokens.github.io/video-studio-web/)），支持 **Wan · Seedance · Kling 等** — Excel/CSV 批量、模型对比、分镜、安全恢复。
+免费开源 Video Studio **1.18**（[Windows 桌面端](../../releases/latest)、未签名的 Apple Silicon Mac Beta 应用，以及[网页版](https://powertokens.github.io/video-studio-web/)），支持 **Wan · Seedance · Kling 等** — 对话出片、Excel/CSV 批量、模型对比、分镜、安全恢复。
 
 ![演示：Wan 3.0 生成的片段](docs/images/demo.gif)
 
@@ -142,10 +142,11 @@ Stabilized handheld, natural motion blur, shallow DOF. Clear English dialogue li
 
 ## 快速开始（无需 Python）
 
-1. 从 [Releases](../../releases/latest) 页面下载 `PowerTokensVideoStudio.exe`。
-2. 双击运行。EXE 没有代码签名，Windows SmartScreen 可能提示“Windows 已保护你的电脑”，点击「更多信息」→「仍要运行」。
-3. 点击顶栏「登录 PowerTokens」，默认 API Key 与积分会自动填入。需要手动粘贴时，到「API Key → 高级」。
-4. 在「生成视频」写提示词、在「对话」聊拍什么，或在「批量导入」导入表格。
+1. 从 [Releases](../../releases/latest) 页面或[下载页](https://powertokens.github.io/video-studio-web/download.html)下载桌面应用：
+   - **Windows：** `PowerTokensVideoStudio.exe`。EXE 没有代码签名，Windows SmartScreen 可能提示“Windows 已保护你的电脑”，点击「更多信息」→「仍要运行」。
+   - **macOS（Apple Silicon，未签名 Beta）：** `PowerTokensVideoStudio-macOS-arm64.dmg`。不支持 Intel Mac。打开磁盘映像，把 `PowerTokensVideoStudio.app` 拖到「应用程序」。此安装包未签名、也未公证，窗口标题带有 **Beta**。第一次打开时，请右键该 App 并选择「打开」，或到「系统设置 → 隐私与安全性」点击「仍要打开」。
+2. 点击顶栏「登录 PowerTokens」，默认 API Key 与积分会自动填入。需要手动粘贴时，到「API Key → 高级」。
+3. 在「生成视频」写提示词、在「对话」聊拍什么，或在「批量导入」导入表格。
 
 附带三集示例表格：`短剧批量示例模板.xlsx` / `产品批量示例模板.xlsx`（英文：`short-drama-batch-template.xlsx` / `product-batch-template.xlsx`）。在「批量导入」页可分别保存「短剧示例模板」与「产品示例模板」。列：`标题`、`时长(秒)`、`分辨率`、`画面比例`、`提示词` / `Prompt`（仅提示词列必填；旧表头 `Wan 3.0 Prompt` 仍可用）。可选 `模型` / `Model` 列接受模型 ID 或显示名。
 
@@ -248,7 +249,7 @@ GitHub Actions 工作流 **Build Windows executable**（`.github/workflows/build
 
 GitHub Actions 工作流 **Build macOS app**（`.github/workflows/build-macos.yml`）在 `macos-15` Apple Silicon 运行器上执行。当 pull request 改动了 Mac 打包或桌面平台相关文件时，会在合并前构建一份未签名的预览包。同一份任务也可通过 **workflow_dispatch** 手动触发，或在推送 `v*` 标签时运行。构建完成后会用临时数据目录启动打包好的应用（不使用真实凭证，也不发起付费 API 调用）以确认可以打开，再上传 `.dmg`、`.zip` 和 Gatekeeper 说明。它只上传构建产物，**不会**创建 GitHub Release，也不修改 Windows EXE 工作流。这个工作流文件进入默认分支之后，Actions 页面才会出现手动运行入口。Linux 或 Windows 运行器无法生成这个二进制，不要用假的包代替。
 
-网页版的下载页尚未列出 Mac 安装包。
+网页版的[下载页](https://powertokens.github.io/video-studio-web/download.html)已同时提供 Windows 安装包和这个 Mac Beta 的 `.dmg`。
 
 ## 费用
 
@@ -294,7 +295,7 @@ Windows 上本机数据位于 `%LOCALAPPDATA%\PowerTokensWan`，macOS 上位于 
 
 ### PowerTokens Video Studio 是什么？
 
-PowerTokens Video Studio **1.18** 是一款免费开源（MIT）的桌面工具，支持 Windows，以及未签名的 Apple Silicon Mac，另有[网页版](https://powertokens.github.io/video-studio-web/)，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 / Fast（**−50%**）/ Mini（**−60%**）、Seedance 2.5、kling v3 等，以及 Excel / CSV 批量导入、模型对比、分镜、按任务 ID 恢复，并避免重复扣费。
+PowerTokens Video Studio **1.18** 是一款免费开源（MIT）的桌面工具，支持 Windows，以及未签名的 Apple Silicon Mac，另有[网页版](https://powertokens.github.io/video-studio-web/)，通过 PowerTokens API 批量生成 AI 视频。支持 Wan 3.0（默认）、Wan 3.0 Prime、Seedance 2.0 / Fast（**−50%**）/ Mini（**−60%**）、Seedance 2.5、kling v3 等，以及对话出片、Excel / CSV 批量导入、模型对比、分镜、按任务 ID 恢复，并避免重复扣费。
 ### 可以用 Excel 表格批量生成视频吗？
 
 可以。在「批量导入」页导入 Excel 或 CSV 文件，一行对应一条视频；只有 `提示词` / `Prompt` 列是必填的（旧表头 `Wan 3.0 Prompt` 仍可用），中英文表头均可识别。可选 `模型` / `Model` 列按行指定模型（留空 = Wan 3.0）。生成并发可设为 1–8，结果可导出为 CSV。
