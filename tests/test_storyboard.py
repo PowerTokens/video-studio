@@ -101,13 +101,14 @@ class StoryboardCallTests(unittest.TestCase):
         self.assertEqual(imported[0]['state'], 'queued')
 
 
-class FiveModelAllowlistTests(unittest.TestCase):
-    def test_allowed_text_models_are_the_five(self):
+class FourModelAllowlistTests(unittest.TestCase):
+    def test_allowed_text_models_are_the_four(self):
         self.assertEqual(sb.ALLOWED_TEXT_MODELS[0], 'glm-4.7-flash')
         self.assertEqual(list(sb.ALLOWED_TEXT_MODELS), [
-            'glm-4.7-flash', 'seed-1-6-flash-250715', 'deepseek-flash',
+            'glm-4.7-flash', 'deepseek-flash',
             'MiniMax-M2.7', 'glm-5.3-flash',
         ])
+        self.assertEqual(sb.resolve_text_model('seed-1-6-flash-250715'), 'glm-4.7-flash')
         self.assertNotIn('qwen3-max', sb.ALLOWED_TEXT_MODELS)
         self.assertTrue(sb.is_free_text_model('glm-4.7-flash'))
         self.assertFalse(sb.is_free_text_model('deepseek-flash'))
