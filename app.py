@@ -145,6 +145,7 @@ class App:
         self._update_stop = threading.Event()
         self._update_downloading = False
         self._update_phase = None
+        self._update_progress_value = 0
         self._update_progress_text = ''
         self._update_fail_kind = None
         self._update_dismissed_session = False
@@ -1766,12 +1767,18 @@ class App:
         box.configure(style='Update.TFrame')
         surface.bind('<Configure>', lambda event: surface.itemconfigure('surface', fill='#eaf7f3'), add='+')
         self.update_banner = surface
-        label(box, '↑  Video Studio', style='Update.TLabel').pack(side='left', padx=(0, 16))
+        header = ttk.Frame(box, style='Update.TFrame')
+        header.pack(fill='x')
+        label(header, '↑  Video Studio', style='Update.TLabel').pack(side='left', padx=(0, 16))
         self.update_message = tk.StringVar(value='')
-        label(box, variable=self.update_message, style='Update.TLabel').pack(side='left', fill='x', expand=True, padx=(0, 12))
-        actions = ttk.Frame(box, style='Update.TFrame')
+        label(header, variable=self.update_message, style='Update.TLabel').pack(side='left', fill='x', expand=True, padx=(0, 12))
+        actions = ttk.Frame(header, style='Update.TFrame')
         actions.pack(side='right')
-        self.update_progress_bar = ttk.Progressbar(box, length=100, maximum=100)
+        self.update_progress_row = ttk.Frame(box, style='Update.TFrame')
+        self.update_progress_bar = ttk.Progressbar(
+            self.update_progress_row, length=100, maximum=100,
+            style='Horizontal.TProgressbar', value=getattr(self, '_update_progress_value', 0))
+        self.update_progress_bar.pack(fill='x')
         self.update_download_btn = ttk.Button(actions, text=t('update_download'), style='Accent.TButton',
                                               command=self._download_update)
         self.update_later_btn = ttk.Button(actions, text=t('update_later'), style='Link.TButton',
@@ -1837,9 +1844,9 @@ class App:
         phase = self._update_phase or 'offer'
         if hasattr(self, 'update_progress_bar'):
             if phase == 'downloading':
-                self.update_progress_bar.pack(side='bottom', fill='x', pady=(8, 0))
+                self.update_progress_row.pack(fill='x', pady=(8, 0))
             else:
-                self.update_progress_bar.pack_forget()
+                self.update_progress_row.pack_forget()
         version = offer.version or offer.tag
         current = VERSION
         if phase == 'downloading':
@@ -1929,6 +1936,7 @@ class App:
         self._update_stop.clear()
         self._update_downloading = True
         self._update_phase = 'downloading'
+        self._update_progress_value = 0
         self._update_progress_text = ''
         self._update_fail_kind = None
         self._refresh_update_banner_copy()
@@ -1966,7 +1974,8 @@ class App:
             received = 0
         self._update_progress_text = update_check.format_progress(received, total)
         if hasattr(self, 'update_progress_bar') and total:
-            self.update_progress_bar.configure(value=min(100, 100 * received / total))
+            self._update_progress_value = min(100, 100 * received / total)
+            self.update_progress_bar.configure(value=self._update_progress_value)
         if self._update_phase != 'downloading':
             self._update_phase = 'downloading'
         self._refresh_update_banner_copy()

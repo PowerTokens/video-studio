@@ -147,7 +147,11 @@ class AnalyticsCoreTests(unittest.TestCase):
                           for x in ast.walk(n))]
         self.assertEqual(owners, ['_build_update_banner'])
         builder = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_build_update_banner')
-        self.assertIn("ttk.Progressbar(box", ast.get_source_segment(source, builder))
+        assignment = next(n for n in ast.walk(builder) if isinstance(n, ast.Assign)
+                          and any(isinstance(target, ast.Attribute) and target.attr == 'update_progress_bar'
+                                  for target in n.targets))
+        self.assertEqual(ast.unparse(assignment.value.func), 'ttk.Progressbar')
+        self.assertEqual(ast.unparse(assignment.value.args[0]), 'self.update_progress_row')
         self.assertIn("style='Update.TFrame'", ast.get_source_segment(source, builder))
 
     def test_app_open_once_per_session(self):
