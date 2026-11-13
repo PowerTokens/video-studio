@@ -10,24 +10,21 @@ from i18n import t
 from models import DEFAULT_MODEL_ID, get_model, resolve_model_id, snap_params, format_adjust_notice
 from wan_core import API_BASE, TaskError, api, estimate_cost, payload
 
-# Free default first; same five for Chat and Batch「从剧本生成」.
+# Free default first; same four for Chat and Batch「从剧本生成」。
 # Never Seedream, MiniMax H3, deepseek-v4, Kimi, or qwen3-max (chat 404).
 DEFAULT_TEXT_MODEL = 'glm-4.7-flash'
-TEXT_MODEL_SEED = 'seed-1-6-flash-250715'
 TEXT_MODEL_DEEPSEEK = 'deepseek-flash'
 TEXT_MODEL_MINIMAX = 'MiniMax-M2.7'
 TEXT_MODEL_GLM53 = 'glm-5.3-flash'
 FREE_TEXT_MODELS = frozenset({DEFAULT_TEXT_MODEL})
 ALLOWED_TEXT_MODELS = (
     DEFAULT_TEXT_MODEL,
-    TEXT_MODEL_SEED,
     TEXT_MODEL_DEEPSEEK,
     TEXT_MODEL_MINIMAX,
     TEXT_MODEL_GLM53,
 )
 TEXT_MODEL_LABEL_KEYS = {
     DEFAULT_TEXT_MODEL: 'storyboard_text_free',
-    TEXT_MODEL_SEED: 'storyboard_text_seed',
     TEXT_MODEL_DEEPSEEK: 'storyboard_text_deepseek',
     TEXT_MODEL_MINIMAX: 'storyboard_text_minimax',
     TEXT_MODEL_GLM53: 'storyboard_text_glm53',

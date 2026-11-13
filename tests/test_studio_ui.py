@@ -13,6 +13,9 @@ from unittest.mock import patch
 import datetime
 import re
 
+# In-app update check would schedule a GitHub request after 800ms; keep these UI tests offline.
+os.environ.setdefault('VS_SKIP_UPDATE_CHECK', '1')
+
 import app
 import batch_ui
 import wan_core
@@ -47,6 +50,50 @@ class StudioUITests(unittest.TestCase):
         for child in parent.winfo_children():
             yield child
             yield from self.widgets(child)
+
+    def test_update_progress_has_dedicated_row_and_survives_language_switch(self):
+        import update_check
+        gui = self.gui
+        previous_language = i18n.get_language()
+        try:
+            gui._update_dismissed_session = False
+            gui._show_update_offer(update_check.fixture_release(platform='darwin', version='1.18.0'))
+            self.root.update()
+            self.assertFalse(gui.update_progress_bar.winfo_viewable())
+            gui._update_progress((25, 100))
+            self.root.update()
+
+            def check_progress(value):
+                bar = gui.update_progress_bar
+                row = bar.master
+                header = gui.update_download_btn.master.master
+                self.assertIsNot(row, header)
+                self.assertIs(row.master, header.master)
+                self.assertEqual(row.winfo_manager(), 'pack')
+                self.assertTrue(bar.winfo_viewable())
+                self.assertGreater(bar.winfo_height(), 4)
+                self.assertGreaterEqual(row.winfo_y(), header.winfo_y() + header.winfo_height())
+                self.assertGreaterEqual(bar.winfo_width(), row.master.winfo_width() - 2)
+                self.assertEqual(float(bar['value']), value)
+
+            check_progress(25)
+            gui.switch_language('en' if previous_language == 'zh' else 'zh')
+            self.root.update()
+            self.assertEqual(gui._update_phase, 'downloading')
+            check_progress(25)
+            gui._update_progress((75, 100))
+            self.root.update()
+            check_progress(75)
+            gui._update_phase = 'ready'
+            gui._refresh_update_banner_copy()
+            self.root.update()
+            self.assertFalse(gui.update_progress_bar.winfo_viewable())
+        finally:
+            gui._update_phase = 'offer'
+            gui._update_downloading = False
+            gui._dismiss_update()
+            gui.switch_language(previous_language)
+            self.root.update()
 
     def test_promo_badge_and_list_price_follow_end_date(self):
         self.gui.duration.set('10')

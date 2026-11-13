@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Free open-source Video Studio **1.17** ([Windows desktop](../../releases/latest), an unsigned Apple Silicon Mac Beta app, and a [web companion](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — chat, Excel/CSV batch, compare, storyboard, safe resume.
+Free open-source Video Studio **1.18** ([Windows desktop](../../releases/latest), an unsigned Apple Silicon Mac Beta app, and a [web companion](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — chat, Excel/CSV batch, compare, storyboard, safe resume.
 
 ![Demo: a clip generated with Wan 3.0](docs/images/demo.gif)
 
@@ -29,8 +29,8 @@ Pick a model in the desktop UI, pass `--model` on the CLI, set `model` on MCP to
 - **English and Chinese interface**: switch any time with the **中文 / English** toggle in the top-right corner. On first launch the app follows the Windows display language, or the macOS UI language.
 - **Use cases:** short-drama batch production remains a headline use case; also product demos, talking-head clips and social posts.
 - **Continue from previous clip:** optional Batch checkbox uses the previous row’s last frame as the next first frame (Seedance/Kling use embedded images; Wan data-URL support needs a live-key check). The Windows and Mac builds bundle the frame tool (about 70–80 MB on Windows).
-- **Chat tab (对话):** refine what to shoot with a text model, then **Fill Generate** (prefill the single-clip form) or **Split to batch** (storyboard into Batch preview). Five text models: `glm-4.7-flash` (free default), `seed-1-6-flash-250715`, `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`.
-- **From script** (Batch tab): paste a script/outline; the same five text models split it into clip prompts for the preview table (`glm-4.7-flash` free default).
+- **Chat tab (对话):** refine what to shoot with a text model, then **Fill Generate** (prefill the single-clip form) or **Split to batch** (storyboard into Batch preview). Four text models: `glm-4.7-flash` (free default), `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`.
+- **From script** (Batch tab): paste a script/outline; the same four text models split it into clip prompts for the preview table (`glm-4.7-flash` free default).
 - **Compare models**: send one prompt to 2–3 models (Compare tab, CLI `compare`, or MCP `compare_videos`), see side-by-side status and open the best file. Outputs land in a `compare/` subfolder as `name_model-short.mp4`.
 - **Model picker**: choose Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0, Seedance 2.0 Fast (**−50%**), Seedance 2.0 Mini (**−60%**), Seedance 2.5 or kling v3. Duration / resolution / ratio controls update to what that model allows.
 - **Single video**: prompt, duration, resolution and ratio (limits depend on the model), optional first/last frame and reference image / video / audio URLs, seed (where supported). Duration and ratio are detected from the prompt in English or Chinese. Native audio is on when the model supports it.
@@ -308,7 +308,7 @@ Yes. On the [API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_med
 
 ### What is PowerTokens Video Studio?
 
-PowerTokens Video Studio **1.17** is a free, open-source (MIT) desktop app for Windows and for Apple Silicon Mac (unsigned Beta), with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with chat, batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
+PowerTokens Video Studio **1.18** is a free, open-source (MIT) desktop app for Windows and for Apple Silicon Mac (unsigned Beta), with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with chat, batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
 ### Can I batch-generate videos from a spreadsheet?
 
 Yes. On the **Batch import** tab, load an Excel or CSV file with one row per clip; only the `Prompt` column is required (legacy `Wan 3.0 Prompt` still works), and English or Chinese headers both work. An optional `Model` column picks the model per row (blank = Wan 3.0). Rows run with 1–8 concurrent generations, and you can export the results to CSV.

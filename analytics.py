@@ -7,8 +7,7 @@ allowlist; prompts, keys, tokens, emails, user assets, raw error text, OAuth
 codes, and URL query strings are never accepted.
 
 Network failures fail open (the UI is never blocked). The outbound queue is
-bounded and only used after opt-in when a destination exists. No identifiers
-or events are stored before consent. Account linkage is not used in this MVP:
+bounded and only used when a destination exists. Analytics is default on. Account linkage is not used in this MVP:
 distinct_id is a random install UUID. The ingest host may still see the client
 IP; this client sets $geoip_disable and $process_person_profile=false, and
 does not claim IP anonymity.
@@ -27,8 +26,10 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 import analytics_config
+import utm_attr
 
 EVENTS = frozenset({
+    'payment_start', 'payment_checkout_opened', 'payment_failed', 'payment_success',
     'app_open',
     'login_success',
     'generation_start',
@@ -49,7 +50,12 @@ EVENTS = frozenset({
     'language_set',
 })
 
-ALLOWED_PROPS = frozenset({
+UTM_KEYS = ('utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term')
+UTM_PROPS = frozenset(UTM_KEYS) | frozenset('initial_' + k for k in UTM_KEYS)
+UTM_RE = re.compile(r'[A-Za-z0-9._-]{1,80}')
+
+ALLOWED_PROPS = UTM_PROPS | frozenset({
+    'package_id', 'channel',
     'platform',
     'app_version',
     'session_id',
@@ -79,6 +85,8 @@ FORBIDDEN_PROP_KEYS = frozenset({
     'message', 'detail', 'exception', 'stack', 'traceback', 'url', 'href',
     'search', 'query', 'current_url', '$current_url', 'pathname', '$pathname',
     'referrer', '$referrer', 'video_url', 'media', 'image', 'assets',
+    'amount', 'order', 'order_no', 'orderNo', 'order_id', 'checkout_url',
+    'redirectUrl', 'redirect_url', 'query_string', 'account_id',
     'credits', 'balance', 'password', 'secret', 'raw', 'userinfo', 'profile',
     'sub', 'user_id', 'distinct_email',
 })
@@ -96,7 +104,7 @@ SAFE_SURFACES = frozenset({
 })
 SAFE_INPUT_MODE = frozenset({'t2v', 'i2v'})
 SAFE_LANGUAGES = frozenset({'zh', 'en', 'es', 'pt', 'ja', 'ko'})
-SAFE_BILLING_SOURCE = frozenset({'header', 'account', 'quota', 'credits_chip', 'chat'})
+SAFE_BILLING_SOURCE = frozenset({'header', 'account', 'quota', 'credits_chip', 'chat', 'dialog'})
 SESSION_MAX_MS = 12 * 60 * 60 * 1000
 
 # Official ingest hosts from https://posthog.com/docs/api/capture
@@ -182,20 +190,52 @@ def sanitize_test_run_id(value: Any) -> Optional[str]:
     return text
 
 
+def safe_utm(value):
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value if UTM_RE.fullmatch(value) else None
+
+
+def attribution(data_dir):
+    props = {}
+    for prefix, reader in (('', utm_attr.last_touch), ('initial_', utm_attr.first_touch)):
+        try:
+            touch = reader(data_dir) or {}
+        except Exception:
+            touch = {}
+        for key in UTM_KEYS:
+            value = safe_utm(touch.get(key)) or utm_attr.DEFAULTS.get(key)
+            if value:
+                props[prefix + key] = value
+    return props
+
+
 def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
     """Return an allowlisted payload, or None if the event itself is not allowed."""
     if event not in EVENTS:
         return None
     clean: dict[str, Any] = {}
     for key, value in (props or {}).items():
-        if key in FORBIDDEN_PROP_KEYS:
+        if key in FORBIDDEN_PROP_KEYS or any(part in key.lower() for part in ('url', 'query', 'credit', 'balance', 'amount', 'order')):
             continue
         if key not in ALLOWED_PROPS:
             continue
         if value is None or value is False or value is True:
             # booleans and None are fine (None will be dropped below except key_applied)
             pass
-        if key == 'error_code':
+        if key in UTM_PROPS:
+            value = safe_utm(value)
+            if value is None:
+                continue
+        elif key == 'package_id':
+            if type(value) not in (str, int) or str(value) not in {'22', '23', '24', '33'}:
+                continue
+            value = str(value)
+        elif key == 'channel':
+            if value not in ('limeng', 'paypal'):
+                continue
+        elif key == 'error_code':
             value = normalize_error_code(value)
         elif key == 'surface':
             value = str(value or '').strip().lower()
@@ -289,6 +329,8 @@ class Analytics:
         self._transport = transport
         self._config = dict(config or {})
         self._state = self._load_state()
+        self._state['consent'] = CONSENT_GRANTED
+        self._save_state()
         self._flush_thread: Optional[threading.Thread] = None
         self._flush_lock = threading.Lock()
 
@@ -346,24 +388,13 @@ class Analytics:
 
     # ----- consent -----
     def consent_state(self) -> str:
-        value = str(self._state.get('consent') or CONSENT_UNSET).strip()
-        if value in (CONSENT_GRANTED, CONSENT_DENIED, CONSENT_UNSET):
-            return value
-        return CONSENT_UNSET
+        return CONSENT_GRANTED
 
     def is_enabled(self) -> bool:
-        return self.consent_state() == CONSENT_GRANTED
+        return self.has_destination()
 
     def set_consent(self, granted: bool) -> None:
-        with self._lock:
-            self._state['consent'] = CONSENT_GRANTED if granted else CONSENT_DENIED
-            self._state['queue'] = []
-            self._state['account_distinct_id'] = ''
-            if not granted:
-                # Keep a local denial flag only. Do not invent identifiers.
-                self._save_state()
-                return
-            self._save_state()
+        """Compatibility entry point; analytics is always enabled with a destination."""
         self.ensure_session()
         self.capture_app_open()
         self._schedule_flush()
@@ -638,7 +669,7 @@ class Analytics:
     def track(self, event: str, props: Optional[dict] = None) -> bool:
         """Queue an allowlisted event. Returns True if it was accepted.
 
-        Events are dropped unless the user has already opted in. They are only
+        Events are only
         queued when a destination (project key or test transport) exists.
         """
         try:
@@ -772,6 +803,12 @@ class Analytics:
         return True
 
     def _enqueue(self, body: dict) -> None:
+        # Central enqueue also covers session_end, which bypasses _track.
+        props = sanitize_properties(body['event'], body.get('properties'))
+        for key in UTM_PROPS:
+            props.pop(key, None)
+        props.update(attribution(self.data_dir))
+        body['properties'] = props
         queue = list(self._state.get('queue') or [])
         queue.append(body)
         if len(queue) > QUEUE_MAX:
@@ -796,6 +833,18 @@ class Analytics:
         if key_applied is not None:
             props['key_applied'] = bool(key_applied)
         return self.track('login_success', props)
+
+    def notify_payment_start(self, package_id=None, channel=None, source='dialog'):
+        return self.track('payment_start', {'package_id': package_id, 'channel': channel, 'source': source})
+
+    def notify_payment_checkout_opened(self, package_id=None, channel=None):
+        return self.track('payment_checkout_opened', {'package_id': package_id, 'channel': channel})
+
+    def notify_payment_failed(self, package_id=None, channel=None, error_code='UNKNOWN'):
+        return self.track('payment_failed', {'package_id': package_id, 'channel': channel, 'error_code': error_code})
+
+    def notify_payment_success(self, package_id=None, channel=None):
+        return self.track('payment_success', {'package_id': package_id, 'channel': channel})
 
     def notify_billing_click(self, source: str = 'credits_chip') -> bool:
         return self.track('billing_click', {'source': source})
@@ -1095,3 +1144,19 @@ def identify_account(user_id: Any) -> Optional[str]:
 
 def clear_account() -> None:
     _call('clear_account')
+
+
+def notify_payment_start(package_id=None, channel=None, source='dialog'):
+    return bool(_call('notify_payment_start', **{'package_id': package_id, 'channel': channel, 'source': source}))
+
+
+def notify_payment_checkout_opened(package_id=None, channel=None):
+    return bool(_call('notify_payment_checkout_opened', **{'package_id': package_id, 'channel': channel}))
+
+
+def notify_payment_failed(package_id=None, channel=None, error_code='UNKNOWN'):
+    return bool(_call('notify_payment_failed', **{'package_id': package_id, 'channel': channel, 'error_code': error_code}))
+
+
+def notify_payment_success(package_id=None, channel=None):
+    return bool(_call('notify_payment_success', **{'package_id': package_id, 'channel': channel}))

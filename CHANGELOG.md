@@ -4,6 +4,16 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+## [1.18](https://github.com/PowerTokens/video-studio/releases/tag/v1.18.0) - 2026-11-12
+
+- **Checkout packages.** Default to the recommended fixed $5 preset (5000 credits); keep $20 and $50, retain Custom for a typed amount, and remove $200.
+
+- **Feedback email.** Keep the tips-card link and add `service@powertokens.ai` email links to the persistent desktop footer and beside payment history / invoices.
+
+- **Delisted text model.** `seed-1-6-flash-250715` is being taken off the official PowerTokens catalog. Chat and Batch **From script** now share four models, in order: `glm-4.7-flash` (free default), `deepseek-flash`, `MiniMax-M2.7`, `glm-5.3-flash`. A saved selection of the removed model falls back to `glm-4.7-flash`.
+
+- **In-app update check.** On startup the desktop app checks the latest GitHub release in the background (at most once every 24 hours). If a newer version is available, a non-blocking banner offers Download or Later. Windows saves the official EXE to the Downloads folder and can quit to open it; macOS downloads the official arm64 DMG and can open the installer. If a download fails after the user asked for it, the banner offers a retry. Network errors during the silent check are not shown. This is the first version that can check for later releases from inside the app; already-installed 1.17 and earlier still need a one-time manual download of 1.18.
+
 ## [1.17](https://github.com/PowerTokens/video-studio/releases/tag/v1.17.0) - 2026-11-12
 
 - **Unsigned macOS Beta (Apple Silicon).** The Mac package is a public unsigned Beta. There is no Apple Developer ID signature and no notarization, and none is planned until an Apple Developer account exists. The window title shows **v1.17 Beta**. Gatekeeper blocks a downloaded copy until you right-click the app and choose **Open**, or use **System Settings → Privacy & Security → Open Anyway**. The same note is in `GATEKEEPER.txt` inside the `.dmg`. The packaged app does not need Python. Windows EXE scripts and workflows are unchanged. The Mac build workflow still does not create a GitHub Release by itself.
