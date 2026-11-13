@@ -229,7 +229,14 @@ class App:
         self.build_history(pages[4].body)
         self.build_keys(pages[5].body)
         self.status = tk.StringVar(value=t('status_ready'))
-        label(shell, variable=self.status, style='Page.TLabel').pack(fill='x', padx=28, pady=(8, 12))
+        footer = ttk.Frame(shell, style='Page.TFrame')
+        footer.pack(fill='x', padx=28, pady=(8, 12))
+        ttk.Button(footer, text=t('feedback_email'), style='Link.TButton',
+                   command=lambda: webbrowser.open('mailto:service@powertokens.ai')).pack(side='right', padx=(16, 0))
+        # Give the status its own host so wrapping follows the space left by the link.
+        status_host = ttk.Frame(footer, style='Page.TFrame')
+        status_host.pack(side='left', fill='x', expand=True)
+        label(status_host, variable=self.status, style='Page.TLabel').pack(fill='x', expand=True)
         self._bind_analytics_surfaces()
         if self._update_offer and not self._update_dismissed_session:
             self._show_update_offer(self._update_offer, restore=True)

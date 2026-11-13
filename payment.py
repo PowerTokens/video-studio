@@ -6,7 +6,11 @@ import logging
 import re
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse
-PACKAGES = [{'id': 22, 'amount_type': 1, 'package_name': '01', 'sales_price': 20, 'credits_amount': 20000, 'is_recommended': 1, 'status': 1, 'currency': 'USD'}, {'id': 23, 'amount_type': 1, 'package_name': '02', 'sales_price': 50, 'credits_amount': 50000, 'is_recommended': 0, 'status': 1, 'currency': 'USD'}, {'id': 24, 'amount_type': 1, 'package_name': '03', 'sales_price': 200, 'credits_amount': 200000, 'is_recommended': 0, 'status': 1, 'currency': 'USD'}, {'id': 33, 'amount_type': 2, 'package_name': '15', 'sales_price': 0, 'min_recharge_amount': 5, 'max_recharge_amount': 2000, 'credits_amount': 0, 'is_recommended': 0, 'status': 1, 'currency': 'USD'}]
+PACKAGES = [
+    {'id': 33, 'amount_type': 2, 'package_name': '15', 'sales_price': 0, 'min_recharge_amount': 5, 'max_recharge_amount': 2000, 'credits_amount': 0, 'is_recommended': 0, 'status': 1, 'currency': 'USD'},
+    {'id': 22, 'amount_type': 1, 'package_name': '01', 'sales_price': 20, 'credits_amount': 20000, 'is_recommended': 0, 'status': 1, 'currency': 'USD'},
+    {'id': 23, 'amount_type': 1, 'package_name': '02', 'sales_price': 50, 'credits_amount': 50000, 'is_recommended': 0, 'status': 1, 'currency': 'USD'},
+]
 BASE = 'https://powertokens.ai/api'
 
 def valid_redirect(url):

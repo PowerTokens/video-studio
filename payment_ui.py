@@ -12,6 +12,30 @@ from i18n import get_language
 from studio_ui import PAGE, WHITE, INK, MUTED, LINE, ACCENT, PALE
 
 
+# UI identities are distinct even when cards share an official backend package.
+DEFAULT_SELECTION = 'fixed_5'
+CHECKOUT_CARDS = (
+    dict(key='fixed_5', package_id=33, amount=5, credits=5000, recommended=True),
+    dict(key='fixed_20', package_id=22, amount=20, credits=20000, recommended=False),
+    dict(key='fixed_50', package_id=23, amount=50, credits=50000, recommended=False),
+    dict(key='custom', package_id=33, amount=None, credits=None, recommended=False),
+)
+
+
+def checkout_card(selection=DEFAULT_SELECTION):
+    return next(card for card in CHECKOUT_CARDS if card['key'] == selection)
+
+
+def custom_input_visible(selection=DEFAULT_SELECTION):
+    return checkout_card(selection)['amount'] is None
+
+
+def checkout_payload(selection=DEFAULT_SELECTION, custom_amount='5', channel='limeng'):
+    card = checkout_card(selection)
+    amount = custom_amount if custom_input_visible(selection) else card['amount']
+    return payment.payload(card['package_id'], amount, channel)
+
+
 def _draw_payment_mark(mark, channel):
     """32 x 24 vector marks, matching the web checkout SVGs."""
     if channel == 'limeng':
@@ -68,7 +92,7 @@ def show(app):
     body = tk.Frame(win, bg=PAGE, padx=24, pady=20)
     body.pack(fill='both', expand=True)
     tk.Label(body, text='Video Studio · ' + c[0], font=('', 18, 'bold'), bg=PAGE, fg=INK).pack(anchor='w', pady=(0, 18))
-    choice = tk.IntVar(value=22)
+    choice = tk.StringVar(value=DEFAULT_SELECTION)
     amount = tk.StringVar(value='5')
     channel = tk.StringVar(value='limeng')
     grid = tk.Frame(body, bg=PAGE)
@@ -82,22 +106,25 @@ def show(app):
             bg = PALE if selected else WHITE
             frame.configure(bg=bg, highlightbackground=ACCENT if selected else LINE, highlightthickness=2 if selected else 1)
             for child in frame.winfo_children(): child.configure(bg=bg)
-        if choice.get() == 33: custom.pack(fill='x', pady=(10, 0), after=grid)
+        if custom_input_visible(choice.get()): custom.pack(fill='x', pady=(10, 0), after=grid)
         else: custom.pack_forget()
     def bind_card(frame, variable, value):
         for widget in [frame] + frame.winfo_children():
             widget.bind('<Button-1>', lambda event: select(variable, value))
         frame.bind('<Return>', lambda event: select(variable, value))
         frame.bind('<space>', lambda event: select(variable, value))
-    for index, package in enumerate(payment.PACKAGES):
+    for index, card in enumerate(CHECKOUT_CARDS):
         frame = tk.Frame(grid, bg=WHITE, highlightbackground=LINE, highlightthickness=1, padx=16, pady=10, cursor='hand2', takefocus=1)
-        frame.grid(row=index//2, column=index%2, sticky='nsew', padx=(0, 6) if index%2 == 0 else (6, 0), pady=(0, 10))
-        tk.Label(frame, text=c[1] if package.get('is_recommended') else '', fg='#267d70', bg=WHITE, font=('', 10, 'bold')).pack(anchor='w')
-        tk.Label(frame, text=c[16] if package['id']==33 else f"${package['sales_price']}", fg=INK, bg=WHITE, font=('', 24, 'bold')).pack(anchor='w')
-        tk.Label(frame, text=c[2] if package['id']==33 else f"{package['credits_amount']:,}", fg=INK, bg=WHITE, font=('', 15, 'bold')).pack(anchor='w')
-        tk.Label(frame, text='' if package['id']==33 else c[15], fg=MUTED, bg=WHITE, font=('', 11)).pack(anchor='w')
-        cards.append((frame, choice, package['id']))
-        bind_card(frame, choice, package['id'])
+        row, column = divmod(index, 2)
+        frame.grid(row=row, column=column, sticky='nsew',
+                   padx=(0, 6) if column == 0 else (6, 0), pady=(0, 10))
+        is_custom = custom_input_visible(card['key'])
+        tk.Label(frame, text=c[1] if card['recommended'] else '', fg='#267d70', bg=WHITE, font=('', 10, 'bold')).pack(anchor='w')
+        tk.Label(frame, text=c[16] if is_custom else f"${card['amount']}", fg=INK, bg=WHITE, font=('', 24, 'bold')).pack(anchor='w')
+        tk.Label(frame, text=c[2] if is_custom else f"{card['credits']:,}", fg=INK, bg=WHITE, font=('', 15, 'bold')).pack(anchor='w')
+        tk.Label(frame, text='' if is_custom else c[15], fg=MUTED, bg=WHITE, font=('', 11)).pack(anchor='w')
+        cards.append((frame, choice, card['key']))
+        bind_card(frame, choice, card['key'])
     custom = tk.Frame(body, bg=PAGE)
     tk.Label(custom, text=c[2], bg=PAGE, fg=MUTED).pack(side='left')
     ttk.Entry(custom, textvariable=amount, width=7).pack(side='left', padx=8)
@@ -122,7 +149,7 @@ def show(app):
         label.pack(side='left')
         for widget in (mark, label):
             widget.bind('<Button-1>', lambda event, v=value: select(channel, v))
-    select(choice, 22)
+    select(choice, DEFAULT_SELECTION)
     message = tk.StringVar(value=c[6] if state['order'] else '')
     status_label = ttk.Label(body, textvariable=message, wraplength=400)
     def alive():
@@ -164,7 +191,7 @@ def show(app):
             if time.monotonic() < state.get('deadline', 0): win.after(4000, check)
         run(work, done)
     def buy_now():
-        try: data = payment.payload(choice.get(), amount.get(), channel.get())
+        try: data = checkout_payload(choice.get(), amount.get(), channel.get())
         except (ValueError, StopIteration): message.set(c[12]); return
         buy.configure(state='disabled')
         def done(result, error):
@@ -183,6 +210,10 @@ def show(app):
     message.trace_add('write', update_status)
     update_status()
     ttk.Button(body, text=c[7], command=check, style='Link.TButton').pack(fill='x', pady=(0, 5))
-    ttk.Button(body, text=c[13], style='Link.TButton', command=lambda: webbrowser.open('https://powertokens.ai/billing')).pack()
+    links = tk.Frame(body, bg=PAGE)
+    links.pack()
+    ttk.Button(links, text=c[13], style='Link.TButton', command=lambda: webbrowser.open('https://powertokens.ai/billing')).pack(side='left', padx=(0, 8))
+    ttk.Button(links, text=c[14] + ': service@powertokens.ai', style='Link.TButton',
+               command=lambda: webbrowser.open('mailto:service@powertokens.ai')).pack(side='left')
     if state['order']:
         buy.configure(state='disabled'); state['deadline'] = time.monotonic()+300; check()
