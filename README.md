@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Free open-source Video Studio **1.18** ([Windows desktop](../../releases/latest), an unsigned Apple Silicon Mac Beta app, and a [web companion](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — chat, Excel/CSV batch, compare, storyboard, safe resume.
+Free open-source Video Studio **1.18** ([Windows desktop](../../releases/latest), an unsigned Apple Silicon Mac Beta app, and a [web companion](https://powertokens.github.io/video-studio-web/)) for **Wan · Seedance · Kling · and more** — chat, Excel/CSV batch, compare, storyboard, in-app top-up, safe resume.
 
 ![Demo: a clip generated with Wan 3.0](docs/images/demo.gif)
 
@@ -41,6 +41,8 @@ Pick a model in the desktop UI, pass `--model` on the CLI, set `model` on MCP to
 - **Key pool**: add several keys; batch rows rotate the preferred key.
 - **No double charging**: a new key is tried only when a submission is explicitly rejected before any Task ID exists. Timeouts, 5xx and unclear responses are never retried automatically.
 - **Encrypted key storage**: keys stay in memory by default. On Windows, "remember" saves them with DPAPI (bound to your Windows account). On macOS, "remember" saves them in the login Keychain (this macOS user only).
+- **In-app credit top-up:** after you sign in, the credits chip in the header opens checkout. You can pick a package or enter a custom amount and pay by credit card or PayPal; credits refresh in the app when payment completes. History and invoices still open the official billing page.
+- **In-app update check:** on startup the app checks the latest GitHub release in the background (at most once a day). If a newer version is available, a banner offers Download or Later.
 - Optional CLI (`pt_wan.py`) and MCP server (`mcp_server.py`).
 
 ## Screenshots
@@ -165,7 +167,7 @@ python pt_wan.py storyboard --script outline.txt --out rows.xlsx --duration 8 --
 
 ## Sign in / Get an API key
 
-Most users click **Sign in with PowerTokens** in the app header (OAuth + PKCE). The default key and credits fill in automatically. Manual paste stays under **API Key → Advanced** ([PowerTokens API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio)).
+Most users click **Sign in with PowerTokens** in the app header (OAuth + PKCE). The default key and credits fill in automatically. After you sign in, the credits chip in the header opens in-app checkout (card or PayPal); credits refresh in the app when payment completes. Manual paste stays under **API Key → Advanced** ([PowerTokens API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_medium=oss&utm_campaign=video-studio)).
 
 ## Run from source
 
@@ -308,7 +310,7 @@ Yes. On the [API Keys](https://powertokens.ai/api-keys?utm_source=github&utm_med
 
 ### What is PowerTokens Video Studio?
 
-PowerTokens Video Studio **1.18** is a free, open-source (MIT) desktop app for Windows and for Apple Silicon Mac (unsigned Beta), with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with chat, batch import from Excel / CSV, compare, storyboard, resume by Task ID and protection against double charges.
+PowerTokens Video Studio **1.18** is a free, open-source (MIT) desktop app for Windows and for Apple Silicon Mac (unsigned Beta), with a [web companion](https://powertokens.github.io/video-studio-web/), for generating many AI videos at once through the PowerTokens API. It supports Wan 3.0 (default), Wan 3.0 Prime, Seedance 2.0 / Fast (**−50%**) / Mini (**−60%**), Seedance 2.5, kling v3, and more, with chat, batch import from Excel / CSV, compare, storyboard, in-app credit top-up, an in-app update check, resume by Task ID and protection against double charges.
 ### Can I batch-generate videos from a spreadsheet?
 
 Yes. On the **Batch import** tab, load an Excel or CSV file with one row per clip; only the `Prompt` column is required (legacy `Wan 3.0 Prompt` still works), and English or Chinese headers both work. An optional `Model` column picks the model per row (blank = Wan 3.0). Rows run with 1–8 concurrent generations, and you can export the results to CSV.
