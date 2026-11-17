@@ -191,15 +191,15 @@ class ChatTab:
             pass
         starter = getattr(self.app, 'start_oauth_login', None)
         if callable(starter):
-            starter()
+            starter('chat')
 
 
-    def _analytics_chat_submit(self, model=''):
+    def _analytics_chat_submit(self, model='', text=''):
         try:
             import analytics
             chat_id = uuid.uuid4().hex
             self._analytics_chat_id = chat_id
-            analytics.notify_chat_submit(chat_id, model=model or '')
+            analytics.notify_chat_submit(chat_id, model=model or '', text_bucket=analytics.text_len_bucket(text))
             return chat_id
         except Exception:
             return ''
@@ -244,7 +244,7 @@ class ChatTab:
             self.messages, lang=get_language(), catalog=_catalog_hint())
         text_model = self._selected_text_model()
         self._set_busy(True)
-        self._analytics_chat_submit(text_model)
+        self._analytics_chat_submit(text_model, text)
         self._schedule_poll()
 
         def worker():

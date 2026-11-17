@@ -315,6 +315,7 @@ def fixture_release(platform=None, version='1.18.0'):
         name = MAC_ASSET
     if name:
         url = 'https://github.com/PowerTokens/video-studio/releases/download/%s/%s' % (tag, name)
+    _track_update('update_available', update_version=version)
     return ReleaseInfo(
         tag=tag,
         version=display,
@@ -334,6 +335,14 @@ def _request(url, timeout=DEFAULT_TIMEOUT, urlopen=None, headers=None):
     return opener(req, timeout=timeout)
 
 
+def _track_update(event, **props):
+    try:
+        import analytics
+        analytics._call('track', event, props)
+    except Exception:
+        pass
+
+
 def fetch_latest(current_version, platform, timeout=DEFAULT_TIMEOUT, urlopen=None, url=None):
     """Return a ReleaseInfo when GitHub has a newer tag, else None.
 
@@ -341,6 +350,7 @@ def fetch_latest(current_version, platform, timeout=DEFAULT_TIMEOUT, urlopen=Non
     A newer tag with no official asset for this platform still returns info with
     `asset_url=None` so the UI can offer the public download page.
     """
+    _track_update('update_check_start')
     target = url or LATEST_URL
     try:
         with _request(target, timeout=timeout, urlopen=urlopen) as response:
@@ -370,6 +380,7 @@ def fetch_latest(current_version, platform, timeout=DEFAULT_TIMEOUT, urlopen=Non
             url_ = None
         sha = parse_sha256(body, name) if name else None
     html_url = str(payload.get('html_url') or '').strip() or None
+    _track_update('update_available', update_version=version)
     return ReleaseInfo(
         tag=tag,
         version=version,
@@ -396,6 +407,18 @@ def _download_opener(urlopen=None):
 
 
 def download_asset(url, dest, sha256=None, timeout=DEFAULT_TIMEOUT, progress=None, stop=None, urlopen=None,
+                   max_bytes=MAX_ASSET_BYTES):
+    _track_update('update_download_start')
+    try:
+        result = _download_asset(url, dest, sha256, timeout, progress, stop, urlopen, max_bytes)
+    except Exception:
+        _track_update('update_download_failed', error_code='DOWNLOAD')
+        raise
+    _track_update('update_download_success')
+    return result
+
+
+def _download_asset(url, dest, sha256=None, timeout=DEFAULT_TIMEOUT, progress=None, stop=None, urlopen=None,
                    max_bytes=MAX_ASSET_BYTES):
     """Download an official asset to `dest`, optionally verifying SHA-256.
 

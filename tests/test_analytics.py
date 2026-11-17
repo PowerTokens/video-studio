@@ -176,6 +176,37 @@ class AnalyticsCoreTests(unittest.TestCase):
         self.client.flush()
         self.assertEqual([item['event'] for item in self.sent], ['session_end', 'app_open'])
 
+    def test_repeat_success_and_job_cost(self):
+        self.grant()
+        self.sent.clear()
+        for family in ('generation', 'chat'):
+            start = getattr(self.client, 'notify_generation_start' if family == 'generation' else 'notify_chat_submit')
+            finish = getattr(self.client, 'notify_' + family + '_finish')
+            start(family + '1')
+            start(family + '1')
+            start(family + '2')
+            finish(family + '1', True)
+            start(family + '3')
+            self.client.flush()
+            starts = [x['properties'] for x in self.sent if x['event'] == ('generation_start' if family == 'generation' else 'chat_submit')]
+            self.assertEqual([(p['is_repeat'], p['after_success']) for p in starts], [(False, False), (True, False), (True, True)])
+        for i, cost in enumerate((None, -1, 1.5, 1000001, True, '7', 0, 7, 1000000)):
+            self.client.notify_generation_finish('cost' + str(i), True, quota_spent=cost)
+            self.client.flush()
+            props = self.sent[-1]['properties']
+            self.assertEqual('quota_spent' in props, type(cost) is int and 0 <= cost <= 1000000)
+            for key in ('prompt', 'credits', 'balance'):
+                self.assertNotIn(key, props)
+        self.client.notify_generation_finish('failed-cost', False, quota_spent=7)
+        self.client.flush()
+        self.assertNotIn('quota_spent', self.sent[-1]['properties'])
+        self.assertNotIn('source', analytics.sanitize_properties('login_start', {'source': 'tasks'}))
+        self.clock.advance(analytics.SESSION_IDLE_S + 1)
+        self.client.notify_generation_start('new-session')
+        self.client.flush()
+        self.assertFalse(self.sent[-1]['properties']['is_repeat'])
+        self.assertFalse(self.sent[-1]['properties']['after_success'])
+
     def test_generation_duplicate_prevention(self):
         self.grant()
         self.sent.clear()
@@ -670,3 +701,22 @@ class ClientSubmitHookTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class FunnelPrivacyTests(unittest.TestCase):
+    def test_new_properties(self):
+        for event in ('example_click', 'prompt_edited', 'login_return_unsigned', 'update_check_start', 'update_available', 'update_download_start', 'update_download_success', 'update_download_failed'):
+            props = analytics.sanitize_properties(event, {'example_id': 'seal', 'quota_spent': 7, 'prompt': 'private', 'credits': 9, 'balance': 2, 'amount': 4})
+            self.assertEqual(props['quota_spent'], 7)
+            self.assertEqual(props['example_id'], 'seal')
+            for key in ('prompt', 'credits', 'balance', 'amount'):
+                self.assertNotIn(key, props)
+        for reason in ('back', 'reopen', 'missing_code'):
+            self.assertEqual(analytics.sanitize_properties('login_return_unsigned', {'return_reason': reason})['return_reason'], reason)
+        for source in ('header', 'account', 'chat', 'generate', 'billing', 'quota', 'credits_chip', 'dialog', 'other'):
+            self.assertEqual(analytics.sanitize_properties('login_start', {'source': source})['source'], source)
+        bad = analytics.sanitize_properties('generation_start', {'example_id': 'unknown', 'quota_spent': True, 'quota_estimate': 1000001, 'prompt_edited': 'private', 'return_reason': 'private'})
+        for key in ('example_id', 'quota_spent', 'quota_estimate', 'prompt_edited', 'return_reason'):
+            self.assertNotIn(key, bad)
+        self.assertEqual(bad['device_class'], 'desktop')
+        self.assertIn(bad['os'], ('macos', 'windows', 'linux', 'other'))

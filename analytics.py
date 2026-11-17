@@ -30,6 +30,8 @@ import utm_attr
 
 EVENTS = frozenset({
     'payment_start', 'payment_checkout_opened', 'payment_failed', 'payment_success',
+    'example_click', 'prompt_edited', 'login_return_unsigned',
+    'update_check_start', 'update_available', 'update_download_start', 'update_download_success', 'update_download_failed',
     'app_open',
     'login_success',
     'generation_start',
@@ -55,6 +57,7 @@ UTM_PROPS = frozenset(UTM_KEYS) | frozenset('initial_' + k for k in UTM_KEYS)
 UTM_RE = re.compile(r'[A-Za-z0-9._-]{1,80}')
 
 ALLOWED_PROPS = UTM_PROPS | frozenset({
+    'update_version', 'example_id', 'return_reason', 'device_class', 'os', 'text_len_bucket', 'from_example', 'prompt_edited', 'prompt_matches_example', 'is_repeat', 'after_success', 'quota_spent', 'quota_estimate',
     'package_id', 'channel',
     'platform',
     'app_version',
@@ -211,6 +214,19 @@ def attribution(data_dir):
     return props
 
 
+def text_len_bucket(text):
+    length = len(str(text or ''))
+    if length <= 20:
+        return 'b0_20'
+    if length <= 50:
+        return 'b21_50'
+    if length <= 100:
+        return 'b51_100'
+    if length <= 200:
+        return 'b101_200'
+    return 'b201_plus'
+
+
 def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
     """Return an allowlisted payload, or None if the event itself is not allowed."""
     if event not in EVENTS:
@@ -224,7 +240,31 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
         if value is None or value is False or value is True:
             # booleans and None are fine (None will be dropped below except key_applied)
             pass
-        if key in UTM_PROPS:
+        if key == 'example_id':
+            if value not in ['shopping', 'canyon', 'seal', 'locker']:
+                continue
+        elif key == 'return_reason':
+            if value not in ['back', 'reopen', 'missing_code']:
+                continue
+        elif key == 'device_class':
+            if value not in ['phone', 'tablet', 'desktop']:
+                continue
+        elif key == 'os':
+            if value not in ['ios', 'android', 'macos', 'windows', 'linux', 'other']:
+                continue
+        elif key == 'text_len_bucket':
+            if value not in ['b0_20', 'b21_50', 'b51_100', 'b101_200', 'b201_plus']:
+                continue
+        elif key in ('from_example', 'prompt_edited', 'prompt_matches_example', 'is_repeat', 'after_success'):
+            if type(value) is not bool:
+                continue
+        elif key in ('quota_spent', 'quota_estimate'):
+            if type(value) is not int or not 0 <= value <= 1000000:
+                continue
+        elif key == 'update_version':
+            if not isinstance(value, str) or not re.fullmatch(r'\d{1,3}\.\d{1,3}\.\d{1,3}', value):
+                continue
+        elif key in UTM_PROPS:
             value = safe_utm(value)
             if value is None:
                 continue
@@ -260,7 +300,7 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
                 continue
         elif key == 'source':
             value = str(value or '').strip().lower()
-            if value not in SAFE_BILLING_SOURCE:
+            if value not in SAFE_BILLING_SOURCE and not (event == 'login_start' and value in ('generate', 'billing', 'other')):
                 continue
         elif key == 'requested_duration_s':
             try:
@@ -289,6 +329,9 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
                 continue
             value = text
         clean[key] = value
+    clean['device_class'] = 'desktop'
+    import sys
+    clean['os'] = {'darwin': 'macos', 'win32': 'windows', 'linux': 'linux'}.get(sys.platform, 'other')
     clean['platform'] = PLATFORM
     return clean
 
@@ -489,6 +532,7 @@ class Analytics:
     def _begin_new_session(self, now: float) -> str:
         session_id = uuid.uuid4().hex
         self._state['session_id'] = session_id
+        self._state['funnel_counts'] = {}
         self._state['session_started_at'] = now
         self._state['last_activity'] = now
         self._state['app_open_session'] = ''
@@ -703,6 +747,14 @@ class Analytics:
                     self._opening_app_open = False
             if not self._accept_unique(event, clean):
                 return False
+            family = 'generation' if event.startswith('generation_') else 'chat'
+            counts = self._state.setdefault('funnel_counts', {})
+            if event in ('generation_start', 'chat_submit'):
+                clean['is_repeat'] = counts.get(family + '_started', 0) > 0
+                clean['after_success'] = counts.get(family + '_success', 0) > 0
+                counts[family + '_started'] = counts.get(family + '_started', 0) + 1
+            if event in ('generation_success', 'chat_success'):
+                counts[family + '_success'] = counts.get(family + '_success', 0) + 1
             clean['session_id'] = session_id
             clean['install_id'] = install_id
             if self.app_version:
@@ -818,8 +870,8 @@ class Analytics:
     def capture_app_open(self) -> bool:
         return self.track('app_open', {})
 
-    def notify_login_start(self) -> bool:
-        return self.track('login_start', {})
+    def notify_login_start(self, source='other') -> bool:
+        return self.track('login_start', {'source': source})
 
     def notify_login_failed(self, error_code: Any = None) -> bool:
         return self.track('login_failed', {'error_code': normalize_error_code(error_code)})
@@ -864,7 +916,7 @@ class Analytics:
     def notify_generation_start(self, generation_id: str, model: str = '',
                                 surface: str = 'generate',
                                 requested_duration_s: Any = None,
-                                input_mode: Any = None) -> bool:
+                                input_mode: Any = None, text_bucket=None) -> bool:
         props: dict[str, Any] = {
             'generation_id': generation_id,
             'surface': surface or 'generate',
@@ -875,15 +927,18 @@ class Analytics:
             props['requested_duration_s'] = requested_duration_s
         if input_mode:
             props['input_mode'] = input_mode
+        props['text_len_bucket'] = text_bucket
         return self.track('generation_start', props)
 
     def notify_generation_finish(self, generation_id: str, ok: bool, model: str = '',
                                  surface: str = 'generate', duration_ms: Any = None,
-                                 error_code: Any = None, input_mode: Any = None) -> bool:
+                                 error_code: Any = None, input_mode: Any = None, text_bucket=None, quota_spent=None) -> bool:
         props: dict[str, Any] = {
             'generation_id': generation_id,
             'surface': surface or 'generate',
         }
+        if ok and quota_spent is not None:
+            props['quota_spent'] = quota_spent
         if model:
             props['model'] = model
         if duration_ms is not None:
@@ -901,11 +956,12 @@ class Analytics:
             props['model'] = model
         return self.track('video_download', props)
 
-    def notify_chat_submit(self, chat_id: str, model: str = '') -> bool:
+    def notify_chat_submit(self, chat_id: str, model: str = '', text_bucket=None) -> bool:
         """User confirmed Send. Does not mean a server reply completed."""
         props: dict[str, Any] = {'chat_id': chat_id, 'surface': 'chat'}
         if model:
             props['model'] = model
+        props['text_len_bucket'] = text_bucket
         return self.track('chat_submit', props)
 
     def notify_chat_finish(self, chat_id: str, ok: bool, model: str = '',
@@ -1064,8 +1120,8 @@ def set_consent(granted: bool) -> None:
     _call('set_consent', granted)
 
 
-def notify_login_start() -> bool:
-    return bool(_call('notify_login_start'))
+def notify_login_start(source='other') -> bool:
+    return bool(_call('notify_login_start', source))
 
 
 def notify_login_failed(error_code: Any = None) -> bool:
@@ -1113,24 +1169,24 @@ def flush() -> None:
 
 
 def notify_generation_start(generation_id: str, model: str = '', surface: str = 'generate',
-                            requested_duration_s: Any = None, input_mode: Any = None) -> bool:
+                            requested_duration_s: Any = None, input_mode: Any = None, text_bucket=None) -> bool:
     return bool(_call('notify_generation_start', generation_id, model=model, surface=surface,
-                      requested_duration_s=requested_duration_s, input_mode=input_mode))
+                      requested_duration_s=requested_duration_s, input_mode=input_mode, text_bucket=text_bucket))
 
 
 def notify_generation_finish(generation_id: str, ok: bool, model: str = '', surface: str = 'generate',
                              duration_ms: Any = None, error_code: Any = None,
-                             input_mode: Any = None) -> bool:
+                             input_mode: Any = None, text_bucket=None, quota_spent=None) -> bool:
     return bool(_call('notify_generation_finish', generation_id, ok, model=model, surface=surface,
-                      duration_ms=duration_ms, error_code=error_code, input_mode=input_mode))
+                      duration_ms=duration_ms, error_code=error_code, input_mode=input_mode, quota_spent=quota_spent))
 
 
 def notify_video_download(model: str = '', surface: str = 'generate') -> bool:
     return bool(_call('notify_video_download', model=model, surface=surface))
 
 
-def notify_chat_submit(chat_id: str, model: str = '') -> bool:
-    return bool(_call('notify_chat_submit', chat_id, model=model))
+def notify_chat_submit(chat_id: str, model: str = '', text_bucket=None) -> bool:
+    return bool(_call('notify_chat_submit', chat_id, model=model, text_bucket=text_bucket))
 
 
 def notify_chat_finish(chat_id: str, ok: bool, model: str = '', error_code: Any = None) -> bool:
@@ -1160,3 +1216,7 @@ def notify_payment_failed(package_id=None, channel=None, error_code='UNKNOWN'):
 
 def notify_payment_success(package_id=None, channel=None):
     return bool(_call('notify_payment_success', **{'package_id': package_id, 'channel': channel}))
+
+
+def notify_login_return_unsigned(reason):
+    return bool(_call('track', 'login_return_unsigned', {'return_reason': reason}))

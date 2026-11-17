@@ -70,7 +70,7 @@ def _track_paid_status(state, status):
 
 def show(app):
     if not app._is_oauth_logged_in():
-        app.start_oauth_login()
+        app.start_oauth_login('billing')
         return
     old = getattr(app, '_payment_window', None)
     if old and old.winfo_exists():
