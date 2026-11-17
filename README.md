@@ -8,6 +8,8 @@ Free open-source Video Studio **1.18** ([Windows desktop](../../releases/latest)
 
 PowerTokens Video Studio generates videos through the [PowerTokens](https://powertokens.ai/?utm_source=github&utm_medium=oss&utm_campaign=video-studio) API. It is built for people who generate many clips at once, such as short-drama episodes, and who need interrupted jobs to recover without paying twice.
 
+If you use Video Studio, please star this repository and follow [@PowerTokens](https://github.com/PowerTokens).
+
 ### Supported models
 
 | Display name | Model ID | Promo / list (without video) | Docs / pricing |

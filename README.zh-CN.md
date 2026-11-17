@@ -8,6 +8,8 @@
 
 PowerTokens Video Studio 通过 [PowerTokens](https://powertokens.ai/zh-Hans?utm_source=github&utm_medium=oss&utm_campaign=video-studio) API 生成视频，适合需要一次生成大量片段（例如短剧分集），并希望中断后能恢复、不重复付费的用户。
 
+如果觉得 Video Studio 有用，欢迎给本仓库点星，并关注 [@PowerTokens](https://github.com/PowerTokens)。
+
 ### 支持的模型
 
 | 显示名 | 模型 ID | 限时折扣 / 公示价（无视频输入） | 文档 / 价格 |
