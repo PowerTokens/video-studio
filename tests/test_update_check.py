@@ -381,8 +381,8 @@ class AppHookTests(unittest.TestCase):
 
     def test_fixture_helper_skips_the_network(self):
         info = fixture_release(platform='win32')
-        self.assertEqual(info.tag, 'v1.18.0')
-        self.assertTrue(is_newer(info.tag, '1.17'))
+        self.assertEqual(info.tag, 'v1.20.0')
+        self.assertTrue(is_newer(info.tag, update_check.APP_VERSION))
         self.assertTrue(info.asset_url.startswith('https://github.com/'))
 
 
