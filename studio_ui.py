@@ -91,6 +91,7 @@ def apply_theme(root):
     style.configure('Brand.TLabel', font=(FONT, 18, 'bold'))
     style.configure('Heading.TLabel', background=PAGE, font=(FONT, 17, 'bold'))
     style.configure('CardTitle.TLabel', font=(FONT, 11, 'bold'))
+    style.configure('AIPlan.TLabel', foreground='#654900', background='#fff1c2', padding=(4, 3))
     style.configure('Badge.TLabel', foreground='#328f80', background=PALE, padding=(12, 6))
     # Official-console-like chips: pill name + credits (match web .user-chip / .credits-chip).
     style.configure('UserChip.TLabel', foreground='#2f4558', background='#f3f7f6', padding=(12, 6))

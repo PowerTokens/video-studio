@@ -30,6 +30,7 @@ from platform_paths import default_output_dir, reveal_path
 import secret_store
 import oauth_desktop
 import analytics
+from difflib import SequenceMatcher
 import update_check
 
 OFFICIAL_KEY_URL = 'https://powertokens.ai/zh-Hans/api-keys?' + UTM
@@ -441,10 +442,6 @@ class App:
                 card.pack(fill='x', pady=(0, 12))
         except tk.TclError:
             pass
-        try:
-            self.tabs.select(0)
-        except tk.TclError:
-            pass
 
 
     def dismiss_onboarding(self):
@@ -537,6 +534,13 @@ class App:
         prompt_box = card(columns.left, t('prompt_card'))
         self.prompt = text_area(prompt_box, height=2, undo=True)
         self.prompt.pack(fill='x', pady=(0, 4))
+        self.ai_plan_help_btn = ttk.Button(prompt_box, text=t('ai_plan_help'),
+                                           style='Link.TButton', command=self.start_ai_plan)
+        self.ai_plan_help_btn.pack(anchor='w', fill='x', pady=(0, 6))
+        self._ai_highlights = set()
+        self._ai_field_labels = {}
+        self._ai_prompt_background = self.prompt.cget('background')
+
         self.auto_prompt = tk.BooleanVar(value=True)
         self.prompt_hint = tk.StringVar(value=t('prompt_hint_default'))
         ttk.Checkbutton(prompt_box, text=t('auto_detect'), variable=self.auto_prompt,
@@ -550,7 +554,10 @@ class App:
         self.model_label = tk.StringVar()
         model_row = ttk.Frame(params)
         model_row.pack(fill='x', pady=(0, 4))
-        ttk.Label(model_row, text=t('param_model'), style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
+        model_title = ttk.Label(model_row, text=t('param_model'), style='Muted.TLabel')
+        model_title.pack(anchor='w', pady=(0, 6))
+        self._ai_field_labels['model'] = model_title
+        self.model_id.trace_add('write', lambda *_: self._clear_ai_field('model'))
         self.model_combo = ttk.Combobox(model_row, textvariable=self.model_label, state='readonly', width=28)
         self.model_combo.pack(fill='x')
         desc_row = ttk.Frame(model_row)
@@ -583,7 +590,10 @@ class App:
             row.columnconfigure(index, weight=1, uniform='params')
             field = ttk.Frame(row)
             field.grid(row=0, column=index, sticky='ew', padx=(0, 12 if index < 2 else 0))
-            ttk.Label(field, text=name, style='Muted.TLabel').pack(anchor='w', pady=(0, 6))
+            title = ttk.Label(field, text=name, style='Muted.TLabel')
+            title.pack(anchor='w', pady=(0, 6))
+            self._ai_field_labels[kind] = title
+            var.trace_add('write', lambda *_, field_name=kind: self._clear_ai_field(field_name))
             if kind == 'duration':
                 widget = ttk.Spinbox(field, from_=2, to=30, textvariable=var, width=6)
                 self.duration_spin = widget
@@ -600,6 +610,8 @@ class App:
         label(params, variable=self.cost).pack(fill='x', pady=(4, 0))
         self._sync_model_widgets()
         self.update_cost()
+        self.ai_plan_notice = ttk.Label(params, text=t('ai_plan_ready'), style='Badge.TLabel', wraplength=300)
+        params.bind('<Configure>', lambda event: self.ai_plan_notice.configure(wraplength=max(100, event.width - 32)), add='+')
         actions = Flow(params)
         actions.pack(fill='x', pady=(6, 0))
         self.generate_btn = ttk.Button(actions, text=t('generate_btn'), style='Accent.TButton', command=self.generate)
@@ -952,6 +964,12 @@ class App:
         if not self.prompt.edit_modified():
             return
         self.prompt.edit_modified(False)
+        self._clear_ai_field('prompt')
+        current_prompt = self.prompt.get('1.0', 'end-1c').strip()
+        ai_prompt = getattr(self, '_ai_filled_prompt', '')
+        if not current_prompt or (ai_prompt and SequenceMatcher(None, ai_prompt, current_prompt).ratio() < 0.25):
+            self._ai_plan_source = False
+            self._clear_ai_review()
         if self.prompt_timer:
             self.root.after_cancel(self.prompt_timer)
         self.prompt_timer = self.root.after(400, self.apply_prompt)
@@ -1575,34 +1593,80 @@ class App:
                 messagebox.showwarning(t('load_failed_title'), t('load_failed_body'))
         self.sync_keys()
 
+    def start_ai_plan(self):
+        self._ai_plan_visit = True
+        analytics.notify_ai_plan_click()
+        self.chat.start_from_generate(self.prompt.get('1.0', 'end-1c'))
+
+    def _ai_snapshot(self):
+        return dict(prompt=self.prompt.get('1.0', 'end-1c'), model=self.model_id.get(),
+                    duration=self.duration.get(), resolution=self.resolution.get(), ratio=self.ratio.get())
+
+    def _clear_ai_field(self, field):
+        if getattr(self, '_applying_ai_plan', False):
+            return
+        getattr(self, '_ai_highlights', set()).discard(field)
+        if field == 'prompt' and hasattr(self, '_ai_prompt_background'):
+            self.prompt.configure(background=self._ai_prompt_background)
+        title = getattr(self, '_ai_field_labels', {}).get(field)
+        if title is not None:
+            title.configure(style='Muted.TLabel')
+
+    def _clear_ai_review(self):
+        for field in list(getattr(self, '_ai_highlights', set())):
+            self._clear_ai_field(field)
+        if hasattr(self, 'ai_plan_notice'):
+            self.ai_plan_notice.pack_forget()
+
     def apply_chat_plan(self, plan):
         """Fill Generate form from a Chat plan and switch to the Generate tab."""
         if not plan or not str(plan.get('prompt') or '').strip():
             return
-        self.prompt.delete('1.0', 'end')
-        self.prompt.insert('1.0', str(plan['prompt']).strip())
-        self.prompt.edit_modified(False)
-        model = plan.get('model')
-        if model and hasattr(self, 'model_id'):
-            try:
-                mid = resolve_model_id(model)
-            except KeyError:
-                mid = None
-            if mid:
-                self.model_id.set(mid)
+        if self.prompt_timer:
+            self.root.after_cancel(self.prompt_timer)
+            self.prompt_timer = None
+        before = self._ai_snapshot()
+        self._clear_ai_review()
+        self._applying_ai_plan = True
+        try:
+            self.prompt.delete('1.0', 'end')
+            self.prompt.insert('1.0', str(plan['prompt']).strip())
+            self.prompt.edit_modified(False)
+            model = plan.get('model')
+            if model and hasattr(self, 'model_id'):
+                try:
+                    mid = resolve_model_id(model)
+                except KeyError:
+                    mid = None
+                if mid:
+                    self.model_id.set(mid)
+                    self._sync_model_widgets(preserve=True)
+            if plan.get('duration') is not None:
+                self.duration.set(str(plan['duration']))
+            if plan.get('resolution'):
+                self.resolution.set(str(plan['resolution']))
+            if plan.get('ratio'):
+                self.ratio.set(str(plan['ratio']))
+            # Snap to the selected model's allowed params.
+            if hasattr(self, '_sync_model_widgets'):
                 self._sync_model_widgets(preserve=True)
-        if plan.get('duration') is not None:
-            self.duration.set(str(plan['duration']))
-        if plan.get('resolution'):
-            self.resolution.set(str(plan['resolution']))
-        if plan.get('ratio'):
-            self.ratio.set(str(plan['ratio']))
-        # Snap to the selected model's allowed params.
-        if hasattr(self, '_sync_model_widgets'):
-            self._sync_model_widgets(preserve=True)
-        self.update_cost()
-        if self.auto_prompt.get():
-            self.apply_prompt()
+            self.update_cost()
+            if self.auto_prompt.get():
+                self.apply_prompt()
+        finally:
+            self._applying_ai_plan = False
+        self._ai_highlights = {field for field, value in self._ai_snapshot().items() if before[field] != value}
+        for field in self._ai_highlights:
+            if field == 'prompt' and hasattr(self, '_ai_prompt_background'):
+                self.prompt.configure(background='#fff1c2')
+            title = getattr(self, '_ai_field_labels', {}).get(field)
+            if title is not None:
+                title.configure(style='AIPlan.TLabel')
+        self._ai_filled_prompt = self.prompt.get('1.0', 'end-1c').strip()
+        self._ai_plan_source = bool(getattr(self, '_ai_plan_visit', False))
+        analytics.notify_ai_plan_applied('ai_plan' if self._ai_plan_source else 'chat')
+        if hasattr(self, 'ai_plan_notice'):
+            self.ai_plan_notice.pack(fill='x', pady=(6, 4), before=self.generate_btn.master)
         try:
             self.tabs.select(0)
         except tk.TclError:
@@ -1624,6 +1688,7 @@ class App:
         return str(folder / ('wan_' + uuid.uuid4().hex[:12] + '.mp4'))
 
     def generate(self):
+        self._clear_ai_review()
         if self.busy:
             return
         if not self.ensure_submit_credentials():
@@ -1638,6 +1703,8 @@ class App:
                 self.seed.get(), model=self.model_id.get())
             has_ff = any(isinstance(item, dict) and item.get('type') == 'first_frame' and item.get('url') for item in (media or []))
             request['_vs_input_mode'] = 'i2v' if has_ff else 't2v'
+            if getattr(self, '_ai_plan_source', False):
+                request['_vs_source'] = 'ai_plan'
             output = self.new_output()
         except Exception as exc:
             messagebox.showerror(t('check_input'), str(exc))

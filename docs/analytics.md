@@ -85,9 +85,11 @@ ends an unterminated previous session (crash recovery) before `app_open`.
 | `key_verified` | Advanced Key-pool verify-and-save succeeded | — |
 | `key_verify_failed` | That same verify-and-save failed | safe `error_code` only |
 | `language_set` | User manually changed the UI language (not first-run detection) | `language`: `zh`, `en`, `es`, `pt` (unknown codes dropped; `ja`/`ko` are allowed for the paired web app but not offered in this UI) |
-| `generation_start` | New `Client.submit` only (Generate, Compare, or Batch). Resume is not a start | `generation_id` (= task `local_id`), `model` (catalog-like token only), `surface`, optional `requested_duration_s`, `input_mode` (`t2v` or `i2v` when a first-frame image/url was or was not attached; omitted if unknown). The image and prompt are never sent |
-| `generation_success` | That submit, or a later **resume** of the same `local_id`, finishes | `duration_ms`, optional `input_mode` |
-| `generation_failed` | Only irreversible failures (`AUTH`, `QUOTA`, `PARAM`, `REJECTED`, `UNCERTAIN` with no task, `SERVER_FAILED`, …). Pause, timeout, and query-down are not terminal, so a later resume can still record success | safe `error_code` only, optional `input_mode` |
+| `ai_plan_click` | User clicks the AI-plan help button on Generate | `source=generate` |
+| `ai_plan_applied` | User applies a Chat plan to the Generate form | `surface=generate`, `source=ai_plan` after entering through the AI-plan button, otherwise `source=chat` |
+| `generation_start` | New `Client.submit` only (Generate, Compare, or Batch). Resume is not a start | `generation_id` (= task `local_id`), `model` (catalog-like token only), `surface`, optional `requested_duration_s`, `input_mode` (`t2v` or `i2v` when a first-frame image/url was or was not attached; omitted if unknown). The image and prompt are never sent. Optional `source=ai_plan` for a following generation using the applied AI plan |
+| `generation_success` | That submit, or a later **resume** of the same `local_id`, finishes | `duration_ms`, optional `input_mode`, optional `source=ai_plan` carried from the applied plan |
+| `generation_failed` | Only irreversible failures (`AUTH`, `QUOTA`, `PARAM`, `REJECTED`, `UNCERTAIN` with no task, `SERVER_FAILED`, …). Pause, timeout, and query-down are not terminal, so a later resume can still record success | safe `error_code` only, optional `input_mode`, optional `source=ai_plan` carried from the applied plan |
 | `video_download` | Not used for the automatic save inside a successful generate. Fired only for an explicit download-from-link | `model`, `surface` |
 | `chat_submit` | User confirmed **Send** with a non-empty message after the login/key gate. This is the click, not a completed reply | `chat_id`, `surface=chat`, optional `model` |
 | `chat_success` | The chat API/model reply for that `chat_id` completed | `chat_id`, `surface=chat`, optional `model` |

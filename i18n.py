@@ -19,6 +19,8 @@ LANGUAGE_NAMES = {'zh': '中文', 'en': 'English', 'es': 'Español', 'pt': 'Port
 SETTINGS_PATH = user_data_dir() / 'settings.json'
 
 ZH = {
+    'ai_plan_help': '不会写？让 AI 帮我构思',
+    'ai_plan_ready': 'AI 已帮你填好，请确认后再生成',
     # Header, window and tabs
     'subtitle': '多模型 AI 视频生成',
     'promo': 'Wan 3.0 限时折扣至 10 月 7 日',
@@ -567,6 +569,8 @@ ZH = {
 }
 
 EN = {
+    'ai_plan_help': "Can't write it? Let AI help me plan",
+    'ai_plan_ready': 'AI plan ready — review the highlighted fields before generating.',
     # Header, window and tabs
     'subtitle': 'Multi-model AI video generation',
     'promo': 'Wan 3.0 limited-time discount until Oct 7',
@@ -1118,6 +1122,8 @@ EN = {
 
 # Spanish / Portuguese: start from English, overlay chrome UI strings.
 ES_OVERLAY = {
+    'ai_plan_help': '¿No sabes qué escribir? Deja que la IA te ayude',
+    'ai_plan_ready': 'Plan de IA listo — revisa los campos resaltados antes de generar.',
     'subtitle': 'Generación de vídeo IA multi-modelo',
     'badge_no_key': 'Inicia sesión para rellenar la clave',
     'badge_keys': '%d claves añadidas',
@@ -1189,6 +1195,8 @@ ES_OVERLAY = {
 }
 
 PT_OVERLAY = {
+    'ai_plan_help': 'Não sabe o que escrever? Deixe a IA ajudar',
+    'ai_plan_ready': 'Plano de IA pronto — revise os campos destacados antes de gerar.',
     'subtitle': 'Geração de vídeo IA multi-modelo',
     'badge_no_key': 'Entre para preencher a chave',
     'badge_keys': '%d chaves adicionadas',

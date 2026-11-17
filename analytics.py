@@ -32,6 +32,7 @@ import utm_attr
 EVENTS = frozenset({
     'payment_package_select', 'payment_channel_select', 'payment_dialog_closed', 'payment_cancelled',
     'payment_start', 'payment_checkout_opened', 'payment_failed', 'payment_success',
+    'ai_plan_click', 'ai_plan_applied',
     'example_click', 'prompt_edited', 'login_return_unsigned',
     'update_check_start', 'update_available', 'update_download_start', 'update_download_success', 'update_download_failed',
     'app_open',
@@ -324,7 +325,7 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
                 continue
         elif key == 'source':
             value = str(value or '').strip().lower()
-            if value not in SAFE_BILLING_SOURCE and not (event == 'login_start' and value in ('generate', 'billing', 'other')):
+            if value not in SAFE_BILLING_SOURCE and not (event == 'login_start' and value in ('generate', 'billing', 'other')) and not (event in ('ai_plan_click', 'ai_plan_applied', 'generation_start', 'generation_success', 'generation_failed') and value in ('generate', 'chat', 'ai_plan')):
                 continue
         elif key == 'requested_duration_s':
             try:
@@ -949,10 +950,16 @@ class Analytics:
     def notify_language_set(self, language: str) -> bool:
         return self.track('language_set', {'language': language})
 
+    def notify_ai_plan_click(self) -> bool:
+        return self.track('ai_plan_click', {'source': 'generate'})
+
+    def notify_ai_plan_applied(self, source='chat') -> bool:
+        return self.track('ai_plan_applied', {'source': source, 'surface': 'generate'})
+
     def notify_generation_start(self, generation_id: str, model: str = '',
                                 surface: str = 'generate',
                                 requested_duration_s: Any = None,
-                                input_mode: Any = None, text_bucket=None) -> bool:
+                                input_mode: Any = None, text_bucket=None, source=None) -> bool:
         props: dict[str, Any] = {
             'generation_id': generation_id,
             'surface': surface or 'generate',
@@ -964,11 +971,13 @@ class Analytics:
         if input_mode:
             props['input_mode'] = input_mode
         props['text_len_bucket'] = text_bucket
+        if source:
+            props['source'] = source
         return self.track('generation_start', props)
 
     def notify_generation_finish(self, generation_id: str, ok: bool, model: str = '',
                                  surface: str = 'generate', duration_ms: Any = None,
-                                 error_code: Any = None, input_mode: Any = None, text_bucket=None, quota_spent=None) -> bool:
+                                 error_code: Any = None, input_mode: Any = None, text_bucket=None, quota_spent=None, source=None) -> bool:
         props: dict[str, Any] = {
             'generation_id': generation_id,
             'surface': surface or 'generate',
@@ -984,6 +993,8 @@ class Analytics:
         event = 'generation_success' if ok else 'generation_failed'
         if not ok:
             props['error_code'] = normalize_error_code(error_code)
+        if source:
+            props['source'] = source
         return self.track(event, props)
 
     def notify_video_download(self, model: str = '', surface: str = 'generate') -> bool:
@@ -1205,16 +1216,16 @@ def flush() -> None:
 
 
 def notify_generation_start(generation_id: str, model: str = '', surface: str = 'generate',
-                            requested_duration_s: Any = None, input_mode: Any = None, text_bucket=None) -> bool:
+                            requested_duration_s: Any = None, input_mode: Any = None, text_bucket=None, source=None) -> bool:
     return bool(_call('notify_generation_start', generation_id, model=model, surface=surface,
-                      requested_duration_s=requested_duration_s, input_mode=input_mode, text_bucket=text_bucket))
+                      requested_duration_s=requested_duration_s, input_mode=input_mode, text_bucket=text_bucket, source=source))
 
 
 def notify_generation_finish(generation_id: str, ok: bool, model: str = '', surface: str = 'generate',
                              duration_ms: Any = None, error_code: Any = None,
-                             input_mode: Any = None, text_bucket=None, quota_spent=None) -> bool:
+                             input_mode: Any = None, text_bucket=None, quota_spent=None, source=None) -> bool:
     return bool(_call('notify_generation_finish', generation_id, ok, model=model, surface=surface,
-                      duration_ms=duration_ms, error_code=error_code, input_mode=input_mode, quota_spent=quota_spent))
+                      duration_ms=duration_ms, error_code=error_code, input_mode=input_mode, quota_spent=quota_spent, source=source))
 
 
 def notify_video_download(model: str = '', surface: str = 'generate') -> bool:
@@ -1272,3 +1283,11 @@ def notify_payment_dialog_closed(pending_checkout=None):
 
 def notify_payment_cancelled(package_id=None, channel=None):
     return bool(_call('notify_payment_cancelled', **{'package_id': package_id, 'channel': channel}))
+
+
+def notify_ai_plan_click() -> bool:
+    return bool(_call('notify_ai_plan_click'))
+
+
+def notify_ai_plan_applied(source='chat') -> bool:
+    return bool(_call('notify_ai_plan_applied', source))

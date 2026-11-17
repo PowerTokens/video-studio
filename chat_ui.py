@@ -220,6 +220,17 @@ class ChatTab:
         except Exception:
             return
 
+    def start_from_generate(self, prompt):
+        """Carry a Generate draft through the existing composer and send gate."""
+        self.app.tabs.select(1)
+        if self._busy:
+            self.input.configure(state='normal')
+        self.input.delete('1.0', 'end')
+        self.input.insert('1.0', prompt)
+        self.input.focus_set()
+        if prompt.strip() and not self.messages and not self._busy:
+            self.send()
+
     def send(self, *_):
         if self._busy:
             return

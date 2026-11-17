@@ -518,6 +518,8 @@ class Client:
         generation_id = uuid.uuid4().hex
         self._analytics_generation_id = generation_id
         peek = dict(request or {})
+        source = peek.get('_vs_source') if peek.get('_vs_source') == 'ai_plan' else None
+        self._analytics_source = source
         model_id = peek.get('model') or peek.get('model_name') or DEFAULT_MODEL_ID
         ctx = self.context or {}
         surface = ctx.get('surface') or ('batch' if ctx.get('batch_id') else 'generate')
@@ -525,6 +527,7 @@ class Client:
         input_mode = infer_input_mode(peek, ctx)
         if isinstance(request, dict):
             request.pop('_vs_input_mode', None)
+            request.pop('_vs_source', None)
 
         def _notify(ok, kind=None):
             try:
@@ -533,13 +536,13 @@ class Client:
                 if ok:
                     _analytics.notify_generation_finish(
                         generation_id, True, model=str(model_id or ''),
-                        surface=surface, duration_ms=duration_ms, input_mode=input_mode,
+                        surface=surface, duration_ms=duration_ms, input_mode=input_mode, source=source,
                         quota_spent=(self.record or {}).get('cost'))
                 elif _analytics.is_final_generation_failure(kind):
                     _analytics.notify_generation_finish(
                         generation_id, False, model=str(model_id or ''),
                         surface=surface, duration_ms=duration_ms, error_code=kind,
-                        input_mode=input_mode)
+                        input_mode=input_mode, source=source)
             except Exception:
                 return
 
@@ -548,7 +551,7 @@ class Client:
             _analytics.notify_generation_start(
                 generation_id, model=str(model_id or ''), surface=surface,
                 requested_duration_s=requested, input_mode=input_mode,
-                text_bucket=_analytics.text_len_bucket(peek.get('prompt')))
+                text_bucket=_analytics.text_len_bucket(peek.get('prompt')), source=source)
         except Exception:
             pass
         try:
@@ -585,6 +588,8 @@ class Client:
                            output=str(Path(out_path).absolute()), state=t('state_preparing'), key_hash='', key_hint='',
                            model=model_id, poll_kind=poll_kind)
         self.record.update(self.context)
+        if getattr(self, '_analytics_source', None):
+            self.record['analytics_source'] = self._analytics_source
         if self.record.get('cost') is None:
             try:
                 self.record['cost'] = estimate_cost(
@@ -683,11 +688,12 @@ class Client:
                 if ok:
                     _analytics.notify_generation_finish(
                         generation_id, True, model=model_id, surface=surface,
-                        duration_ms=duration_ms, quota_spent=(self.record or {}).get('cost'))
+                        duration_ms=duration_ms, quota_spent=(self.record or {}).get('cost'),
+                        source=self.record.get('analytics_source'))
                 elif _analytics.is_final_generation_failure(kind):
                     _analytics.notify_generation_finish(
                         generation_id, False, model=model_id, surface=surface,
-                        duration_ms=duration_ms, error_code=kind)
+                        duration_ms=duration_ms, error_code=kind, source=self.record.get('analytics_source'))
             except Exception:
                 return
 
