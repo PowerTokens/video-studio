@@ -199,7 +199,7 @@ class App:
         self.oauth_credits_var = tk.StringVar(value='')
         # Account cluster packs right-to-left so visual L→R is name · credits · pill · login/out.
         self.header_oauth_btn = ttk.Button(toolbar, text=t('oauth_login'), style='Accent.TButton',
-                                           command=self.start_oauth_login)
+                                           command=lambda: self.start_oauth_login('header'))
         self.header_oauth_btn.pack(side='right')
         self.header_logout_btn = ttk.Button(toolbar, text=t('oauth_logout'), style='Link.TButton',
                                             command=self.logout_oauth)
@@ -418,7 +418,7 @@ class App:
                    style='Link.TButton', command=lambda: webbrowser.open('mailto:service@powertokens.ai')).pack(anchor='w')
         actions = Flow(box)
         actions.pack(fill='x', pady=(8, 0))
-        ttk.Button(actions, text=t('onboard_get_key'), style='Accent.TButton', command=self.start_oauth_login)
+        ttk.Button(actions, text=t('onboard_get_key'), style='Accent.TButton', command=lambda: self.start_oauth_login('dialog'))
         self.onboard_keys_btn = ttk.Button(actions, text=t('onboard_goto_keys'), style='Link.TButton',
                                            command=self._onboard_goto_keys)
         ttk.Button(actions, text=t('onboard_dismiss'), command=self.dismiss_onboarding)
@@ -503,7 +503,7 @@ class App:
             except tk.TclError:
                 pass
             try:
-                self.start_oauth_login()
+                self.start_oauth_login('generate')
             except Exception:
                 pass
             return False
@@ -873,7 +873,7 @@ class App:
         self.keys_oauth_hint = label(oauth, t('oauth_use_header'), style='Muted.TLabel')
         self.keys_oauth_hint.pack(anchor='w', pady=(0, 4))
         self.keys_oauth_login_btn = ttk.Button(oauth, text=t('oauth_login'), style='Accent.TButton',
-                                               command=self.start_oauth_login)
+                                               command=lambda: self.start_oauth_login('account'))
         # Not packed: header owns the primary Sign-in CTA (dedupe).
         self.keys_oauth_logout_btn = ttk.Button(oauth, text=t('oauth_logout'), style='Link.TButton',
                                                 command=self.logout_oauth)
@@ -1246,11 +1246,11 @@ class App:
             return 'AUTH'
         return 'UNKNOWN'
 
-    def start_oauth_login(self):
+    def start_oauth_login(self, source='other'):
         if self.oauth_busy:
             return
         try:
-            analytics.notify_login_start()
+            analytics.notify_login_start(source)
         except Exception:
             pass
         self.oauth_busy = True

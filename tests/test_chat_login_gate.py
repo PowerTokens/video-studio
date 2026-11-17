@@ -39,7 +39,7 @@ def _host(*, session, keys):
             raise TaskError('need key')
         return host.keys[0]
 
-    def start_oauth_login():
+    def start_oauth_login(source='other'):
         host.login_calls += 1
 
     host.selected_key = selected_key
@@ -207,7 +207,7 @@ class ChatLoginGateTests(unittest.TestCase):
         tab = self._tab(host)
         self._draft(tab)
 
-        def start_oauth_login():
+        def start_oauth_login(source='other'):
             # Same contract as App.start_oauth_login: a busy login stays put.
             if host.oauth_busy:
                 return

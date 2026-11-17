@@ -324,6 +324,11 @@ def login(open_browser: bool = True, timeout: float = DEFAULT_TIMEOUT,
         raise OAuthError('state_mismatch', 'State mismatch; sign-in aborted.')
     code = query.get('code')
     if not code:
+        try:
+            import analytics
+            analytics.notify_login_return_unsigned('missing_code')
+        except Exception:
+            pass
         raise OAuthError('missing_code', 'Sign-in did not return an authorization code.')
     token = exchange_token(code, verifier, redirect_uri)
     userinfo = fetch_userinfo(token['access_token'])

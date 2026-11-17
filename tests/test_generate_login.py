@@ -32,7 +32,7 @@ def bare(*, keys, session):
     host.pages = [object()] * 6
     host.root = None
 
-    def start_oauth_login():
+    def start_oauth_login(source='other'):
         host.login_calls += 1
 
     host.start_oauth_login = start_oauth_login

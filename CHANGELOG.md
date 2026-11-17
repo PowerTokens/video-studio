@@ -4,6 +4,11 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+## [1.19](https://github.com/PowerTokens/video-studio/releases/tag/v1.19.0) - 2026-11-17
+
+- **Funnel and credit analytics on Windows and Mac.** Adds login sources, repeat and after-success tracking, per-job cost (`quota_spent`), and update-check events.
+- The Apple Silicon Mac app remains an unsigned Beta.
+
 ## [1.18](https://github.com/PowerTokens/video-studio/releases/tag/v1.18.0) - 2026-11-12
 
 - **Checkout packages.** Default to the recommended fixed $5 preset (5000 credits); keep $20 and $50, retain Custom for a typed amount, and remove $200.

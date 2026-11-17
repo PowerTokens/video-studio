@@ -17,7 +17,7 @@ from pathlib import Path
 from i18n import t
 from platform_paths import user_data_dir
 
-APP_VERSION = '1.18'
+APP_VERSION = '1.19'
 USER_AGENT = 'PowerTokensVideoStudio/' + APP_VERSION
 DEFAULT_API_BASE = 'https://api.powertokens.ai'
 # In-app links (get-key button, price source) use medium=app; README links use medium=oss.
@@ -533,7 +533,8 @@ class Client:
                 if ok:
                     _analytics.notify_generation_finish(
                         generation_id, True, model=str(model_id or ''),
-                        surface=surface, duration_ms=duration_ms, input_mode=input_mode)
+                        surface=surface, duration_ms=duration_ms, input_mode=input_mode,
+                        quota_spent=(self.record or {}).get('cost'))
                 elif _analytics.is_final_generation_failure(kind):
                     _analytics.notify_generation_finish(
                         generation_id, False, model=str(model_id or ''),
@@ -546,7 +547,8 @@ class Client:
             import analytics as _analytics
             _analytics.notify_generation_start(
                 generation_id, model=str(model_id or ''), surface=surface,
-                requested_duration_s=requested, input_mode=input_mode)
+                requested_duration_s=requested, input_mode=input_mode,
+                text_bucket=_analytics.text_len_bucket(peek.get('prompt')))
         except Exception:
             pass
         try:
@@ -583,6 +585,12 @@ class Client:
                            output=str(Path(out_path).absolute()), state=t('state_preparing'), key_hash='', key_hint='',
                            model=model_id, poll_kind=poll_kind)
         self.record.update(self.context)
+        if self.record.get('cost') is None:
+            try:
+                self.record['cost'] = estimate_cost(
+                    request.get('duration'), request.get('resolution'), model_id=model_id)
+            except (TypeError, ValueError, KeyError):
+                pass
         submit_endpoint = _models.submit_url(API_BASE, request)
         pool = self.key_pool or KeyPool(keys)
         # Prefer the caller's order, but skip keys already exhausted in this run.
@@ -675,7 +683,7 @@ class Client:
                 if ok:
                     _analytics.notify_generation_finish(
                         generation_id, True, model=model_id, surface=surface,
-                        duration_ms=duration_ms)
+                        duration_ms=duration_ms, quota_spent=(self.record or {}).get('cost'))
                 elif _analytics.is_final_generation_failure(kind):
                     _analytics.notify_generation_finish(
                         generation_id, False, model=model_id, surface=surface,

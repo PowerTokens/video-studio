@@ -170,3 +170,16 @@ Payment funnel: payment_start, payment_checkout_opened (validated create redirec
 payment_failed (normalized code), payment_success (confirmed paid polling status).
 Only catalog package IDs and limeng/paypal channels are recorded. No monetary,
 order, checkout URL, account, or credential data is included. Tracking fails open.
+
+
+## Funnel and login diagnostics
+
+`example_click` and `prompt_edited` accept `surface` and `example_id` from shopping, canyon, seal, locker. Example cycles live in memory. Manual edits emit once per cycle. Submission metadata accepts `from_example`, `prompt_edited`, `prompt_matches_example`, `example_id`, `is_repeat`, `after_success`, and `text_len_bucket` from b0_20, b21_50, b51_100, b101_200, b201_plus. Prompt comparisons normalize whitespace and use bundled translations.
+
+`quota_spent` and `quota_estimate` accept integers from 0 through 1000000. The latter uses an existing catalog estimate. `quota_spent` is the known job cost at generation success, omitted when unknown or invalid. It is not a wallet delta. Shared balance refreshes are never used. Never use credits, balance, amount, or credit-prefixed property names. Forbidden keys remain rejected even if allowlisted.
+
+`login_start` accepts header, account, chat, generate, billing, quota, credits_chip, dialog, other sources. `login_return_unsigned` accepts back, reopen, missing_code reasons. Web hooks pending PKCE on pageshow and reopen and emits missing_code from the callback. Desktop uses ephemeral loopback OAuth and emits missing_code when that callback lacks a code.
+
+Every event includes device_class and os enums. Web also includes browser, is_pwa, is_in_app_browser. No raw user-agent is captured. Desktop has no example chips. `payment_success` retains its existing notification and deduplication flow.
+
+Desktop update checks emit update_check_start, update_available, update_download_start, update_download_success, update_download_failed. update_version accepts only a short numeric dotted version. Failures use safe error_code values.
