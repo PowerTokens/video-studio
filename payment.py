@@ -35,7 +35,14 @@ def post(path, token, body):
     req = Request(BASE + path, data=json.dumps(body).encode(), headers={
         'Authorization': 'Bearer ' + re.sub(r'^(?:Bearer\s+)+', '', token.strip(), flags=re.I), 'Content-Type': 'application/json'})
     with urlopen(req, timeout=15) as response:
-        return json.load(response)
+        try:
+            result = json.load(response)
+        except ValueError as exc:
+            exc.http_status = getattr(response, 'status', None)
+            raise
+        if path == '/v1/payment/create':
+            return CreateResponse(result, getattr(response, 'status', None))
+        return result
 
 def _notify(event, **props):
     try:
@@ -51,32 +58,78 @@ def track_paid_status(state, status):
         state['payment_success_tracked'] = True
 
 
+class CreateResponse:
+    def __init__(self, body, http_status):
+        self.body = body
+        self.http_status = http_status
+
+
+def response_diagnostics(result):
+    if not isinstance(result, dict):
+        return {}
+    props = {}
+    value = result.get('code')
+    if type(value) in (int, float) and 0 <= value <= 99999 and value == int(value):
+        props['api_status'] = int(value)
+    message = result.get('msg') or result.get('message')
+    props['message_category'] = ('absent' if message is None else
+        'authentication' if re.search(r'token|unauthori|credential|登录|令牌', str(message), re.I) else 'other-redacted')
+    return props
+
+
+def redirect_diagnostics(value):
+    props = dict(redirect_ok=False, redirect_protocol='invalid', redirect_host='invalid')
+    try:
+        if not isinstance(value, str) or not value:
+            return props
+        parsed = urlparse(value)
+        host = parsed.hostname
+        props['redirect_protocol'] = parsed.scheme if parsed.scheme in ('http', 'https') else 'other' if parsed.scheme else 'invalid'
+        props['redirect_host'] = host if host in ('gateway.powerwinpay.com', 'powertokens.ai', 'www.powertokens.ai') else 'unlisted' if host else 'invalid'
+        props['redirect_ok'] = bool(valid_redirect(value))
+    except (ValueError, TypeError, AttributeError):
+        pass
+    return props
+
+
 def create(token, body):
     props = dict(package_id=body.get('package_id'), channel=body.get('payment_channel'))
     _notify('start', **props, source='dialog')
+    diagnostics = {}
     try:
+        result = post('/v1/payment/create', token, body)
+    except urllib.error.HTTPError as exc:
+        diagnostics['http_status'] = exc.code
         try:
-            result = post('/v1/payment/create', token, body)
-        except ValueError:
-            _notify('failed', **props, error_code='VALIDATION')
-            raise
-        data = result.get('data') or {}
-        if result.get('code') != 200:
-            _notify('failed', **props, error_code='AUTH' if result.get('code') in (401, 403) else 'UNKNOWN')
-            raise ValueError('Could not start checkout.')
-        try:
-            valid = data.get('orderNo') and valid_redirect(data.get('redirectUrl', ''))
-        except (ValueError, TypeError, AttributeError):
-            valid = False
-        if not valid:
-            _notify('failed', **props, error_code='VALIDATION')
-            raise ValueError('Could not start checkout.')
-    except ValueError:
+            diagnostics.update(response_diagnostics(json.loads(exc.read(65536))))
+        except Exception:
+            pass
+        _notify('failed', **props, **diagnostics, fail_stage='response',
+                error_code='AUTH' if exc.code in (401, 403) or diagnostics.get('api_status') in (401, 403) else 'UNKNOWN')
         raise
-    except Exception as exc:
-        code = 'AUTH' if isinstance(exc, urllib.error.HTTPError) and exc.code in (401, 403) else 'NETWORK' if isinstance(exc, (OSError, TimeoutError)) else 'UNKNOWN'
-        _notify('failed', **props, error_code=code)
+    except ValueError as exc:
+        _notify('failed', **props, fail_stage='response', http_status=getattr(exc, 'http_status', None), error_code='UNKNOWN')
         raise
+    except Exception:
+        _notify('failed', **props, fail_stage='transport', error_code='NETWORK')
+        raise
+    if isinstance(result, CreateResponse):
+        diagnostics['http_status'] = result.http_status
+        result = result.body
+    diagnostics.update(response_diagnostics(result))
+    http_status = diagnostics.get('http_status')
+    if (not isinstance(result, dict) or result.get('code') != 200 or
+            (type(http_status) is int and not 200 <= http_status < 300)):
+        _notify('failed', **props, **diagnostics, fail_stage='response',
+                error_code='AUTH' if http_status in (401, 403) or diagnostics.get('api_status') in (401, 403) else 'UNKNOWN')
+        raise ValueError('Could not start checkout.')
+    data = result.get('data')
+    data = data if isinstance(data, dict) else {}
+    diagnostics['has_payment_ref'] = bool(data.get('orderNo'))
+    diagnostics.update(redirect_diagnostics(data.get('redirectUrl')))
+    if not diagnostics['has_payment_ref'] or not diagnostics['redirect_ok']:
+        _notify('failed', **props, **diagnostics, fail_stage='checkout', error_code='VALIDATION')
+        raise ValueError('Could not start checkout.')
     _notify('checkout_opened', **props)
     return data
 

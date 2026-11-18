@@ -168,6 +168,36 @@ and source/medium/campaign fall back to product defaults. Click IDs are excluded
 
 Payment funnel: payment_start, payment_checkout_opened (validated create redirect),
 payment_failed (normalized code), payment_success (confirmed paid polling status).
+`payment_package_select` records explicit card activations only, with `selection`
+(`preset-5`, `preset-20`, `preset-50`, `custom`) and `package_id` (33, 22, 23,
+33 respectively, serialized as catalog strings). `payment_channel_select` records
+explicit method activations with `channel` (`limeng` or `paypal`). Initial $5 and
+limeng defaults emit neither selection event.
+
+`payment_dialog_closed` records user dismissal/withdrawal with a real boolean
+`pending_checkout`. `payment_cancelled` records official status 2 from polling or
+the manual check once per pending checkout, with its `package_id` and `channel`,
+then clears pending state. Cancellation does not emit `payment_failed`.
+
+Only `payment_failed` accepts these strictly validated diagnostics; unknown values
+are omitted:
+
+- `fail_stage`: `transport` (no usable response), `response` (HTTP, JSON/body or
+  business rejection), or `checkout` (missing reference or unsafe redirect).
+- `http_status`: integer 100–599; `api_status`: integer 0–99999 from business status.
+- `message_category`: `absent`, `authentication` (token, unauthori, credential,
+  登录 or 令牌, case insensitive), or `other-redacted`. Raw messages are excluded.
+- `has_payment_ref` and `redirect_ok`: real booleans.
+- `redirect_protocol`: `https`, `http`, `other`, `invalid`.
+- `redirect_host`: `gateway.powerwinpay.com`, `powertokens.ai`,
+  `www.powertokens.ai`, `unlisted`, `invalid`.
+
+`error_code` is NETWORK for transport failures, AUTH for HTTP/business 401/403,
+VALIDATION for checkout gates, and UNKNOWN for other response failures. Payload
+validation before Buy emits no payment event. HTTP-error body inspection is bounded
+and retains only business status and message category. The create POST remains
+exactly `{amount, package_id, payment_channel}`.
+
 Only catalog package IDs and limeng/paypal channels are recorded. No monetary,
 order, checkout URL, account, or credential data is included. Tracking fails open.
 

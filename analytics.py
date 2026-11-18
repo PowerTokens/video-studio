@@ -29,6 +29,7 @@ import analytics_config
 import utm_attr
 
 EVENTS = frozenset({
+    'payment_package_select', 'payment_channel_select', 'payment_dialog_closed', 'payment_cancelled',
     'payment_start', 'payment_checkout_opened', 'payment_failed', 'payment_success',
     'example_click', 'prompt_edited', 'login_return_unsigned',
     'update_check_start', 'update_available', 'update_download_start', 'update_download_success', 'update_download_failed',
@@ -52,12 +53,22 @@ EVENTS = frozenset({
     'language_set',
 })
 
+PAYMENT_ENUMS = {
+    'selection': {'preset-5', 'preset-20', 'preset-50', 'custom'},
+    'fail_stage': {'transport', 'response', 'checkout'},
+    'message_category': {'absent', 'authentication', 'other-redacted'},
+    'redirect_protocol': {'https', 'http', 'other', 'invalid'},
+    'redirect_host': {'gateway.powerwinpay.com', 'powertokens.ai', 'www.powertokens.ai', 'unlisted', 'invalid'},
+}
+
 UTM_KEYS = ('utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term')
 UTM_PROPS = frozenset(UTM_KEYS) | frozenset('initial_' + k for k in UTM_KEYS)
 UTM_RE = re.compile(r'[A-Za-z0-9._-]{1,80}')
 
 ALLOWED_PROPS = UTM_PROPS | frozenset({
     'update_version', 'example_id', 'return_reason', 'device_class', 'os', 'text_len_bucket', 'from_example', 'prompt_edited', 'prompt_matches_example', 'is_repeat', 'after_success', 'quota_spent', 'quota_estimate',
+    'selection', 'pending_checkout', 'fail_stage', 'http_status', 'api_status',
+    'message_category', 'has_payment_ref', 'redirect_ok', 'redirect_protocol', 'redirect_host',
     'package_id', 'channel',
     'platform',
     'app_version',
@@ -240,7 +251,19 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
         if value is None or value is False or value is True:
             # booleans and None are fine (None will be dropped below except key_applied)
             pass
-        if key == 'example_id':
+        if key in ('fail_stage', 'http_status', 'api_status', 'message_category', 'has_payment_ref', 'redirect_ok', 'redirect_protocol', 'redirect_host') and event != 'payment_failed':
+            continue
+        if key in ('has_payment_ref', 'redirect_ok', 'pending_checkout'):
+            if type(value) is not bool:
+                continue
+        elif key in ('http_status', 'api_status'):
+            low, high = (100, 599) if key == 'http_status' else (0, 99999)
+            if type(value) is not int or not low <= value <= high:
+                continue
+        elif key in PAYMENT_ENUMS:
+            if not isinstance(value, str) or value not in PAYMENT_ENUMS[key]:
+                continue
+        elif key == 'example_id':
             if value not in ['shopping', 'canyon', 'seal', 'locker']:
                 continue
         elif key == 'return_reason':
@@ -886,14 +909,26 @@ class Analytics:
             props['key_applied'] = bool(key_applied)
         return self.track('login_success', props)
 
+    def notify_payment_package_select(self, selection=None, package_id=None):
+        return self.track('payment_package_select', {'selection': selection, 'package_id': package_id})
+
+    def notify_payment_channel_select(self, channel=None):
+        return self.track('payment_channel_select', {'channel': channel})
+
+    def notify_payment_dialog_closed(self, pending_checkout=None):
+        return self.track('payment_dialog_closed', {'pending_checkout': pending_checkout})
+
+    def notify_payment_cancelled(self, package_id=None, channel=None):
+        return self.track('payment_cancelled', {'package_id': package_id, 'channel': channel})
+
     def notify_payment_start(self, package_id=None, channel=None, source='dialog'):
         return self.track('payment_start', {'package_id': package_id, 'channel': channel, 'source': source})
 
     def notify_payment_checkout_opened(self, package_id=None, channel=None):
         return self.track('payment_checkout_opened', {'package_id': package_id, 'channel': channel})
 
-    def notify_payment_failed(self, package_id=None, channel=None, error_code='UNKNOWN'):
-        return self.track('payment_failed', {'package_id': package_id, 'channel': channel, 'error_code': error_code})
+    def notify_payment_failed(self, package_id=None, channel=None, error_code='UNKNOWN', **diagnostics):
+        return self.track('payment_failed', dict(diagnostics, package_id=package_id, channel=channel, error_code=error_code))
 
     def notify_payment_success(self, package_id=None, channel=None):
         return self.track('payment_success', {'package_id': package_id, 'channel': channel})
@@ -1210,8 +1245,8 @@ def notify_payment_checkout_opened(package_id=None, channel=None):
     return bool(_call('notify_payment_checkout_opened', **{'package_id': package_id, 'channel': channel}))
 
 
-def notify_payment_failed(package_id=None, channel=None, error_code='UNKNOWN'):
-    return bool(_call('notify_payment_failed', **{'package_id': package_id, 'channel': channel, 'error_code': error_code}))
+def notify_payment_failed(package_id=None, channel=None, error_code='UNKNOWN', **diagnostics):
+    return bool(_call('notify_payment_failed', **dict(diagnostics, package_id=package_id, channel=channel, error_code=error_code)))
 
 
 def notify_payment_success(package_id=None, channel=None):
@@ -1220,3 +1255,19 @@ def notify_payment_success(package_id=None, channel=None):
 
 def notify_login_return_unsigned(reason):
     return bool(_call('track', 'login_return_unsigned', {'return_reason': reason}))
+
+
+def notify_payment_package_select(selection=None, package_id=None):
+    return bool(_call('notify_payment_package_select', **{'selection': selection, 'package_id': package_id}))
+
+
+def notify_payment_channel_select(channel=None):
+    return bool(_call('notify_payment_channel_select', **{'channel': channel}))
+
+
+def notify_payment_dialog_closed(pending_checkout=None):
+    return bool(_call('notify_payment_dialog_closed', **{'pending_checkout': pending_checkout}))
+
+
+def notify_payment_cancelled(package_id=None, channel=None):
+    return bool(_call('notify_payment_cancelled', **{'package_id': package_id, 'channel': channel}))
