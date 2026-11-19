@@ -57,7 +57,7 @@ class StudioUITests(unittest.TestCase):
         previous_language = i18n.get_language()
         try:
             gui._update_dismissed_session = False
-            gui._show_update_offer(update_check.fixture_release(platform='darwin', version='1.20.0'))
+            gui._show_update_offer(update_check.fixture_release(platform='darwin', version='1.21.0'))
             self.root.update()
             self.assertFalse(gui.update_progress_bar.winfo_viewable())
             gui._update_progress((25, 100))
