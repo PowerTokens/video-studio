@@ -15,7 +15,7 @@ BASE = 'https://powertokens.ai/api'
 
 def valid_redirect(url):
     p = urlparse(url)
-    return p.scheme == 'https' and p.hostname in ('gateway.powerwinpay.com', 'powertokens.ai', 'www.powertokens.ai') and not p.username and not p.password and p.port in (None, 443)
+    return p.scheme == 'https' and p.hostname in ('gateway.powerwinpay.com', 'powertokens.ai', 'www.powertokens.ai', 'www.paypal.com', 'paypal.com') and not p.username and not p.password and p.port in (None, 443)
 
 def payload(package_id, amount, channel):
     package = next(p for p in PACKAGES if p['id'] == int(package_id))
