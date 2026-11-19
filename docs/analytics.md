@@ -36,14 +36,19 @@ git. A release EXE will not send traffic until that key is present.
 Per [Controlling data collection](https://posthog.com/docs/privacy/data-collection)
 and [data storage](https://posthog.com/docs/privacy/data-storage):
 
-- Every event sets `$process_person_profile: false` (official anonymous capture).
-- Every event sets `$geoip_disable: true` so GeoIP enrichment is skipped for that event.
-- `$ip` is **omitted**. Setting it to null does not hide the request IP; the
-  ingest host still sees the TCP/TLS client IP. To avoid *storing* IPs, enable
-  **Discard client IP data** in PostHog project settings. To also skip
-  transformation-time GeoIP if you change the per-event flag, disable the GeoIP
-  transformation in the project.
-- This client does **not** claim IP anonymity.
+- Every event sets `$process_person_profile: false`.
+- Events omit `$geoip_disable` so the existing GeoIP transformation
+  (`template-geoip`, execution order 1) can enrich country server-side.
+- A separate Filter Properties project transformation after enrichment will keep
+  only `$geoip_country_code` and `$geoip_country_name` (and their
+  `$initial_geoip_country_*` counterparts if they appear). City, subdivision,
+  coordinates, postal code, timezone, and continent are not kept.
+- `$ip` is omitted; the client never sends a client-generated IP or coordinates.
+  **Discard client IP data** (`anonymize_ips`) is already enabled in the project.
+  Ingest still sees the request IP in transit; this client does **not** claim IP
+  anonymity.
+- Historical events cannot be backfilled with country. Only events captured
+  after this change ships will have country.
 
 ## Default-on policy (2026-11-12)
 

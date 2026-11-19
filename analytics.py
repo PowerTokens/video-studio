@@ -8,9 +8,10 @@ codes, and URL query strings are never accepted.
 
 Network failures fail open (the UI is never blocked). The outbound queue is
 bounded and only used when a destination exists. Analytics is default on. Account linkage is not used in this MVP:
-distinct_id is a random install UUID. The ingest host may still see the client
-IP; this client sets $geoip_disable and $process_person_profile=false, and
-does not claim IP anonymity.
+distinct_id is a random install UUID. Country is enriched server-side; a project
+transformation drops non-country GeoIP fields. $ip is omitted and
+$process_person_profile=false is set. The ingest host may still see the client
+IP; this client does not claim IP anonymity.
 """
 from __future__ import annotations
 
@@ -364,16 +365,16 @@ def build_capture_payload(item: dict, api_key: str) -> dict:
     """Shape documented at https://posthog.com/docs/api/capture (single event).
 
     Required: api_key, event, distinct_id. Optional: properties, timestamp.
-    Anonymous events must set $process_person_profile=false. $geoip_disable
-    skips GeoIP enrichment. $ip is intentionally omitted: the official docs
-    say PostHog still sees the request IP, and discarding stored IPs is a
-    project setting, not a client field.
+    Events set $process_person_profile=false and omit $geoip_disable so country
+    is enriched server-side. A project transformation drops non-country GeoIP
+    fields. $ip is omitted; stored IPs are discarded by an already enabled
+    project setting. Ingest still sees the request IP; no IP anonymity is claimed.
     """
     props = dict(item.get('properties') or {})
     props.pop('$ip', None)
     props['$lib'] = LIB_NAME
     props['$lib_version'] = LIB_VERSION
-    props['$geoip_disable'] = True
+    props.pop('$geoip_disable', None)
     props['$process_person_profile'] = False
     return {
         'api_key': api_key,

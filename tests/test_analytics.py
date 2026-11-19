@@ -302,7 +302,7 @@ class AnalyticsCoreTests(unittest.TestCase):
         self.assertEqual(body['api_key'], 'phc_test')
         self.assertEqual(body['event'], 'app_open')
         self.assertEqual(body['distinct_id'], 'install123')
-        self.assertTrue(body['properties']['$geoip_disable'])
+        self.assertNotIn('$geoip_disable', body['properties'])
         self.assertIs(body['properties']['$process_person_profile'], False)
         self.assertNotIn('$ip', body['properties'])
         blob = json.dumps(body)
