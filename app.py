@@ -16,7 +16,8 @@ from i18n import (LANGUAGES, LANGUAGE_NAMES, get_language, is_zh, load_settings,
                   save_setting, set_language, t)
 from studio_ui import (APP_NAME, VERSION, subtitle, promotion_text, FONT, WHITE, PAGE, INK, LINE, ACCENT, LOGO_FILE,
                        apply_theme, label, heading, card, Columns, Flow, ScrollPage, text_area,
-                       load_image, header_logo_file, KeyStatusPill, window_title, bind_command_or_control)
+                       load_image, header_logo_file, KeyStatusPill, PillChip, AccentPillButton, LangPill, WebSelect,
+                       WebTabBar, window_title, bind_command_or_control)
 from input_helpers import parse_keys, infer_prompt
 from batch_ui import BatchTab
 from chat_ui import ChatTab
@@ -166,7 +167,7 @@ class App:
         root = self.root
         shell = self.shell = ttk.Frame(root, style='Page.TFrame')
         shell.pack(fill='both', expand=True)
-        header = ttk.Frame(shell, padding=(28, 18, 28, 14))
+        header = ttk.Frame(shell, padding=(24, 14, 24, 12))
         header.pack(fill='x')
         # One balanced bar: brand block (left) ↔ lang/tips + account cluster (right).
         bar = ttk.Frame(header)
@@ -183,13 +184,13 @@ class App:
 
         toolbar = ttk.Frame(bar)
         toolbar.pack(side='right')
-        # Language dropdown (OS detect → English default; persist after user choice).
+        # Language pill (web .lang-switch select border-radius: 999px).
         self.lang_var = tk.StringVar(value=LANGUAGE_NAMES.get(get_language(), 'English'))
-        self.lang_combo = ttk.Combobox(
-            toolbar, textvariable=self.lang_var, state='readonly', width=12,
-            values=[LANGUAGE_NAMES[code] for code in LANGUAGES])
+        self.lang_combo = LangPill(
+            toolbar, text=self.lang_var.get(), chrome=WHITE,
+            values=[LANGUAGE_NAMES[code] for code in LANGUAGES],
+            command=self._on_lang_picked)
         self.lang_combo.pack(side='left')
-        self.lang_combo.bind('<<ComboboxSelected>>', self._on_lang_picked)
         self.lang_buttons = {}  # kept for older tests / capture_state compatibility
         self.help_tips_btn = ttk.Button(toolbar, text=t('onboard_help'), style='Link.TButton',
                                         command=self.show_onboarding)
@@ -197,30 +198,36 @@ class App:
 
         self.key_badge = tk.StringVar(value=t('badge_no_key'))
         self.oauth_account_var = tk.StringVar(value='')
-        self.oauth_credits_var = tk.StringVar(value='')
-        # Account cluster packs right-to-left so visual L→R is name · credits · pill · login/out.
-        self.header_oauth_btn = ttk.Button(toolbar, text=t('oauth_login'), style='Accent.TButton',
-                                           command=lambda: self.start_oauth_login('header'))
+        self.oauth_credits_var = tk.StringVar(value=t('credits_btn'))
+        # Account cluster packs right-to-left so visual L→R is name · credits · key-pill · login/out.
+        # Canvas pills mirror web .credits-chip / .btn-accent stadium radius (ttk cannot round).
+        self.header_oauth_btn = AccentPillButton(
+            toolbar, text=t('oauth_login'), chrome=WHITE,
+            command=lambda: self.start_oauth_login('header'))
         self.header_oauth_btn.pack(side='right')
         self.header_logout_btn = ttk.Button(toolbar, text=t('oauth_logout'), style='Link.TButton',
                                             command=self.logout_oauth)
-        self.oauth_credits_label = ttk.Label(toolbar, textvariable=self.oauth_credits_var, style='CreditsChip.TLabel')
-        self.oauth_credits_label.bind('<Button-1>', lambda *_: self.open_billing('credits_chip'))
-        try:
-            self.oauth_credits_label.configure(cursor='hand2')
-        except tk.TclError:
-            pass
-        self.oauth_account_label = ttk.Label(toolbar, textvariable=self.oauth_account_var, style='UserChip.TLabel')
+        self.oauth_credits_label = PillChip(
+            toolbar, textvariable=self.oauth_credits_var, variant='credits', chrome=WHITE,
+            command=lambda: self.open_billing('credits_chip'))
+        # Always visible like web billing-chip (Credits · Top up even when logged out).
+        self.oauth_credits_label.pack(side='right', padx=(0, 8))
+        self.oauth_account_label = PillChip(
+            toolbar, textvariable=self.oauth_account_var, variant='user', chrome=WHITE)
         self.header_key_pill = KeyStatusPill(toolbar, chrome=WHITE)
         # Not packed yet: soft "Sign in" duplicates the OAuth button; shown after a real key state.
         self._header_toolbar = toolbar
         self._refresh_oauth_header()
         self._build_update_banner(shell)
+        self._tab_keys = (
+            'tab_generate', 'tab_chat', 'tab_compare', 'tab_batch', 'tab_history', 'tab_keys')
+        self.tab_bar = WebTabBar(
+            shell, labels=[t(key) for key in self._tab_keys], on_select=self._select_web_tab)
+        self.tab_bar.pack(fill='x')
         tabs = ttk.Notebook(shell)
         tabs.pack(fill='both', expand=True)
         pages = [ScrollPage(tabs) for _ in range(6)]
-        for page, name in zip(pages, (
-                'tab_generate', 'tab_chat', 'tab_compare', 'tab_batch', 'tab_history', 'tab_keys')):
+        for page, name in zip(pages, self._tab_keys):
             tabs.add(page, text=t(name))
         self.tabs, self.pages = tabs, pages
         self.build_create(pages[0].body)
@@ -250,6 +257,8 @@ class App:
         def on_tab(_evt=None):
             try:
                 idx = int(self.tabs.index('current'))
+                if hasattr(self, 'tab_bar'):
+                    self.tab_bar.select(idx, notify=False)
                 surface = surfaces[idx] if 0 <= idx < len(surfaces) else ''
                 if surface:
                     analytics.notify_surface_open(surface)
@@ -258,6 +267,13 @@ class App:
 
         self.tabs.bind('<<NotebookTabChanged>>', on_tab)
         on_tab()
+
+    def _select_web_tab(self, index):
+        try:
+            if int(self.tabs.index('current')) != int(index):
+                self.tabs.select(index)
+        except tk.TclError:
+            return
 
     def _bind_analytics_focus(self):
         def focused():
@@ -295,8 +311,11 @@ class App:
         except tk.TclError:
             pass
 
-    def _on_lang_picked(self, *_):
-        name = (self.lang_var.get() if hasattr(self, 'lang_var') else '') or ''
+    def _on_lang_picked(self, name=None, *_):
+        if name is None:
+            name = (self.lang_var.get() if hasattr(self, 'lang_var') else '') or ''
+        if hasattr(self, 'lang_var'):
+            self.lang_var.set(name)
         code = next((c for c, n in LANGUAGE_NAMES.items() if n == name), None)
         if code:
             self.switch_language(code)
@@ -558,17 +577,17 @@ class App:
         model_title.pack(anchor='w', pady=(0, 6))
         self._ai_field_labels['model'] = model_title
         self.model_id.trace_add('write', lambda *_: self._clear_ai_field('model'))
-        self.model_combo = ttk.Combobox(model_row, textvariable=self.model_label, state='readonly', width=28)
+        self.model_combo = WebSelect(model_row, textvariable=self.model_label, state='readonly')
         self.model_combo.pack(fill='x')
         desc_row = ttk.Frame(model_row)
         desc_row.pack(fill='x', pady=(4, 0))
         self.model_desc = tk.StringVar()
         self.model_desc_full = tk.StringVar()
         self._model_details_open = False
-        label(desc_row, variable=self.model_desc).pack(side='left', fill='x', expand=True)
         self.model_details_btn = ttk.Button(desc_row, text=t('model_details'), style='Link.TButton',
                                             command=self._toggle_model_details)
         self.model_details_btn.pack(side='right', padx=(8, 0))
+        label(desc_row, variable=self.model_desc).pack(side='left', fill='x', expand=True)
         self.model_desc_full_label = label(model_row, variable=self.model_desc_full)
         self.model_desc_full_label.pack(fill='x', pady=(4, 0))
         self.model_desc_full_label.pack_forget()
@@ -1010,26 +1029,32 @@ class App:
             self.promo_label.pack_forget()
 
     def _refresh_model_combo(self):
-        self._model_labels = {}
-        labels = []
-        for spec in list_models():
-            label_text = spec.label()
-            pct = spec.discount_percent()
-            if pct:
-                label_text = '%s (-%s%%)' % (label_text, pct)
-            self._model_labels[label_text] = spec.id
-            labels.append(label_text)
-        self.model_combo.configure(values=labels)
+        # Clean labels + parallel discount % / ids (web cselect data-discount style).
+        specs = list(list_models())
+        labels = [spec.label() for spec in specs]
+        discounts = [int(spec.discount_percent() or 0) for spec in specs]
+        ids = [spec.id for spec in specs]
+        self._model_labels = {lab: mid for lab, mid in zip(labels, ids)}
+        self.model_combo.configure(values=labels, discounts=discounts, ids=ids)
         current = get_model(self.model_id.get())
+        # Prefer matching by id so a promo/label change does not desync the combo.
         current_label = current.label()
-        pct = current.discount_percent()
-        if pct:
-            current_label = '%s (-%s%%)' % (current_label, pct)
+        if current_label not in self._model_labels:
+            for lab, mid in self._model_labels.items():
+                if mid == current.id:
+                    current_label = lab
+                    break
         self.model_label.set(current_label)
         self._update_model_description()
 
     def _on_model_picked(self):
-        mid = self._model_labels.get(self.model_label.get(), DEFAULT_MODEL_ID)
+        mid = ''
+        if hasattr(self.model_combo, 'current_id'):
+            mid = self.model_combo.current_id() or ''
+        if not mid:
+            mid = self._model_labels.get(self.model_label.get(), '')
+        if not mid:
+            mid = DEFAULT_MODEL_ID
         self.model_id.set(mid)
         self._sync_model_widgets()
         self.update_cost()
@@ -1157,51 +1182,48 @@ class App:
             else:
                 self.oauth_account_var.set('')
         if hasattr(self, 'oauth_credits_var'):
+            # Match web renderCredits: balance → "Credits N · Top up"; else "Credits · Top up".
             if logged_in and credits is not None:
-                self.oauth_credits_var.set(t('oauth_credits', credits))
+                try:
+                    shown = t('credits_balance', '{:,}'.format(int(credits)))
+                except (TypeError, ValueError):
+                    shown = t('credits_balance', credits)
+                self.oauth_credits_var.set(shown)
             else:
-                self.oauth_credits_var.set('')
-        # Header buttons
-        if hasattr(self, 'header_oauth_btn'):
-            try:
-                if logged_in:
-                    self.header_oauth_btn.pack_forget()
+                self.oauth_credits_var.set(t('credits_btn'))
+        # Header account cluster — forget + re-pack right-to-left so order stays
+        # name · credits · key-pill · login/out (matches web .account-cluster).
+        try:
+            for w in (getattr(self, 'header_oauth_btn', None),
+                      getattr(self, 'header_logout_btn', None),
+                      getattr(self, 'header_key_pill', None),
+                      getattr(self, 'oauth_credits_label', None),
+                      getattr(self, 'oauth_account_label', None)):
+                if w is not None:
+                    try:
+                        w.pack_forget()
+                    except tk.TclError:
+                        pass
+            # 1) rightmost: Sign-in pill or Sign out link
+            if logged_in:
+                if hasattr(self, 'header_logout_btn'):
+                    self.header_logout_btn.pack(side='right')
+            elif hasattr(self, 'header_oauth_btn'):
+                if self.oauth_busy:
+                    self.header_oauth_btn.configure(text=t('oauth_busy'), state='disabled')
                 else:
-                    if self.oauth_busy:
-                        self.header_oauth_btn.configure(text=t('oauth_busy'), state='disabled')
-                    else:
-                        self.header_oauth_btn.configure(text=t('oauth_login'), state='normal')
-                    if not self.header_oauth_btn.winfo_manager():
-                        self.header_oauth_btn.pack(side='right')
-            except tk.TclError:
-                pass
-        if hasattr(self, 'header_logout_btn'):
-            try:
-                if logged_in:
-                    if not self.header_logout_btn.winfo_manager():
-                        self.header_logout_btn.pack(side='right')
-                else:
-                    self.header_logout_btn.pack_forget()
-            except tk.TclError:
-                pass
-        if hasattr(self, 'oauth_credits_label'):
-            try:
-                if logged_in and credits is not None:
-                    if not self.oauth_credits_label.winfo_manager():
-                        self.oauth_credits_label.pack(side='right', padx=(0, 8))
-                else:
-                    self.oauth_credits_label.pack_forget()
-            except tk.TclError:
-                pass
-        if hasattr(self, 'oauth_account_label'):
-            try:
-                if logged_in and name:
-                    if not self.oauth_account_label.winfo_manager():
-                        self.oauth_account_label.pack(side='right', padx=(0, 8))
-                else:
-                    self.oauth_account_label.pack_forget()
-            except tk.TclError:
-                pass
+                    self.header_oauth_btn.configure(text=t('oauth_login'), state='normal')
+                self.header_oauth_btn.pack(side='right')
+            # 2) key status pill — only when not soft (PR #13 / web hide soft)
+            # packed later by _refresh_key_status after this refresh; keep forgotten here if soft
+            # 3) credits chip always (web billing-chip)
+            if hasattr(self, 'oauth_credits_label'):
+                self.oauth_credits_label.pack(side='right', padx=(0, 8))
+            # 4) user name chip when signed in
+            if logged_in and name and hasattr(self, 'oauth_account_label'):
+                self.oauth_account_label.pack(side='right', padx=(0, 8))
+        except tk.TclError:
+            pass
         # Keys tab OAuth card
         if hasattr(self, 'keys_oauth_status'):
             if self.oauth_busy:
@@ -1238,6 +1260,9 @@ class App:
                     self.keys_oauth_logout_btn.pack_forget()
             except tk.TclError:
                 pass
+        # Re-apply key-pill pack (soft stays hidden) after account-cluster re-pack.
+        if hasattr(self, '_refresh_key_status'):
+            self._refresh_key_status()
 
     def _boot_analytics(self):
         """Start the anonymous session once per process. Never on tab switches."""

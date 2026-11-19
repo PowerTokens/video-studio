@@ -4,6 +4,8 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+- **Web-style header and tabs.** Header account controls use stadium pills aligned with the web chrome. The main tab strip follows the current web notebook tabs: equal width, `#c5ddd6` borders, selected tab `#eaf6f2` with a 2px `#53b2a5` underline, and hover `#edf7f4`.
+
 ## [1.19](https://github.com/PowerTokens/video-studio/releases/tag/v1.19.0) - 2026-11-17
 
 - **Funnel and credit analytics on Windows and Mac.** Adds login sources, repeat and after-success tracking, per-job cost (`quota_spent`), and update-check events.
