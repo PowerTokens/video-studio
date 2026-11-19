@@ -64,6 +64,27 @@ def _draw_payment_mark(mark, channel):
         mark.create_polygon(*front, fill='#003087', outline='')
 
 
+def select_payment(variable, value, kind, explicit=False):
+    variable.set(value)
+    if explicit and kind == 'package':
+        card = checkout_card(value)
+        selection = {'fixed_5': 'preset-5', 'fixed_20': 'preset-20', 'fixed_50': 'preset-50', 'custom': 'custom'}[value]
+        payment._notify('package_select', selection=selection, package_id=card['package_id'])
+    elif explicit and kind == 'channel':
+        payment._notify('channel_select', channel=value)
+
+
+def close_payment_dialog(win, state):
+    payment._notify('dialog_closed', pending_checkout=bool(state.get('order')))
+    win.withdraw()
+
+
+def cancel_pending_checkout(state):
+    if state.get('order'):
+        payment._notify('cancelled', package_id=state.get('package_id'), channel=state.get('channel'))
+        state['order'] = None
+
+
 def _track_paid_status(state, status):
     payment.track_paid_status(state, status)
 
@@ -88,7 +109,7 @@ def show(app):
     win.title('Video Studio · ' + c[0])
     win.geometry('560x660')
     win.configure(bg=PAGE)
-    win.protocol('WM_DELETE_WINDOW', win.withdraw)
+    win.protocol('WM_DELETE_WINDOW', lambda: close_payment_dialog(win, state))
     body = tk.Frame(win, bg=PAGE, padx=24, pady=20)
     body.pack(fill='both', expand=True)
     tk.Label(body, text='Video Studio · ' + c[0], font=('', 18, 'bold'), bg=PAGE, fg=INK).pack(anchor='w', pady=(0, 18))
@@ -99,8 +120,8 @@ def show(app):
     grid.pack(fill='x')
     grid.columnconfigure((0, 1), weight=1, uniform='cards')
     cards = []
-    def select(variable, value):
-        variable.set(value)
+    def select(variable, value, explicit=False):
+        select_payment(variable, value, 'package' if variable is choice else 'channel', explicit)
         for frame, var, item in cards:
             selected = var.get() == item
             bg = PALE if selected else WHITE
@@ -110,9 +131,9 @@ def show(app):
         else: custom.pack_forget()
     def bind_card(frame, variable, value):
         for widget in [frame] + frame.winfo_children():
-            widget.bind('<Button-1>', lambda event: select(variable, value))
-        frame.bind('<Return>', lambda event: select(variable, value))
-        frame.bind('<space>', lambda event: select(variable, value))
+            widget.bind('<Button-1>', lambda event: select(variable, value, explicit=True))
+        frame.bind('<Return>', lambda event: select(variable, value, explicit=True))
+        frame.bind('<space>', lambda event: select(variable, value, explicit=True))
     for index, card in enumerate(CHECKOUT_CARDS):
         frame = tk.Frame(grid, bg=WHITE, highlightbackground=LINE, highlightthickness=1, padx=16, pady=10, cursor='hand2', takefocus=1)
         row, column = divmod(index, 2)
@@ -140,7 +161,7 @@ def show(app):
     for value, text in [('limeng', c[3]), ('paypal', c[4])]:
         frame = tk.Frame(method_row, bg=PAGE, pady=6)
         frame.pack(side='left', fill='x', expand=True, padx=4)
-        radio = tk.Radiobutton(frame, variable=channel, value=value, bg=PAGE, activebackground=PAGE, selectcolor=PAGE, fg=ACCENT, command=lambda: select(channel, channel.get()))
+        radio = tk.Radiobutton(frame, variable=channel, value=value, bg=PAGE, activebackground=PAGE, selectcolor=PAGE, fg=ACCENT, command=lambda: select(channel, channel.get(), explicit=True))
         radio.pack(side='left', padx=(0, 6))
         mark = tk.Canvas(frame, width=32, height=24, bg=PAGE, highlightthickness=0)
         mark.pack(side='left', padx=(0, 10))
@@ -148,7 +169,7 @@ def show(app):
         label = tk.Label(frame, text=text, bg=PAGE, fg=INK, font=('', 13))
         label.pack(side='left')
         for widget in (mark, label):
-            widget.bind('<Button-1>', lambda event, v=value: select(channel, v))
+            widget.bind('<Button-1>', lambda event, v=value: select(channel, v, explicit=True))
     select(choice, DEFAULT_SELECTION)
     message = tk.StringVar(value=c[6] if state['order'] else '')
     status_label = ttk.Label(body, textvariable=message, wraplength=400)
@@ -181,7 +202,7 @@ def show(app):
             if not error:
                 status, info = result
                 if status == 2:
-                    state['order'] = None; message.set(c[10]); buy.configure(state='normal'); return
+                    cancel_pending_checkout(state); message.set(c[10]); buy.configure(state='normal'); return
                 credits = info.get('credits')
                 _track_paid_status(state, status)
                 if status == 1 or (isinstance(credits, (int, float)) and isinstance(state['baseline'], (int, float)) and credits > state['baseline']):

@@ -4,6 +4,15 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+## [1.20](https://github.com/PowerTokens/video-studio/releases/tag/v1.20.0) - 2026-11-19
+
+- **Official PayPal checkout.** In-app top-up can open the official PayPal checkout page.
+- **Payment failure diagnostics.** The payment funnel records package and channel choices, opening checkout, create failures (VALIDATION or UNKNOWN), and a successful return to the app, without amounts, order numbers, or checkout URLs.
+- **Country-only location.** New usage events can be broken down by country. The app no longer turns GeoIP off; city, coordinates, and IP are still omitted, and earlier events cannot be backfilled.
+- **AI planning from Generate.** A “let AI help me plan” control on the Generate tab opens Chat with the current prompt. Applying a plan card fills the Generate form and highlights the fields that changed.
+- **Web-style header and tabs.** Header account controls use stadium pills aligned with the web chrome. The main tab strip follows the current web notebook tabs: equal width, `#c5ddd6` borders, a selected tab in `#eaf6f2` with a 2px `#53b2a5` underline, and a hover tint.
+- The Apple Silicon Mac app remains an unsigned Beta.
+
 ## [1.19](https://github.com/PowerTokens/video-studio/releases/tag/v1.19.0) - 2026-11-17
 
 - **Funnel and credit analytics on Windows and Mac.** Adds login sources, repeat and after-success tracking, per-job cost (`quota_spent`), and update-check events.

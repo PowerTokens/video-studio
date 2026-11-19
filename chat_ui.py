@@ -25,7 +25,7 @@ from storyboard import (
     storyboard_from_script,
     text_model_label,
 )
-from studio_ui import Flow, card, heading, label, text_area, bind_command_or_control
+from studio_ui import Flow, card, heading, label, text_area, bind_command_or_control, WebSelect
 
 
 def _catalog_hint():
@@ -66,7 +66,7 @@ class ChatTab:
         self.text_model = tk.StringVar(value=DEFAULT_TEXT_MODEL)
         self.text_choices = {text_model_label(mid): mid for mid in ALLOWED_TEXT_MODELS}
         self.text_label = tk.StringVar(value=text_model_label(DEFAULT_TEXT_MODEL))
-        self.text_combo = ttk.Combobox(
+        self.text_combo = WebSelect(
             tools, textvariable=self.text_label,
             values=list(self.text_choices.keys()), state='readonly')
         self.text_combo.pack(fill='x', pady=(4, 0))
@@ -219,6 +219,17 @@ class ChatTab:
             self._analytics_chat_id = ''
         except Exception:
             return
+
+    def start_from_generate(self, prompt):
+        """Carry a Generate draft through the existing composer and send gate."""
+        self.app.tabs.select(1)
+        if self._busy:
+            self.input.configure(state='normal')
+        self.input.delete('1.0', 'end')
+        self.input.insert('1.0', prompt)
+        self.input.focus_set()
+        if prompt.strip() and not self.messages and not self._busy:
+            self.send()
 
     def send(self, *_):
         if self._busy:

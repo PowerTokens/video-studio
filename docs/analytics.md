@@ -36,14 +36,19 @@ git. A release EXE will not send traffic until that key is present.
 Per [Controlling data collection](https://posthog.com/docs/privacy/data-collection)
 and [data storage](https://posthog.com/docs/privacy/data-storage):
 
-- Every event sets `$process_person_profile: false` (official anonymous capture).
-- Every event sets `$geoip_disable: true` so GeoIP enrichment is skipped for that event.
-- `$ip` is **omitted**. Setting it to null does not hide the request IP; the
-  ingest host still sees the TCP/TLS client IP. To avoid *storing* IPs, enable
-  **Discard client IP data** in PostHog project settings. To also skip
-  transformation-time GeoIP if you change the per-event flag, disable the GeoIP
-  transformation in the project.
-- This client does **not** claim IP anonymity.
+- Every event sets `$process_person_profile: false`.
+- Events omit `$geoip_disable` so the existing GeoIP transformation
+  (`template-geoip`, execution order 1) can enrich country server-side.
+- A separate Filter Properties project transformation after enrichment will keep
+  only `$geoip_country_code` and `$geoip_country_name` (and their
+  `$initial_geoip_country_*` counterparts if they appear). City, subdivision,
+  coordinates, postal code, timezone, and continent are not kept.
+- `$ip` is omitted; the client never sends a client-generated IP or coordinates.
+  **Discard client IP data** (`anonymize_ips`) is already enabled in the project.
+  Ingest still sees the request IP in transit; this client does **not** claim IP
+  anonymity.
+- Historical events cannot be backfilled with country. Only events captured
+  after this change ships will have country.
 
 ## Default-on policy (2026-11-12)
 
@@ -80,9 +85,11 @@ ends an unterminated previous session (crash recovery) before `app_open`.
 | `key_verified` | Advanced Key-pool verify-and-save succeeded | — |
 | `key_verify_failed` | That same verify-and-save failed | safe `error_code` only |
 | `language_set` | User manually changed the UI language (not first-run detection) | `language`: `zh`, `en`, `es`, `pt` (unknown codes dropped; `ja`/`ko` are allowed for the paired web app but not offered in this UI) |
-| `generation_start` | New `Client.submit` only (Generate, Compare, or Batch). Resume is not a start | `generation_id` (= task `local_id`), `model` (catalog-like token only), `surface`, optional `requested_duration_s`, `input_mode` (`t2v` or `i2v` when a first-frame image/url was or was not attached; omitted if unknown). The image and prompt are never sent |
-| `generation_success` | That submit, or a later **resume** of the same `local_id`, finishes | `duration_ms`, optional `input_mode` |
-| `generation_failed` | Only irreversible failures (`AUTH`, `QUOTA`, `PARAM`, `REJECTED`, `UNCERTAIN` with no task, `SERVER_FAILED`, …). Pause, timeout, and query-down are not terminal, so a later resume can still record success | safe `error_code` only, optional `input_mode` |
+| `ai_plan_click` | User clicks the AI-plan help button on Generate | `source=generate` |
+| `ai_plan_applied` | User applies a Chat plan to the Generate form | `surface=generate`, `source=ai_plan` after entering through the AI-plan button, otherwise `source=chat` |
+| `generation_start` | New `Client.submit` only (Generate, Compare, or Batch). Resume is not a start | `generation_id` (= task `local_id`), `model` (catalog-like token only), `surface`, optional `requested_duration_s`, `input_mode` (`t2v` or `i2v` when a first-frame image/url was or was not attached; omitted if unknown). The image and prompt are never sent. Optional `source=ai_plan` for a following generation using the applied AI plan |
+| `generation_success` | That submit, or a later **resume** of the same `local_id`, finishes | `duration_ms`, optional `input_mode`, optional `source=ai_plan` carried from the applied plan |
+| `generation_failed` | Only irreversible failures (`AUTH`, `QUOTA`, `PARAM`, `REJECTED`, `UNCERTAIN` with no task, `SERVER_FAILED`, …). Pause, timeout, and query-down are not terminal, so a later resume can still record success | safe `error_code` only, optional `input_mode`, optional `source=ai_plan` carried from the applied plan |
 | `video_download` | Not used for the automatic save inside a successful generate. Fired only for an explicit download-from-link | `model`, `surface` |
 | `chat_submit` | User confirmed **Send** with a non-empty message after the login/key gate. This is the click, not a completed reply | `chat_id`, `surface=chat`, optional `model` |
 | `chat_success` | The chat API/model reply for that `chat_id` completed | `chat_id`, `surface=chat`, optional `model` |
@@ -168,6 +175,36 @@ and source/medium/campaign fall back to product defaults. Click IDs are excluded
 
 Payment funnel: payment_start, payment_checkout_opened (validated create redirect),
 payment_failed (normalized code), payment_success (confirmed paid polling status).
+`payment_package_select` records explicit card activations only, with `selection`
+(`preset-5`, `preset-20`, `preset-50`, `custom`) and `package_id` (33, 22, 23,
+33 respectively, serialized as catalog strings). `payment_channel_select` records
+explicit method activations with `channel` (`limeng` or `paypal`). Initial $5 and
+limeng defaults emit neither selection event.
+
+`payment_dialog_closed` records user dismissal/withdrawal with a real boolean
+`pending_checkout`. `payment_cancelled` records official status 2 from polling or
+the manual check once per pending checkout, with its `package_id` and `channel`,
+then clears pending state. Cancellation does not emit `payment_failed`.
+
+Only `payment_failed` accepts these strictly validated diagnostics; unknown values
+are omitted:
+
+- `fail_stage`: `transport` (no usable response), `response` (HTTP, JSON/body or
+  business rejection), or `checkout` (missing reference or unsafe redirect).
+- `http_status`: integer 100–599; `api_status`: integer 0–99999 from business status.
+- `message_category`: `absent`, `authentication` (token, unauthori, credential,
+  登录 or 令牌, case insensitive), or `other-redacted`. Raw messages are excluded.
+- `has_payment_ref` and `redirect_ok`: real booleans.
+- `redirect_protocol`: `https`, `http`, `other`, `invalid`.
+- `redirect_host`: `gateway.powerwinpay.com`, `powertokens.ai`,
+  `www.powertokens.ai`, `unlisted`, `invalid`.
+
+`error_code` is NETWORK for transport failures, AUTH for HTTP/business 401/403,
+VALIDATION for checkout gates, and UNKNOWN for other response failures. Payload
+validation before Buy emits no payment event. HTTP-error body inspection is bounded
+and retains only business status and message category. The create POST remains
+exactly `{amount, package_id, payment_channel}`.
+
 Only catalog package IDs and limeng/paypal channels are recorded. No monetary,
 order, checkout URL, account, or credential data is included. Tracking fails open.
 

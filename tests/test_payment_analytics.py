@@ -74,3 +74,77 @@ class FunnelAcceptance(unittest.TestCase):
             self.assertNotIn('channel', bad)
         with patch.object(analytics, 'notify_payment_start', side_effect=RuntimeError()), patch.object(payment, 'post', return_value={'code': 200, 'data': {'orderNo': 'synthetic', 'redirectUrl': 'https://powertokens.ai/payment'}}):
             self.assertTrue(payment.create('synthetic', payment.payload(22, 20, 'paypal')))
+
+    def test_failure_diagnostics(self):
+        import io
+        import urllib.error
+        cases = [
+            ({'code': 200, 'data': {'orderNo': 'private', 'redirectUrl': 'https://evil.test'}},
+             dict(error_code='VALIDATION', fail_stage='checkout', has_payment_ref=True, redirect_ok=False, redirect_host='unlisted')),
+            ({'code': 403, 'msg': 'TOKEN private'},
+             dict(error_code='AUTH', fail_stage='response', api_status=403, message_category='authentication')),
+            ({'code': 500, 'message': 'private'},
+             dict(error_code='UNKNOWN', fail_stage='response', api_status=500, message_category='other-redacted')),
+            (payment.CreateResponse({'code': 401}, 401),
+             dict(error_code='AUTH', fail_stage='response', http_status=401, api_status=401)),
+            (payment.CreateResponse([], 200), dict(error_code='UNKNOWN', fail_stage='response', http_status=200)),
+        ]
+        for result, expected in cases:
+            with self.subTest(expected=expected), patch.object(payment, 'post', return_value=result):
+                with self.assertRaises(ValueError): payment.create('private', {})
+                props = self.client.pending()[-1]['properties']
+                for key, value in expected.items(): self.assertEqual(props[key], value)
+        for error, expected in [
+            (OSError('private'), dict(error_code='NETWORK', fail_stage='transport')),
+            (urllib.error.HTTPError('private', 403, 'private', {}, io.BytesIO(b'{"code":403,"msg":"credential private"}')),
+             dict(error_code='AUTH', fail_stage='response', http_status=403, api_status=403, message_category='authentication')),
+        ]:
+            with patch.object(payment, 'post', side_effect=error):
+                with self.assertRaises(Exception): payment.create('private', {})
+            props = self.client.pending()[-1]['properties']
+            for key, value in expected.items(): self.assertEqual(props[key], value)
+            if expected['fail_stage'] == 'transport': self.assertNotIn('http_status', props)
+        self.assert_safe()
+
+    def test_explicit_ui_handlers(self):
+        import payment_ui
+        from unittest.mock import Mock
+        variable = Mock()
+        payment_ui.select_payment(variable, 'fixed_5', 'package')
+        payment_ui.select_payment(variable, 'limeng', 'channel')
+        self.assertEqual(self.client.pending(), [])
+        for key, selection, package in [('fixed_5', 'preset-5', '33'), ('fixed_20', 'preset-20', '22'), ('fixed_50', 'preset-50', '23'), ('custom', 'custom', '33')]:
+            payment_ui.select_payment(variable, key, 'package', explicit=True)
+            props = self.client.pending()[-1]['properties']
+            self.assertEqual((props['selection'], props['package_id']), (selection, package))
+        payment_ui.select_payment(variable, 'paypal', 'channel', explicit=True)
+        self.assertEqual(self.client.pending()[-1]['event'], 'payment_channel_select')
+        state = dict(order='private', package_id=22, channel='paypal')
+        win = Mock()
+        payment_ui.close_payment_dialog(win, state)
+        win.withdraw.assert_called_once()
+        self.assertTrue(self.client.pending()[-1]['properties']['pending_checkout'])
+        payment_ui.cancel_pending_checkout(state)
+        payment_ui.cancel_pending_checkout(state)
+        self.assertEqual([x['event'] for x in self.client.pending()].count('payment_cancelled'), 1)
+        self.assertNotIn('payment_failed', [x['event'] for x in self.client.pending()])
+        payment_ui.close_payment_dialog(win, state)
+        self.assertFalse(self.client.pending()[-1]['properties']['pending_checkout'])
+        self.assert_safe()
+
+    def test_strict_diagnostic_sanitizer(self):
+        dirty = dict(http_status=True, api_status='401', has_payment_ref=1, redirect_ok='false',
+                     pending_checkout=0, fail_stage='private', message_category='private',
+                     redirect_protocol='ftp', redirect_host='evil.test', selection='fixed_5',
+                     amount=1, credits=1, balance=1, orderNo='private', checkout_url='private',
+                     code=401, url='private', message='private', has_order_number=True, safe_url='private')
+        clean = analytics.sanitize_properties('payment_failed', dirty)
+        self.assertFalse(set(dirty) & set(clean))
+        valid = dict(http_status=599, api_status=99999, has_payment_ref=False, redirect_ok=False,
+                     fail_stage='checkout', message_category='absent', redirect_protocol='invalid', redirect_host='invalid')
+        clean = analytics.sanitize_properties('payment_failed', valid)
+        for key, value in valid.items(): self.assertEqual(clean[key], value)
+        clean = analytics.sanitize_properties('payment_start', valid)
+        self.assertFalse(set(valid) & set(clean))
+        for key, value in [('http_status', 99), ('http_status', 600), ('api_status', -1), ('api_status', 100000)]:
+            self.assertNotIn(key, analytics.sanitize_properties('payment_failed', {key: value}))

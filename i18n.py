@@ -19,6 +19,8 @@ LANGUAGE_NAMES = {'zh': '中文', 'en': 'English', 'es': 'Español', 'pt': 'Port
 SETTINGS_PATH = user_data_dir() / 'settings.json'
 
 ZH = {
+    'ai_plan_help': '不会写？让 AI 帮我构思',
+    'ai_plan_ready': 'AI 已帮你填好，请确认后再生成',
     # Header, window and tabs
     'subtitle': '多模型 AI 视频生成',
     'promo': 'Wan 3.0 限时折扣至 10 月 7 日',
@@ -325,6 +327,9 @@ ZH = {
     'oauth_card_desc': '推荐路径：用 PowerTokens 账号登录一次。默认 API Key 会写入本机 Key 池，并显示昵称与积分，不必再复制粘贴。',
     'oauth_signed_in': '已登录 · %s',
     'oauth_credits': '积分 %s',
+    'credits_btn': '积分充值',
+    'credits_balance': '积分 %s · 充值',
+    'discount_badge': '-%d%%',
     'oauth_busy': '正在打开浏览器登录…',
     'oauth_ok': '登录成功，已自动填入 API Key',
     'oauth_ok_nokey': '登录成功（未返回默认 Key，请到本页「高级」区粘贴）',
@@ -567,6 +572,8 @@ ZH = {
 }
 
 EN = {
+    'ai_plan_help': "Can't write it? Let AI help me plan",
+    'ai_plan_ready': 'AI plan ready — review the highlighted fields before generating.',
     # Header, window and tabs
     'subtitle': 'Multi-model AI video generation',
     'promo': 'Wan 3.0 limited-time discount until Oct 7',
@@ -873,6 +880,9 @@ EN = {
     'oauth_card_desc': 'Best for beginners: sign in with PowerTokens once. We save the default API key in the local key pool and show your name and credits. No copy-paste needed.',
     'oauth_signed_in': 'Signed in · %s',
     'oauth_credits': 'Credits %s',
+    'credits_btn': 'Credits · Top up',
+    'credits_balance': 'Credits %s · Top up',
+    'discount_badge': '-%d%%',
     'oauth_busy': 'Opening the browser to sign in…',
     'oauth_ok': 'Signed in — API key saved automatically',
     'oauth_ok_nokey': 'Signed in (no default key returned; paste one under Advanced on this tab)',
@@ -1118,6 +1128,8 @@ EN = {
 
 # Spanish / Portuguese: start from English, overlay chrome UI strings.
 ES_OVERLAY = {
+    'ai_plan_help': '¿No sabes qué escribir? Deja que la IA te ayude',
+    'ai_plan_ready': 'Plan de IA listo — revisa los campos resaltados antes de generar.',
     'subtitle': 'Generación de vídeo IA multi-modelo',
     'badge_no_key': 'Inicia sesión para rellenar la clave',
     'badge_keys': '%d claves añadidas',
@@ -1160,6 +1172,8 @@ ES_OVERLAY = {
     'oauth_card_desc': 'Inicia sesión una vez. Guardamos la clave por defecto y mostramos tu nombre y créditos.',
     'oauth_signed_in': 'Sesión iniciada · %s',
     'oauth_credits': 'Créditos %s',
+    'credits_btn': 'Créditos · Recargar',
+    'credits_balance': 'Créditos %s · Recargar',
     'oauth_busy': 'Abriendo el inicio de sesión…',
     'oauth_ok': 'Sesión iniciada — clave API guardada',
     'oauth_ok_nokey': 'Sesión iniciada (sin clave por defecto; pégala en Avanzado)',
@@ -1189,6 +1203,8 @@ ES_OVERLAY = {
 }
 
 PT_OVERLAY = {
+    'ai_plan_help': 'Não sabe o que escrever? Deixe a IA ajudar',
+    'ai_plan_ready': 'Plano de IA pronto — revise os campos destacados antes de gerar.',
     'subtitle': 'Geração de vídeo IA multi-modelo',
     'badge_no_key': 'Entre para preencher a chave',
     'badge_keys': '%d chaves adicionadas',
@@ -1231,6 +1247,8 @@ PT_OVERLAY = {
     'oauth_card_desc': 'Entre uma vez. Guardamos a chave predefinida e mostramos o seu nome e créditos.',
     'oauth_signed_in': 'Sessão iniciada · %s',
     'oauth_credits': 'Créditos %s',
+    'credits_btn': 'Créditos · Recarregar',
+    'credits_balance': 'Créditos %s · Recarregar',
     'oauth_busy': 'A abrir o início de sessão…',
     'oauth_ok': 'Sessão iniciada — chave API guardada',
     'oauth_ok_nokey': 'Sessão iniciada (sem chave predefinida; cole em Avançado)',

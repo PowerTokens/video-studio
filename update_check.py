@@ -302,12 +302,12 @@ def use_update_fixture():
     return os.environ.get('VS_UPDATE_FIXTURE') == '1'
 
 
-def fixture_release(platform=None, version='1.20.0'):
+def fixture_release(platform=None, version='1.21.0'):
     """A fake newer release used by `VS_UPDATE_FIXTURE=1` for previews and tests."""
     plat = sys.platform if platform is None else platform
     tag = version if str(version).lower().startswith('v') else 'v' + str(version)
     parsed = parse_version(tag)
-    display = '.'.join(str(part) for part in (parsed or (1, 20, 0)))
+    display = '.'.join(str(part) for part in (parsed or (1, 21, 0)))
     name, url = None, None
     if plat == 'win32':
         name = WIN_ASSET

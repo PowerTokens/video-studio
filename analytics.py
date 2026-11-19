@@ -8,9 +8,10 @@ codes, and URL query strings are never accepted.
 
 Network failures fail open (the UI is never blocked). The outbound queue is
 bounded and only used when a destination exists. Analytics is default on. Account linkage is not used in this MVP:
-distinct_id is a random install UUID. The ingest host may still see the client
-IP; this client sets $geoip_disable and $process_person_profile=false, and
-does not claim IP anonymity.
+distinct_id is a random install UUID. Country is enriched server-side; a project
+transformation drops non-country GeoIP fields. $ip is omitted and
+$process_person_profile=false is set. The ingest host may still see the client
+IP; this client does not claim IP anonymity.
 """
 from __future__ import annotations
 
@@ -29,7 +30,9 @@ import analytics_config
 import utm_attr
 
 EVENTS = frozenset({
+    'payment_package_select', 'payment_channel_select', 'payment_dialog_closed', 'payment_cancelled',
     'payment_start', 'payment_checkout_opened', 'payment_failed', 'payment_success',
+    'ai_plan_click', 'ai_plan_applied',
     'example_click', 'prompt_edited', 'login_return_unsigned',
     'update_check_start', 'update_available', 'update_download_start', 'update_download_success', 'update_download_failed',
     'app_open',
@@ -52,12 +55,22 @@ EVENTS = frozenset({
     'language_set',
 })
 
+PAYMENT_ENUMS = {
+    'selection': {'preset-5', 'preset-20', 'preset-50', 'custom'},
+    'fail_stage': {'transport', 'response', 'checkout'},
+    'message_category': {'absent', 'authentication', 'other-redacted'},
+    'redirect_protocol': {'https', 'http', 'other', 'invalid'},
+    'redirect_host': {'gateway.powerwinpay.com', 'powertokens.ai', 'www.powertokens.ai', 'unlisted', 'invalid'},
+}
+
 UTM_KEYS = ('utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term')
 UTM_PROPS = frozenset(UTM_KEYS) | frozenset('initial_' + k for k in UTM_KEYS)
 UTM_RE = re.compile(r'[A-Za-z0-9._-]{1,80}')
 
 ALLOWED_PROPS = UTM_PROPS | frozenset({
     'update_version', 'example_id', 'return_reason', 'device_class', 'os', 'text_len_bucket', 'from_example', 'prompt_edited', 'prompt_matches_example', 'is_repeat', 'after_success', 'quota_spent', 'quota_estimate',
+    'selection', 'pending_checkout', 'fail_stage', 'http_status', 'api_status',
+    'message_category', 'has_payment_ref', 'redirect_ok', 'redirect_protocol', 'redirect_host',
     'package_id', 'channel',
     'platform',
     'app_version',
@@ -240,7 +253,19 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
         if value is None or value is False or value is True:
             # booleans and None are fine (None will be dropped below except key_applied)
             pass
-        if key == 'example_id':
+        if key in ('fail_stage', 'http_status', 'api_status', 'message_category', 'has_payment_ref', 'redirect_ok', 'redirect_protocol', 'redirect_host') and event != 'payment_failed':
+            continue
+        if key in ('has_payment_ref', 'redirect_ok', 'pending_checkout'):
+            if type(value) is not bool:
+                continue
+        elif key in ('http_status', 'api_status'):
+            low, high = (100, 599) if key == 'http_status' else (0, 99999)
+            if type(value) is not int or not low <= value <= high:
+                continue
+        elif key in PAYMENT_ENUMS:
+            if not isinstance(value, str) or value not in PAYMENT_ENUMS[key]:
+                continue
+        elif key == 'example_id':
             if value not in ['shopping', 'canyon', 'seal', 'locker']:
                 continue
         elif key == 'return_reason':
@@ -300,7 +325,7 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
                 continue
         elif key == 'source':
             value = str(value or '').strip().lower()
-            if value not in SAFE_BILLING_SOURCE and not (event == 'login_start' and value in ('generate', 'billing', 'other')):
+            if value not in SAFE_BILLING_SOURCE and not (event == 'login_start' and value in ('generate', 'billing', 'other')) and not (event in ('ai_plan_click', 'ai_plan_applied', 'generation_start', 'generation_success', 'generation_failed') and value in ('generate', 'chat', 'ai_plan')):
                 continue
         elif key == 'requested_duration_s':
             try:
@@ -341,16 +366,16 @@ def build_capture_payload(item: dict, api_key: str) -> dict:
     """Shape documented at https://posthog.com/docs/api/capture (single event).
 
     Required: api_key, event, distinct_id. Optional: properties, timestamp.
-    Anonymous events must set $process_person_profile=false. $geoip_disable
-    skips GeoIP enrichment. $ip is intentionally omitted: the official docs
-    say PostHog still sees the request IP, and discarding stored IPs is a
-    project setting, not a client field.
+    Events set $process_person_profile=false and omit $geoip_disable so country
+    is enriched server-side. A project transformation drops non-country GeoIP
+    fields. $ip is omitted; stored IPs are discarded by an already enabled
+    project setting. Ingest still sees the request IP; no IP anonymity is claimed.
     """
     props = dict(item.get('properties') or {})
     props.pop('$ip', None)
     props['$lib'] = LIB_NAME
     props['$lib_version'] = LIB_VERSION
-    props['$geoip_disable'] = True
+    props.pop('$geoip_disable', None)
     props['$process_person_profile'] = False
     return {
         'api_key': api_key,
@@ -886,14 +911,26 @@ class Analytics:
             props['key_applied'] = bool(key_applied)
         return self.track('login_success', props)
 
+    def notify_payment_package_select(self, selection=None, package_id=None):
+        return self.track('payment_package_select', {'selection': selection, 'package_id': package_id})
+
+    def notify_payment_channel_select(self, channel=None):
+        return self.track('payment_channel_select', {'channel': channel})
+
+    def notify_payment_dialog_closed(self, pending_checkout=None):
+        return self.track('payment_dialog_closed', {'pending_checkout': pending_checkout})
+
+    def notify_payment_cancelled(self, package_id=None, channel=None):
+        return self.track('payment_cancelled', {'package_id': package_id, 'channel': channel})
+
     def notify_payment_start(self, package_id=None, channel=None, source='dialog'):
         return self.track('payment_start', {'package_id': package_id, 'channel': channel, 'source': source})
 
     def notify_payment_checkout_opened(self, package_id=None, channel=None):
         return self.track('payment_checkout_opened', {'package_id': package_id, 'channel': channel})
 
-    def notify_payment_failed(self, package_id=None, channel=None, error_code='UNKNOWN'):
-        return self.track('payment_failed', {'package_id': package_id, 'channel': channel, 'error_code': error_code})
+    def notify_payment_failed(self, package_id=None, channel=None, error_code='UNKNOWN', **diagnostics):
+        return self.track('payment_failed', dict(diagnostics, package_id=package_id, channel=channel, error_code=error_code))
 
     def notify_payment_success(self, package_id=None, channel=None):
         return self.track('payment_success', {'package_id': package_id, 'channel': channel})
@@ -913,10 +950,16 @@ class Analytics:
     def notify_language_set(self, language: str) -> bool:
         return self.track('language_set', {'language': language})
 
+    def notify_ai_plan_click(self) -> bool:
+        return self.track('ai_plan_click', {'source': 'generate'})
+
+    def notify_ai_plan_applied(self, source='chat') -> bool:
+        return self.track('ai_plan_applied', {'source': source, 'surface': 'generate'})
+
     def notify_generation_start(self, generation_id: str, model: str = '',
                                 surface: str = 'generate',
                                 requested_duration_s: Any = None,
-                                input_mode: Any = None, text_bucket=None) -> bool:
+                                input_mode: Any = None, text_bucket=None, source=None) -> bool:
         props: dict[str, Any] = {
             'generation_id': generation_id,
             'surface': surface or 'generate',
@@ -928,11 +971,13 @@ class Analytics:
         if input_mode:
             props['input_mode'] = input_mode
         props['text_len_bucket'] = text_bucket
+        if source:
+            props['source'] = source
         return self.track('generation_start', props)
 
     def notify_generation_finish(self, generation_id: str, ok: bool, model: str = '',
                                  surface: str = 'generate', duration_ms: Any = None,
-                                 error_code: Any = None, input_mode: Any = None, text_bucket=None, quota_spent=None) -> bool:
+                                 error_code: Any = None, input_mode: Any = None, text_bucket=None, quota_spent=None, source=None) -> bool:
         props: dict[str, Any] = {
             'generation_id': generation_id,
             'surface': surface or 'generate',
@@ -948,6 +993,8 @@ class Analytics:
         event = 'generation_success' if ok else 'generation_failed'
         if not ok:
             props['error_code'] = normalize_error_code(error_code)
+        if source:
+            props['source'] = source
         return self.track(event, props)
 
     def notify_video_download(self, model: str = '', surface: str = 'generate') -> bool:
@@ -1169,16 +1216,16 @@ def flush() -> None:
 
 
 def notify_generation_start(generation_id: str, model: str = '', surface: str = 'generate',
-                            requested_duration_s: Any = None, input_mode: Any = None, text_bucket=None) -> bool:
+                            requested_duration_s: Any = None, input_mode: Any = None, text_bucket=None, source=None) -> bool:
     return bool(_call('notify_generation_start', generation_id, model=model, surface=surface,
-                      requested_duration_s=requested_duration_s, input_mode=input_mode, text_bucket=text_bucket))
+                      requested_duration_s=requested_duration_s, input_mode=input_mode, text_bucket=text_bucket, source=source))
 
 
 def notify_generation_finish(generation_id: str, ok: bool, model: str = '', surface: str = 'generate',
                              duration_ms: Any = None, error_code: Any = None,
-                             input_mode: Any = None, text_bucket=None, quota_spent=None) -> bool:
+                             input_mode: Any = None, text_bucket=None, quota_spent=None, source=None) -> bool:
     return bool(_call('notify_generation_finish', generation_id, ok, model=model, surface=surface,
-                      duration_ms=duration_ms, error_code=error_code, input_mode=input_mode, quota_spent=quota_spent))
+                      duration_ms=duration_ms, error_code=error_code, input_mode=input_mode, quota_spent=quota_spent, source=source))
 
 
 def notify_video_download(model: str = '', surface: str = 'generate') -> bool:
@@ -1210,8 +1257,8 @@ def notify_payment_checkout_opened(package_id=None, channel=None):
     return bool(_call('notify_payment_checkout_opened', **{'package_id': package_id, 'channel': channel}))
 
 
-def notify_payment_failed(package_id=None, channel=None, error_code='UNKNOWN'):
-    return bool(_call('notify_payment_failed', **{'package_id': package_id, 'channel': channel, 'error_code': error_code}))
+def notify_payment_failed(package_id=None, channel=None, error_code='UNKNOWN', **diagnostics):
+    return bool(_call('notify_payment_failed', **dict(diagnostics, package_id=package_id, channel=channel, error_code=error_code)))
 
 
 def notify_payment_success(package_id=None, channel=None):
@@ -1220,3 +1267,27 @@ def notify_payment_success(package_id=None, channel=None):
 
 def notify_login_return_unsigned(reason):
     return bool(_call('track', 'login_return_unsigned', {'return_reason': reason}))
+
+
+def notify_payment_package_select(selection=None, package_id=None):
+    return bool(_call('notify_payment_package_select', **{'selection': selection, 'package_id': package_id}))
+
+
+def notify_payment_channel_select(channel=None):
+    return bool(_call('notify_payment_channel_select', **{'channel': channel}))
+
+
+def notify_payment_dialog_closed(pending_checkout=None):
+    return bool(_call('notify_payment_dialog_closed', **{'pending_checkout': pending_checkout}))
+
+
+def notify_payment_cancelled(package_id=None, channel=None):
+    return bool(_call('notify_payment_cancelled', **{'package_id': package_id, 'channel': channel}))
+
+
+def notify_ai_plan_click() -> bool:
+    return bool(_call('notify_ai_plan_click'))
+
+
+def notify_ai_plan_applied(source='chat') -> bool:
+    return bool(_call('notify_ai_plan_applied', source))

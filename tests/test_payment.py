@@ -60,6 +60,21 @@ class PaymentTests(unittest.TestCase):
         for url in ('http://powertokens.ai/x','https://powertokens.ai.evil.test','https://user@powertokens.ai','https://evil.test','https://powertokens.ai:444'):
             self.assertFalse(payment.valid_redirect(url))
         self.assertTrue(payment.valid_redirect('https://gateway.powerwinpay.com/payment/test'))
+    def test_paypal_redirect_hosts(self):
+        for host in ('www.paypal.com', 'paypal.com'):
+            for port in ('', ':443'):
+                self.assertTrue(payment.valid_redirect(f'https://{host}{port}/synthetic-checkout'))
+            for url in (f'https://{host}.evil.test', f'http://{host}/test',
+                        f'https://x@{host}/test', f'https://x:y@{host}/test',
+                        f'https://{host}:444/test'):
+                self.assertFalse(payment.valid_redirect(url))
+            with patch('payment.post', return_value={'code': 200, 'data': {
+                    'orderNo': 'synthetic', 'redirectUrl': f'https://{host}/synthetic-checkout'}}):
+                self.assertEqual(payment.create('synthetic', {})['redirectUrl'],
+                                 f'https://{host}/synthetic-checkout')
+        for host in ('sandbox.paypal.com', 'www.sandbox.paypal.com'):
+            self.assertFalse(payment.valid_redirect(f'https://{host}/test'))
+
     @patch('payment.urlopen')
     def test_create_transport(self, network):
         network.return_value.__enter__.return_value = io.StringIO(json.dumps({'code':200,'data':{'orderNo':'mock-order','redirectUrl':'https://powertokens.ai/payment'}}))
