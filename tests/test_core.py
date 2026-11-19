@@ -150,10 +150,25 @@ class Tests(unittest.TestCase):
         with self.assertRaises(w.TaskError): w.payload('hi', media=[{'type': 'first_frame', 'url': 'C:/a.png'}])
         with self.assertRaises(w.TaskError): w.task_url('../other')
 
-    def test_user_agent_names_the_app(self):
-        with patch.object(w.OPENER, 'open', side_effect=OSError) as opened:
-            w.api('GET', w.API_BASE + '/v1/models', 'key')
-        self.assertEqual(opened.call_args.args[0].get_header('User-agent'), 'PowerTokensVideoStudio/' + w.APP_VERSION)
+    def test_model_api_identifies_the_app(self):
+        for method, path, payload in (
+                ('GET', '/v1/models', None),
+                ('POST', '/v1/chat/completions', {'messages': []}),
+                ('POST', '/v1/videos', {'prompt': 'hi'}),
+                ('GET', '/v1/videos/task_123', None)):
+            with self.subTest(path=path), patch.object(w.OPENER, 'open', side_effect=OSError) as opened:
+                w.api(method, w.API_BASE + path, 'key', payload)
+            request = opened.call_args.args[0]
+            self.assertEqual(request.get_header('User-agent'), 'PowerTokensVideoStudio/' + w.APP_VERSION)
+            self.assertEqual(request.get_header('X-client'), 'videostudio')
+
+    def test_download_omits_client_header(self):
+        for url in (w.API_BASE + '/v1/videos/task_123/content', 'https://cdn.example.com/video'):
+            with self.subTest(url=url), patch.object(w.OPENER, 'open', return_value=Response()) as opened:
+                w.download(url, self.out, 'secret')
+            request = opened.call_args.args[0]
+            self.assertEqual(request.get_header('User-agent'), w.USER_AGENT)
+            self.assertIsNone(request.get_header('X-client'))
 
     def test_api_base_validation(self):
         self.assertEqual(w.resolve_api_base(None), 'https://api.powertokens.ai')
