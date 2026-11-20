@@ -63,6 +63,74 @@ class FunnelAcceptance(unittest.TestCase):
         self.assertEqual(events.count('payment_failed'), 3)
         self.assert_safe()
 
+    def test_closed_dialog_terminal_polling(self):
+        import payment_ui
+        from unittest.mock import Mock
+
+        for terminal, event in [(1, 'payment_success'), (2, 'payment_cancelled')]:
+            with self.subTest(status=terminal):
+                app = Mock()
+                app.oauth_session = {'access_token': 'synthetic'}
+                app._payment_window = None
+                app._payment_state = None
+                app._oauth_profile.return_value = {'credits': 0}
+                callbacks = []
+                app.root.after.side_effect = lambda delay, fn: callbacks.append(fn)
+                buttons = []
+                def button(*args, **kwargs):
+                    widget = Mock()
+                    buttons.append(kwargs)
+                    return widget
+                def thread(*args, **kwargs):
+                    worker = Mock()
+                    worker.start.side_effect = kwargs['target']
+                    return worker
+                with patch.object(payment_ui.tk, 'Toplevel') as window, \
+                        patch.object(payment_ui.tk, 'Frame'), patch.object(payment_ui.tk, 'Label'), \
+                        patch.object(payment_ui.tk, 'Canvas'), patch.object(payment_ui.tk, 'Radiobutton'), \
+                        patch.object(payment_ui.tk, 'StringVar') as variable, \
+                        patch.object(payment_ui.ttk, 'Label'), patch.object(payment_ui.ttk, 'Entry'), \
+                        patch.object(payment_ui.ttk, 'Button', side_effect=button), \
+                        patch.object(payment_ui.threading, 'Thread', side_effect=thread), \
+                        patch.object(payment_ui.webbrowser, 'open'), \
+                        patch.object(payment, 'create', return_value={'orderNo': 'synthetic', 'redirectUrl': 'synthetic'}), \
+                        patch.object(payment, 'status', side_effect=[0, terminal]), \
+                        patch.object(payment_ui.oauth_desktop, 'fetch_userinfo', side_effect=OSError()):
+                    variable.return_value.get.return_value = 'fixed_5'
+                    with patch.object(payment_ui, 'checkout_payload', return_value=payment.payload(33, 5, 'paypal')):
+                        payment_ui.show(app)
+                        buttons[0]['command']()
+                        callbacks.pop(0)()  # create completes
+                    payment_ui.close_payment_dialog(window.return_value, app._payment_state)
+                    window.return_value.withdraw.assert_called_once()
+                    before = len([x for x in self.client.pending() if x['event'] == event])
+                    while callbacks:
+                        callbacks.pop(0)()
+                    self.assertIsNone(app._payment_state['order'])
+                    payment_ui.apply_checkout_status(app._payment_state, terminal)
+                    self.assertEqual(len([x for x in self.client.pending() if x['event'] == event]), before + 1)
+                    props = [x['properties'] for x in self.client.pending() if x['event'] == event][-1]
+                    self.assertEqual(props['package_id'], '33')
+                    self.assertEqual(props['channel'], 'paypal')
+                    self.assert_safe()
+
+    def test_terminal_event_properties_and_deduplication(self):
+        state = dict(package_id=22, channel='paypal', order='synthetic',
+                     amount=99, credits=99, token='synthetic')
+        with patch.object(payment, '_notify') as notify:
+            for status in (0, 1, 1, 2, 2):
+                payment.track_paid_status(state, status)
+        self.assertEqual(notify.call_args_list, [
+            unittest.mock.call('success', package_id=22, channel='paypal'),
+            unittest.mock.call('cancelled', package_id=22, channel='paypal')])
+
+    def test_pending_status_ignores_credit_changes(self):
+        import payment_ui
+        state = dict(order='synthetic', package_id=22, channel='paypal')
+        self.assertFalse(payment_ui.apply_checkout_status(state, 0))
+        self.assertEqual(state['order'], 'synthetic')
+        self.assertEqual(self.client.pending(), [])
+
     def test_event_allowlists_and_fail_open(self):
         for event in ('payment_start', 'payment_checkout_opened', 'payment_failed', 'payment_success'):
             clean = analytics.sanitize_properties(event, dict(package_id=22, channel='paypal', source='dialog', error_code='private', order_no='private', url='private', amount=99, credits=99))

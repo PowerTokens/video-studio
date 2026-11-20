@@ -52,10 +52,11 @@ def _notify(event, **props):
 
 
 def track_paid_status(state, status):
-    # Only confirmed paid status qualifies; a balance change alone does not.
-    if status == 1 and not state.get('payment_success_tracked'):
-        _notify('success', package_id=state.get('package_id'), channel=state.get('channel'))
-        state['payment_success_tracked'] = True
+    # Terminal events contain only checkout dimensions, never payment details.
+    event = {1: 'success', 2: 'cancelled'}.get(status)
+    if event and not state.get('payment_' + event + '_tracked'):
+        _notify(event, package_id=state.get('package_id'), channel=state.get('channel'))
+        state['payment_' + event + '_tracked'] = True
 
 
 class CreateResponse:
