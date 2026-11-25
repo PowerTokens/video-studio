@@ -47,14 +47,15 @@ class GenerateLoginTests(unittest.TestCase):
 
     def test_login_copy_does_not_lead_with_paste(self):
         expected_login = {
-            'zh': '请先登录 PowerTokens，再生成视频。登录后 Key 会自动填入。',
-            'en': 'Sign in with PowerTokens before generating. Your API key fills in automatically.',
-            'es': 'Inicia sesión con PowerTokens antes de generar. La clave se rellena sola.',
-            'pt': 'Entre com PowerTokens antes de gerar. A chave preenche-se sozinha.',
+            'zh': '继续后将去登录或注册。草稿会保留，回来后请再次点击发送或生成。',
+            'en': 'Continue to sign in or register. Your draft stays; click Send or Generate again when you return.',
+            'es': 'Continúa para iniciar sesión o registrarte. Tu borrador se guarda; vuelve a pulsar Enviar o Generar al regresar.',
+            'pt': 'Continue para entrar ou se cadastrar. O rascunho fica salvo; clique em Enviar ou Gerar novamente quando voltar.',
         }
         for lang, text in expected_login.items():
             i18n.set_language(lang)
             self.assertEqual(i18n.t('need_key'), text)
+            self.assertNotRegex(text.lower(), r'官网|official site|sitio oficial|site oficial|公式サイト|공식 사이트')
             lowered = i18n.t('need_key').lower()
             self.assertNotIn('paste', lowered)
             self.assertNotIn('粘贴', i18n.t('need_key'))
@@ -69,7 +70,7 @@ class GenerateLoginTests(unittest.TestCase):
 
     def test_logged_out_generate_starts_oauth_and_does_not_open_keys(self):
         host = bare(keys=[], session=None)
-        with patch('app.messagebox.showinfo') as info, patch('app.messagebox.showerror') as error:
+        with patch('app.messagebox.askokcancel', return_value=True) as info, patch('app.messagebox.showerror') as error:
             host.generate()
         host.launch.assert_not_called()
         error.assert_not_called()
@@ -83,7 +84,7 @@ class GenerateLoginTests(unittest.TestCase):
     def test_expired_session_counts_as_logged_out(self):
         host = bare(keys=[], session={'access_token': 'tok', 'expires_at': time.time() - 30})
         self.assertFalse(host._is_oauth_logged_in())
-        with patch('app.messagebox.showinfo') as info:
+        with patch('app.messagebox.askokcancel', return_value=True) as info:
             self.assertFalse(host.ensure_submit_credentials())
         self.assertEqual(host.login_calls, 1)
         self.assertEqual(info.call_args.args[1], i18n.t('need_key'))
@@ -114,9 +115,16 @@ class GenerateLoginTests(unittest.TestCase):
         batch = BatchTab.__new__(BatchTab)
         batch.app = host
         batch.store = object()
-        with patch('app.messagebox.showinfo') as info:
+        with patch('app.messagebox.askokcancel', return_value=True) as info:
             compare.start_compare()
             batch.start(None)
         self.assertEqual(host.login_calls, 2)
         self.assertEqual(info.call_count, 2)
         host.tabs.select.assert_not_called()
+
+    def test_cancel_preserves_generate_without_starting(self):
+        host = bare(keys=[], session=None)
+        with patch('app.messagebox.askokcancel', return_value=False):
+            host.generate()
+        self.assertEqual(host.login_calls, 0)
+        host.launch.assert_not_called()

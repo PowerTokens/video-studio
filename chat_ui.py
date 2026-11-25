@@ -158,7 +158,7 @@ class ChatTab:
             return False
 
     def _prompt_chat_login(self):
-        """Empty pool and logged out: need-login tip, then desktop OAuth.
+        """Empty pool and logged out: need-login tip, then explicit confirmation.
 
         Leaves the draft, transcript history, and any plan untouched.
         A saved key never reaches this path. If a login is already in
@@ -185,10 +185,13 @@ class ChatTab:
             parent = self.frame.winfo_toplevel()
         except tk.TclError:
             parent = None
+        confirmed = False
         try:
-            messagebox.showinfo(t('chat_title'), tip, parent=parent)
+            confirmed = messagebox.askokcancel(t('chat_title'), tip, parent=parent)
         except tk.TclError:
             pass
+        if not confirmed:
+            return
         starter = getattr(self.app, 'start_oauth_login', None)
         if callable(starter):
             starter('chat')
