@@ -720,3 +720,10 @@ class FunnelPrivacyTests(unittest.TestCase):
             self.assertNotIn(key, bad)
         self.assertEqual(bad['device_class'], 'desktop')
         self.assertIn(bad['os'], ('macos', 'windows', 'linux', 'other'))
+
+class AuthReasonSafetyTests(unittest.TestCase):
+    def test_reason_is_enum_and_login_only(self):
+        import analytics
+        self.assertEqual(analytics.sanitize_properties('login_failed', {'auth_reason': 'invalid_grant'})['auth_reason'], 'invalid_grant')
+        for event, reason in [('login_failed', 'raw fake@example.test'), ('login_start', 'invalid_grant')]:
+            self.assertNotIn('auth_reason', analytics.sanitize_properties(event, {'auth_reason': reason}))

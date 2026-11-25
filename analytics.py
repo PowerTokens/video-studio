@@ -79,7 +79,7 @@ ALLOWED_PROPS = UTM_PROPS | frozenset({
     'surface',
     'model',
     'duration_ms',
-    'error_code',
+    'error_code', 'auth_reason',
     'generation_id',
     'requested_duration_s',
     'key_applied',
@@ -299,6 +299,9 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
             value = str(value)
         elif key == 'channel':
             if value not in ('limeng', 'paypal'):
+                continue
+        elif key == 'auth_reason':
+            if event != 'login_failed' or value not in ['state_mismatch', 'missing_verifier', 'missing_code', 'token_exchange_failed', 'userinfo_failed', 'invalid_grant', 'invalid_request', 'unauthorized_client', 'pkce_unsupported', 'access_denied', 'network', 'timeout', 'unavailable']:
                 continue
         elif key == 'error_code':
             value = normalize_error_code(value)
@@ -898,8 +901,8 @@ class Analytics:
     def notify_login_start(self, source='other') -> bool:
         return self.track('login_start', {'source': source})
 
-    def notify_login_failed(self, error_code: Any = None) -> bool:
-        return self.track('login_failed', {'error_code': normalize_error_code(error_code)})
+    def notify_login_failed(self, error_code: Any = None, auth_reason: Any = None) -> bool:
+        return self.track('login_failed', {'error_code': normalize_error_code(error_code), 'auth_reason': auth_reason})
 
     def notify_logout(self) -> bool:
         return self.track('logout', {})
@@ -1171,8 +1174,8 @@ def notify_login_start(source='other') -> bool:
     return bool(_call('notify_login_start', source))
 
 
-def notify_login_failed(error_code: Any = None) -> bool:
-    return bool(_call('notify_login_failed', error_code=error_code))
+def notify_login_failed(error_code: Any = None, auth_reason: Any = None) -> bool:
+    return bool(_call('notify_login_failed', error_code=error_code, auth_reason=auth_reason))
 
 
 def notify_logout() -> bool:

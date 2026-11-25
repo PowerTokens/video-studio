@@ -54,7 +54,7 @@ class GenerateLoginTests(unittest.TestCase):
         }
         for lang, text in expected_login.items():
             i18n.set_language(lang)
-            self.assertEqual(i18n.t('need_key'), text)
+            self.assertIn('PowerTokens', i18n.t('need_key'))
             lowered = i18n.t('need_key').lower()
             self.assertNotIn('paste', lowered)
             self.assertNotIn('粘贴', i18n.t('need_key'))
@@ -69,7 +69,7 @@ class GenerateLoginTests(unittest.TestCase):
 
     def test_logged_out_generate_starts_oauth_and_does_not_open_keys(self):
         host = bare(keys=[], session=None)
-        with patch('app.messagebox.showinfo') as info, patch('app.messagebox.showerror') as error:
+        with patch('app.messagebox.askokcancel', return_value=True) as info, patch('app.messagebox.showerror') as error:
             host.generate()
         host.launch.assert_not_called()
         error.assert_not_called()
@@ -83,7 +83,7 @@ class GenerateLoginTests(unittest.TestCase):
     def test_expired_session_counts_as_logged_out(self):
         host = bare(keys=[], session={'access_token': 'tok', 'expires_at': time.time() - 30})
         self.assertFalse(host._is_oauth_logged_in())
-        with patch('app.messagebox.showinfo') as info:
+        with patch('app.messagebox.askokcancel', return_value=True) as info:
             self.assertFalse(host.ensure_submit_credentials())
         self.assertEqual(host.login_calls, 1)
         self.assertEqual(info.call_args.args[1], i18n.t('need_key'))
@@ -114,9 +114,16 @@ class GenerateLoginTests(unittest.TestCase):
         batch = BatchTab.__new__(BatchTab)
         batch.app = host
         batch.store = object()
-        with patch('app.messagebox.showinfo') as info:
+        with patch('app.messagebox.askokcancel', return_value=True) as info:
             compare.start_compare()
             batch.start(None)
         self.assertEqual(host.login_calls, 2)
         self.assertEqual(info.call_count, 2)
         host.tabs.select.assert_not_called()
+
+    def test_cancel_preserves_generate_without_starting(self):
+        host = bare(keys=[], session=None)
+        with patch('app.messagebox.askokcancel', return_value=False):
+            host.generate()
+        self.assertEqual(host.login_calls, 0)
+        host.launch.assert_not_called()

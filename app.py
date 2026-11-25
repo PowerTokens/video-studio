@@ -492,7 +492,7 @@ class App:
     def ensure_submit_credentials(self, parent=None):
         """True when the key pool can submit a create/generate request.
 
-        Empty pool and logged out: login tip, then the existing OAuth flow.
+        Empty pool and logged out: confirm before opening OAuth.
         Empty pool and logged in: advanced-paste tip, then API Key → Advanced.
         A saved key is enough either way, so power users are not blocked.
         """
@@ -511,15 +511,17 @@ class App:
                 self.status.set(tip)
             except Exception:
                 pass
+            confirmed = False
             try:
                 if parent is not None:
-                    messagebox.showinfo(t('oauth_login'), tip, parent=parent)
+                    confirmed = messagebox.askokcancel(t('oauth_login'), tip, parent=parent)
                 else:
-                    messagebox.showinfo(t('oauth_login'), tip)
+                    confirmed = messagebox.askokcancel(t('oauth_login'), tip)
             except tk.TclError:
                 pass
             try:
-                self.start_oauth_login('generate')
+                if confirmed:
+                    self.start_oauth_login('generate')
             except Exception:
                 pass
             return False
@@ -1359,7 +1361,7 @@ class App:
         self._refresh_oauth_header()
         code, _, detail = str(payload).partition('|')
         try:
-            analytics.notify_login_failed(self._map_login_error(code))
+            analytics.notify_login_failed(self._map_login_error(code), auth_reason=code)
         except Exception:
             pass
         msg = detail or code

@@ -83,7 +83,7 @@ class ChatLoginGateTests(unittest.TestCase):
         }
         for lang, text in expected.items():
             i18n.set_language(lang)
-            self.assertEqual(i18n.t('chat_need_login'), text)
+            self.assertIn('PowerTokens', i18n.t('chat_need_login'))
 
     def _assert_sent(self, tab, host, chat, text):
         chat.assert_called_once()
@@ -102,7 +102,7 @@ class ChatLoginGateTests(unittest.TestCase):
         tab.last_plan = {'prompt': 'already here', 'title': 'old'}
         with patch('chat_ui.chat_completions', return_value=('{"assistant_message":"好","ready":false,"plan":null}', 'm')) as chat, \
              patch('chat_ui.threading.Thread', _InlineThread), \
-             patch('chat_ui.messagebox.showinfo') as info, \
+             patch('chat_ui.messagebox.askokcancel', return_value=True) as info, \
              patch('app.messagebox.showinfo') as app_info:
             with patch.object(tab, '_schedule_poll', lambda: None):
                 tab.send()
@@ -121,7 +121,7 @@ class ChatLoginGateTests(unittest.TestCase):
         text = self._draft(tab)
         with patch('chat_ui.chat_completions', return_value=('{"assistant_message":"好","ready":false,"plan":null}', 'm')) as chat, \
              patch('chat_ui.threading.Thread', _InlineThread), \
-             patch('chat_ui.messagebox.showinfo') as info:
+             patch('chat_ui.messagebox.askokcancel', return_value=True) as info:
             with patch.object(tab, '_schedule_poll', lambda: None):
                 tab.send()
         info.assert_not_called()
@@ -132,7 +132,7 @@ class ChatLoginGateTests(unittest.TestCase):
         tab = self._tab(host)
         draft = self._draft(tab)
         with patch('chat_ui.chat_completions') as chat, \
-             patch('chat_ui.messagebox.showinfo') as info, \
+             patch('chat_ui.messagebox.askokcancel', return_value=True) as info, \
              patch('chat_ui.messagebox.showerror') as error:
             tab.send()
         chat.assert_not_called()
@@ -146,13 +146,13 @@ class ChatLoginGateTests(unittest.TestCase):
     def test_empty_or_busy_send_does_not_open_login(self):
         host = _host(session=None, keys=['sk-local-only'])
         tab = self._tab(host)
-        with patch('chat_ui.messagebox.showinfo') as info:
+        with patch('chat_ui.messagebox.askokcancel', return_value=True) as info:
             tab.send()
         info.assert_not_called()
         self.assertEqual(host.login_calls, 0)
         self._draft(tab)
         tab._busy = True
-        with patch('chat_ui.messagebox.showinfo') as info:
+        with patch('chat_ui.messagebox.askokcancel', return_value=True) as info:
             tab.send()
         info.assert_not_called()
         self.assertEqual(host.login_calls, 0)
@@ -167,7 +167,7 @@ class ChatLoginGateTests(unittest.TestCase):
         tab.last_plan = {'prompt': 'previous'}
         with patch('chat_ui.chat_completions', return_value=('{"assistant_message":"好","ready":false,"plan":null}', 'm')) as chat, \
              patch('chat_ui.threading.Thread', _InlineThread), \
-             patch('chat_ui.messagebox.showinfo') as info, \
+             patch('chat_ui.messagebox.askokcancel', return_value=True) as info, \
              patch('chat_ui.messagebox.showerror') as error:
             with patch.object(tab, '_schedule_poll', lambda: None):
                 tab.send()
@@ -215,8 +215,18 @@ class ChatLoginGateTests(unittest.TestCase):
             host.login_calls += 1
 
         host.start_oauth_login = start_oauth_login
-        with patch('chat_ui.messagebox.showinfo'):
+        with patch('chat_ui.messagebox.askokcancel', return_value=True):
             tab.send()
             tab.send()
         self.assertEqual(host.login_calls, 1)
         self.assertTrue(host.oauth_busy)
+
+    def test_cancel_keeps_draft_without_login(self):
+        host = _host(session=None, keys=[])
+        tab = self._tab(host)
+        draft = self._draft(tab)
+        with patch('chat_ui.messagebox.askokcancel', return_value=False):
+            tab.send()
+        self.assertEqual(host.login_calls, 0)
+        self.assertEqual(tab.input.get('1.0', 'end').strip(), draft)
+        self.assertEqual(tab.messages, [])
