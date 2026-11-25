@@ -44,6 +44,42 @@ class CreditAndPersistenceTests(unittest.TestCase):
         host.oauth_session = None
         self.assertIsNone(host._generate_shortfall())
 
+    def test_approved_copy_and_credits_only_estimate(self):
+        import i18n
+        self.addCleanup(i18n.set_language, 'zh')
+        for lang, title, estimate in [('zh', '积分不足', '预计约 500 积分'), ('en', 'Insufficient credits', 'Estimated: about 500 credits')]:
+            i18n.set_language(lang)
+            host = self.host()
+            host.credit_tip_suggest = Value('')
+            host.cost = Value('')
+            with patch.object(app, 'estimate_cost', return_value=.5):
+                host.update_cost()
+            self.assertEqual(host.cost.get(), estimate)
+            self.assertEqual(i18n.t('credits_insufficient'), title)
+            self.assertNotIn('$', host.credit_tip_text.get())
+            self.assertIn('$5', host.credit_tip_suggest.get())
+            host.credit_tip.pack.assert_called_once()
+
+    def test_header_refresh_updates_estimate(self):
+        host = self.host()
+        host.update_cost = Mock()
+        host._refresh_key_status = Mock()
+        host._refresh_oauth_header()
+        host.update_cost.assert_called_once()
+
+    def test_quota_backend_is_clean_in_record_log_and_exception(self):
+        import wan_core
+        logs = []
+        with tempfile.TemporaryDirectory() as folder, patch.object(wan_core, 'api', return_value=(403, {'error': {'message': 'pre-consume quota failed, user quota: 4, need quota: 500'}})):
+            client = wan_core.Client(report=logs.append, data_dir=folder)
+            with self.assertRaises(wan_core.TaskError) as error:
+                client.submit(['fake-key'], {'model': 'wan3.0-video', 'duration': 5, 'resolution': '720p', 'prompt': 'cat'}, str(Path(folder) / 'out.mp4'))
+            self.assertTrue(client.record['credit_rejected'])
+            self.assertEqual(client.record['state'], app.t('credits_insufficient'))
+            self.assertEqual(str(error.exception), app.t('credits_insufficient'))
+            self.assertNotIn('pre-consume', str(logs))
+            self.assertNotIn('$', str(logs))
+
     def test_topup_intent_clear_and_restart(self):
         host = self.host()
         host.open_billing = Mock()

@@ -16,7 +16,7 @@ class LogoutKeyTests(unittest.TestCase):
         return host
 
     def apply(self, host):
-        with patch('app.oauth_desktop.save_session'), patch('app.oauth_desktop.load_session', return_value={'profile': {}}), patch('app.secret_store.storage_kind', return_value=None), patch('app.messagebox.showinfo'):
+        with patch('app.oauth_desktop.save_session'), patch('app.oauth_desktop.load_session', return_value={'access_token': 'fake', 'profile': {'credits': 1000}}), patch('app.secret_store.storage_kind', return_value=None), patch('app.messagebox.showinfo'):
             host._apply_oauth_result({'key': 'fake-login-key', 'userinfo': {}})
 
     def logout(self, host):

@@ -392,7 +392,7 @@ def save_session(token_result: dict, data_dir: Optional[Path] = None) -> Path:
 
 
 def load_session(data_dir: Optional[Path] = None) -> Optional[dict]:
-    """Return session dict if present and not expired; else None (and clear if expired)."""
+    """Return a valid session, retaining expired files as OAuth provenance."""
     path = session_path(data_dir)
     if not path.is_file():
         return None
@@ -406,10 +406,8 @@ def load_session(data_dir: Optional[Path] = None) -> Optional[dict]:
     if expires_at is not None:
         try:
             if time.time() > float(expires_at):
-                clear_session(data_dir)
                 return None
         except (TypeError, ValueError):
-            clear_session(data_dir)
             return None
     profile = data.get('profile') if isinstance(data.get('profile'), dict) else {}
     # Defensive: never keep a leaked key in the session file.

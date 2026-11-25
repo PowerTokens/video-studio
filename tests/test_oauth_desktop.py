@@ -282,11 +282,11 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(loaded['profile']['credits'], 99)
         self.assertEqual(loaded['access_token'], 'tok')
 
-        # Expired → cleared
+        # Expired token is unusable; file retains provenance for the submit gate.
         raw['expires_at'] = time.time() - 10
         path.write_text(json.dumps(raw), encoding='utf-8')
         self.assertIsNone(oauth_desktop.load_session(data_dir=self.folder))
-        self.assertFalse(path.exists())
+        self.assertTrue(path.exists())
 
     def test_normalize_api_key_strips_bearer(self):
         self.assertEqual(oauth_desktop.normalize_api_key('Bearer abc.def'), 'abc.def')

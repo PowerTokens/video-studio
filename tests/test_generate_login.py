@@ -92,7 +92,8 @@ class GenerateLoginTests(unittest.TestCase):
     def test_logged_in_without_key_opens_advanced_not_oauth(self):
         host = bare(
             keys=[],
-            session={'access_token': 'tok', 'expires_at': time.time() + 3600})
+            session={'access_token': 'tok', 'expires_at': time.time() + 3600, 'profile': {'credits': 1000}})
+        host._generate_shortfall = Mock(return_value=None)
         self.assertTrue(host._is_oauth_logged_in())
         with patch('app.messagebox.showinfo') as info, patch('app.messagebox.showerror') as error:
             host.generate()
@@ -107,6 +108,21 @@ class GenerateLoginTests(unittest.TestCase):
         host.oauth_session = None
         host.generate()
         client.submit.assert_called_once()
+
+    def test_expired_oauth_with_key_never_submits(self):
+        from tests.test_app_flow import Value
+        import tempfile
+        from pathlib import Path
+        import conversation_store
+        host, client = FlowTests().app('a cat')
+        host.oauth_session = {'access_token': 'fake', 'expires_at': time.time() - 10}
+        host.update_cost = Mock()
+        host.status = _Status()
+        with tempfile.TemporaryDirectory() as folder, patch.object(conversation_store, 'DATA_DIR', Path(folder)):
+            host.generate()
+            self.assertEqual(conversation_store.intended()['prompt'], 'a cat')
+        client.submit.assert_not_called()
+        self.assertEqual(host.status.value, i18n.t('credits_relogin'))
 
     def test_compare_and_batch_share_the_logged_out_gate(self):
         host = bare(keys=[], session=None)

@@ -100,7 +100,7 @@ ZH = {
     'browse': '选择…',
     'generate_btn': '生成视频',
     'stop_btn': '停止等待',
-    'cloud_note': '任务仍在云端继续，可在任务记录里找回',
+    'cloud_note': '任务在云端运行，可在「任务记录」找回。',
     'media_card': '高级设置',
     'media_card_desc': '尾帧、参考素材与随机种子。链接需公网可访问；不需要可留空。',
     'first_frame_label': '首帧图片（可选）',
@@ -134,7 +134,7 @@ ZH = {
     'hint_none': '未识别到明确时长或比例，使用下方当前选择。',
     'warning_sep': '；',
     'list_sep': '、',
-    'cost_estimate': '按 PT %s 价格估算：约 $%.2f（$%.2f/秒',
+    'cost_estimate': '预计约 %s 积分',
     'cost_regular': '，原价 $%.2f/秒',
     'cost_tail': '）；实际扣费以平台账单为准。',
     'cost_invalid': '请填写整数时长（2–30 秒）',
@@ -653,7 +653,7 @@ EN = {
     'browse': 'Browse…',
     'generate_btn': 'Generate video',
     'stop_btn': 'Stop waiting',
-    'cloud_note': 'Tasks keep running in the cloud. Pick them up anytime in History.',
+    'cloud_note': 'Tasks run in the cloud; find them anytime in History.',
     'media_card': 'Advanced',
     'media_card_desc': 'Last frame, references and seed. Use public URLs (or data URLs where supported); leave blank if unused.',
     'first_frame_label': 'First frame image (optional)',
@@ -687,7 +687,7 @@ EN = {
     'hint_none': 'No duration or ratio found in the prompt. Using the settings below.',
     'warning_sep': '; ',
     'list_sep': ', ',
-    'cost_estimate': 'Estimate at PowerTokens prices (%s): about $%.2f ($%.2f/s',
+    'cost_estimate': 'Estimated: about %s credits',
     'cost_regular': ', regular $%.2f/s',
     'cost_tail': '). Your PowerTokens bill is final.',
     'cost_invalid': 'Enter a whole number of seconds (2–30).',
@@ -1282,10 +1282,15 @@ ES.update(ES_OVERLAY)
 PT = dict(EN)
 PT.update(PT_OVERLAY)
 
-ZH.update({'credits_insufficient': '积分不足 · 去充值', 'credits_insufficient_tip': '按本地价目（约 1000 积分 = $1）估算，本次约需 %s 积分，当前约 %s。这是估算，实际以账单为准。提示词会保留；充值后请再点一次生成，不会自动开始。', 'credits_insufficient_suggest': '建议选择 $%s 套餐（约 %s 积分）', 'prompt_clear': '清空'})
-EN.update({'credits_insufficient': 'Not enough credits · Top up', 'credits_insufficient_tip': 'Based on the local price list (about 1,000 credits = $1), this run is estimated at about %s credits; you currently have about %s. This is an estimate — the bill is authoritative. Your prompt is kept. After you top up, click Generate again; it will not start automatically.', 'credits_insufficient_suggest': 'Suggested package: $%s (about %s credits)', 'prompt_clear': 'Clear'})
-ES.update({'credits_insufficient': 'Créditos insuficientes · Recargar', 'credits_insufficient_tip': 'Según la lista de precios local (unas 1000 créditos = $1), esta generación se estima en unos %s créditos; ahora tienes unos %s. Es una estimación; la factura es la referencia. Se conserva el texto. Cuando vuelvas de recargar, pulsa Generar otra vez; no se iniciará solo.', 'credits_insufficient_suggest': 'Paquete sugerido: $%s (unos %s créditos)', 'prompt_clear': 'Vaciar'})
-PT.update({'credits_insufficient': 'Créditos insuficientes · Recarregar', 'credits_insufficient_tip': 'Segundo a lista de preços local (cerca de 1000 créditos = $1), esta geração está estimada em cerca de %s créditos; você tem atualmente cerca de %s. É uma estimativa; a fatura é que vale. O texto é guardado. Depois de recarregar, clique outra vez em Gerar; não começa automaticamente.', 'credits_insufficient_suggest': 'Pacote sugerido: $%s (cerca de %s créditos)', 'prompt_clear': 'Limpar'})
+ZH.update({'credits_insufficient': '积分不足', 'credits_insufficient_tip': '当前有 %s 积分，本次生成约需 %s 积分。提示词已保留。', 'credits_insufficient_suggest': '建议充值 $%s（约 %s 积分）', 'topup_btn': '去充值', 'prompt_clear': '清空'})
+EN.update({'credits_insufficient': 'Insufficient credits', 'credits_insufficient_tip': 'You have %s credits. This generation needs about %s credits. Your prompt has been saved.', 'credits_insufficient_suggest': 'Suggested top-up: $%s (about %s credits)', 'topup_btn': 'Add credits', 'prompt_clear': 'Clear'})
+ES.update({'credits_insufficient': 'Créditos insuficientes', 'credits_insufficient_tip': 'Tienes %s créditos. Esta generación necesita unos %s créditos. Se ha guardado tu prompt.', 'credits_insufficient_suggest': 'Recarga sugerida: $%s (unos %s créditos)', 'topup_btn': 'Recargar', 'cost_estimate': 'Estimado: unos %s créditos', 'cloud_note': 'Las tareas siguen en la nube; recupéralas en Historial.', 'prompt_clear': 'Vaciar'})
+PT.update({'credits_insufficient': 'Créditos insuficientes', 'credits_insufficient_tip': 'Você tem %s créditos. Esta geração precisa de cerca de %s créditos. Seu prompt foi salvo.', 'credits_insufficient_suggest': 'Recarga sugerida: $%s (cerca de %s créditos)', 'topup_btn': 'Adicionar créditos', 'cost_estimate': 'Estimativa: cerca de %s créditos', 'cloud_note': 'As tarefas continuam na nuvem; retome-as em Histórico.', 'prompt_clear': 'Limpar'})
+
+ZH.update({'credits_relogin': '登录已过期，请重新登录以确认积分。提示词已保留；登录后请再次点击生成。', 'credits_unknown': '未知'})
+EN.update({'credits_relogin': 'Please sign in again to check your credits. Your prompt has been saved; click Generate again after signing in.', 'credits_unknown': 'unknown'})
+ES.update({'credits_relogin': 'Inicia sesión de nuevo para consultar tus créditos. Se ha guardado tu prompt; pulsa Generar después de iniciar sesión.', 'credits_unknown': 'desconocidos'})
+PT.update({'credits_relogin': 'Entre novamente para verificar seus créditos. Seu prompt foi salvo; clique em Gerar depois de entrar.', 'credits_unknown': 'desconhecidos'})
 
 STRINGS = {'zh': ZH, 'en': EN, 'es': ES, 'pt': PT}
 _current = None
