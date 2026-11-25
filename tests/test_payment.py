@@ -81,6 +81,9 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual(payment.create('mock-token',payment.payload(22,20,'limeng'))['orderNo'],'mock-order')
         request = network.call_args.args[0]
         self.assertEqual(request.full_url, payment.BASE + '/v1/payment/create')
+        self.assertIsNone(request.get_header('X-client'))
+        self.assertEqual(dict(request.header_items()), {
+            'Authorization': 'Bearer mock-token', 'Content-type': 'application/json'})
         self.assertEqual(request.get_header('Authorization'),'Bearer mock-token')
         self.assertEqual(json.loads(request.data),dict(amount=20,package_id=22,payment_channel='limeng'))
     @patch('payment.post')
@@ -119,5 +122,8 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual(payment.status(' Bearer bearer mock-token ', 'mock-order'), 1)
         request = network.call_args.args[0]
         self.assertEqual(request.full_url, payment.BASE + '/finance/get-order-info')
+        self.assertIsNone(request.get_header('X-client'))
+        self.assertEqual(dict(request.header_items()), {
+            'Authorization': 'Bearer mock-token', 'Content-type': 'application/json'})
         self.assertEqual(request.get_header('Authorization'), 'Bearer mock-token')
         self.assertEqual(json.loads(request.data), {'order_no':'mock-order'})
