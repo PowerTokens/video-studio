@@ -731,7 +731,15 @@ class AuthReasonSafetyTests(unittest.TestCase):
 
 class UnshippedAnalyticsTests(unittest.TestCase):
     def test_new_event_sanitization(self):
-        cases = {'payment_reconfirm_shown': {'reason': 'resume'}, 'payment_reconfirm_continue': {}}
+        cases = {
+            'payment_reconfirm_shown': {'reason': 'resume'},
+            'payment_reconfirm_continue': {},
+            'credit_gate_shown': {'surface': 'generate', 'selection': 'preset-5'},
+            'credit_gate_blocked': {'surface': 'generate'},
+            'prompt_clear': {'surface': 'chat', 'reason': 'button'},
+            'chat_plan_ready': {'surface': 'chat'},
+            'chat_need_login_show': {'source': 'send'},
+        }
         forbidden = {'email': 'private', 'prompt': 'private', 'amount': 1, 'credits': 1, 'balance': 1, 'checkout_url': 'private', 'account_id': 'private', 'order_number': 'private'}
         with patch.object(analytics, 'ALLOWED_PROPS', analytics.ALLOWED_PROPS | forbidden.keys()):
             for event, props in cases.items():
@@ -741,3 +749,8 @@ class UnshippedAnalyticsTests(unittest.TestCase):
                 self.assertFalse(forbidden.keys() & clean.keys())
         for event in cases:
             self.assertNotIn('reason', analytics.sanitize_properties(event, {'reason': 'private'}))
+
+    def test_tip_sources_and_suggestion(self):
+        for source in ('generate_tip', 'quota_tip', 'quota'):
+            self.assertEqual(analytics.sanitize_properties('billing_click', {'source': source})['source'], source)
+        self.assertNotIn('selection', analytics.sanitize_properties('credit_gate_shown', {'selection': 'custom'}))

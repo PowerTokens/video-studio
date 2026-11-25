@@ -1282,6 +1282,11 @@ ES.update(ES_OVERLAY)
 PT = dict(EN)
 PT.update(PT_OVERLAY)
 
+ZH.update({'credits_insufficient': '积分不足 · 去充值', 'credits_insufficient_tip': '按本地价目（约 1000 积分 = $1）估算，本次约需 %s 积分，当前约 %s。这是估算，实际以账单为准。提示词会保留；充值后请再点一次生成，不会自动开始。', 'credits_insufficient_suggest': '建议选择 $%s 套餐（约 %s 积分）', 'prompt_clear': '清空'})
+EN.update({'credits_insufficient': 'Not enough credits · Top up', 'credits_insufficient_tip': 'Based on the local price list (about 1,000 credits = $1), this run is estimated at about %s credits; you currently have about %s. This is an estimate — the bill is authoritative. Your prompt is kept. After you top up, click Generate again; it will not start automatically.', 'credits_insufficient_suggest': 'Suggested package: $%s (about %s credits)', 'prompt_clear': 'Clear'})
+ES.update({'credits_insufficient': 'Créditos insuficientes · Recargar', 'credits_insufficient_tip': 'Según la lista de precios local (unas 1000 créditos = $1), esta generación se estima en unos %s créditos; ahora tienes unos %s. Es una estimación; la factura es la referencia. Se conserva el texto. Cuando vuelvas de recargar, pulsa Generar otra vez; no se iniciará solo.', 'credits_insufficient_suggest': 'Paquete sugerido: $%s (unos %s créditos)', 'prompt_clear': 'Vaciar'})
+PT.update({'credits_insufficient': 'Créditos insuficientes · Recarregar', 'credits_insufficient_tip': 'Segundo a lista de preços local (cerca de 1000 créditos = $1), esta geração está estimada em cerca de %s créditos; você tem atualmente cerca de %s. É uma estimativa; a fatura é que vale. O texto é guardado. Depois de recarregar, clique outra vez em Gerar; não começa automaticamente.', 'credits_insufficient_suggest': 'Pacote sugerido: $%s (cerca de %s créditos)', 'prompt_clear': 'Limpar'})
+
 STRINGS = {'zh': ZH, 'en': EN, 'es': ES, 'pt': PT}
 _current = None
 

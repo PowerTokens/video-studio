@@ -33,6 +33,8 @@ EVENTS = frozenset({
     'payment_package_select', 'payment_channel_select', 'payment_dialog_closed', 'payment_cancelled',
     'payment_start', 'payment_checkout_opened', 'payment_failed', 'payment_success',
     'payment_reconfirm_shown', 'payment_reconfirm_continue',
+    'credit_gate_shown', 'credit_gate_blocked', 'prompt_clear',
+    'chat_plan_ready', 'chat_need_login_show',
     'ai_plan_click', 'ai_plan_applied',
     'example_click', 'prompt_edited', 'login_return_unsigned',
     'update_check_start', 'update_available', 'update_download_start', 'update_download_success', 'update_download_failed',
@@ -121,7 +123,7 @@ SAFE_SURFACES = frozenset({
 })
 SAFE_INPUT_MODE = frozenset({'t2v', 'i2v'})
 SAFE_LANGUAGES = frozenset({'zh', 'en', 'es', 'pt', 'ja', 'ko'})
-SAFE_BILLING_SOURCE = frozenset({'header', 'account', 'quota', 'credits_chip', 'chat', 'dialog'})
+SAFE_BILLING_SOURCE = frozenset({'header', 'account', 'quota', 'credits_chip', 'chat', 'dialog', 'generate_tip', 'quota_tip'})
 SESSION_MAX_MS = 12 * 60 * 60 * 1000
 
 # Official ingest hosts from https://posthog.com/docs/api/capture
@@ -263,6 +265,9 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
             low, high = (100, 599) if key == 'http_status' else (0, 99999)
             if type(value) is not int or not low <= value <= high:
                 continue
+        elif key == 'selection' and event == 'credit_gate_shown':
+            if value not in ('preset-5', 'preset-20', 'preset-50'):
+                continue
         elif key in PAYMENT_ENUMS:
             if not isinstance(value, str) or value not in PAYMENT_ENUMS[key]:
                 continue
@@ -328,11 +333,11 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
             if value not in SAFE_INPUT_MODE:
                 continue
         elif key == 'reason':
-            if event != 'payment_reconfirm_shown' or value not in ('resume', 'signin'):
+            if not ((event == 'payment_reconfirm_shown' and value in ('resume', 'signin')) or (event == 'prompt_clear' and value == 'button')):
                 continue
         elif key == 'source':
             value = str(value or '').strip().lower()
-            if value not in SAFE_BILLING_SOURCE and not (event == 'login_start' and value in ('generate', 'billing', 'other')) and not (event in ('ai_plan_click', 'ai_plan_applied', 'generation_start', 'generation_success', 'generation_failed') and value in ('generate', 'chat', 'ai_plan')):
+            if value not in SAFE_BILLING_SOURCE and not (event == 'chat_need_login_show' and value == 'send') and not (event == 'login_start' and value in ('generate', 'billing', 'other')) and not (event in ('chat_plan_ready', 'ai_plan_click', 'ai_plan_applied', 'generation_start', 'generation_success', 'generation_failed') and value in ('generate', 'chat', 'ai_plan')):
                 continue
         elif key == 'requested_duration_s':
             try:
@@ -1306,3 +1311,7 @@ def notify_payment_reconfirm_shown(reason=None):
 
 def notify_payment_reconfirm_continue():
     return bool(_call('track', 'payment_reconfirm_continue'))
+
+
+def notify_ui_event(event, **props) -> bool:
+    return bool(_call('track', event, props))

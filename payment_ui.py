@@ -134,7 +134,7 @@ def resume_topup(app):
     return False
 
 
-def show(app, preselect=None):
+def show(app, preselect=None, suggested_amount=None):
     old = getattr(app, '_payment_window', None)
     if old and old.winfo_exists() and preselect is not None:
         old.destroy()
@@ -145,7 +145,6 @@ def show(app, preselect=None):
         return
     c = COPY.get(get_language(), COPY['en'])
     token = (app.oauth_session or {}).get('access_token', '')
-    restored = validated_preselection(preselect)
     state = getattr(app, '_payment_state', None)
     if not state or state['token'] != token:
         state = dict(token=token, order=None, busy=False)
@@ -159,6 +158,14 @@ def show(app, preselect=None):
     body = tk.Frame(win, bg=PAGE, padx=24, pady=20)
     body.pack(fill='both', expand=True)
     tk.Label(body, text='Video Studio · ' + c[0], font=('', 18, 'bold'), bg=PAGE, fg=INK).pack(anchor='w', pady=(0, 18))
+    if preselect is None and suggested_amount is not None:
+        restored = dict(
+            selection={20: 'fixed_20', 50: 'fixed_50'}.get(suggested_amount, DEFAULT_SELECTION),
+            channel='limeng',
+            custom_amount='5',
+        )
+    else:
+        restored = validated_preselection(preselect)
     choice = tk.StringVar(value=restored['selection'])
     amount = tk.StringVar(value=restored['custom_amount'])
     channel = tk.StringVar(value=restored['channel'])

@@ -80,7 +80,7 @@ ends an unterminated previous session (crash recovery) before `app_open`.
 | `login_success` | Once per session after a successful OAuth sign-in, not on session restore | `key_applied` (boolean only) |
 | `login_failed` | OAuth/login finished unsuccessfully | safe `error_code` only |
 | `logout` | User confirmed Sign out | — |
-| `billing_click` | User clicked through to the official credits/billing page. Not a completed payment | `source`: `header`, `account`, `quota`, `credits_chip`, or `chat` |
+| `billing_click` | User clicked through to the official credits/billing page. Not a completed payment | `source`: `header`, `account`, `quota`, `credits_chip`, `chat`, `dialog`, `generate_tip`, or `quota_tip` |
 | `surface_open` | Once per surface per session when the user actually opens that tab | `surface`: `generate`, `chat`, `compare`, `batch`, `history`, `keys` |
 | `key_verified` | Advanced Key-pool verify-and-save succeeded | — |
 | `key_verify_failed` | That same verify-and-save failed | safe `error_code` only |
@@ -97,7 +97,7 @@ ends an unterminated previous session (crash recovery) before `app_open`.
 
 
 Compare/batch: each model or job is its own `generation_start` / terminal pair
-(the correct per-generation denominator). Chat-pilot events are not sent.
+(the correct per-generation denominator). Only the documented user-facing chat guidance events are sent.
 
 `model` must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Prompts, sentences,
 URLs, and unknown property names are dropped.
@@ -231,5 +231,10 @@ Desktop update checks emit update_check_start, update_available, update_download
 | --- | --- | --- |
 | `payment_reconfirm_shown` | Reconfirm notice displayed | `reason=resume` for returning session, otherwise `signin` |
 | `payment_reconfirm_continue` | Reconfirm CTA starts login | — |
+| `credit_gate_shown` | Generate tip hidden → visible; deduped until hidden | `surface=generate`, optional `selection=preset-5/preset-20/preset-50` |
+| `credit_gate_blocked` | Existing submit shortfall return | `surface=generate` |
+| `prompt_clear` | Existing Generate or Chat Clear button | `surface=generate/chat`, `reason=button` |
+| `chat_plan_ready` | Completed reply first exposes a ready plan | `surface=chat` |
+| `chat_need_login_show` | In-chat login gate shown | `source=send` |
 
 Captures fail open; forbidden fields remain rejected even if allowlisted.
