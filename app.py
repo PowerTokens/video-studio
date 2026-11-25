@@ -7,6 +7,7 @@ from pathlib import Path
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import uuid
@@ -1151,7 +1152,9 @@ class App:
 
     def _load_oauth_session(self):
         """Restore a non-expired OAuth session (token + display profile, no API key)."""
+        self._oauth_had_session = oauth_desktop.session_path().is_file()
         self.oauth_session = oauth_desktop.load_session()
+        self._oauth_had_session = self._oauth_had_session or bool(self.oauth_session)
         self._refresh_oauth_header()
 
     def _oauth_profile(self):
@@ -1167,13 +1170,26 @@ class App:
         if expires_at is not None:
             try:
                 import time as _time
-                if _time.time() > float(expires_at):
+                if _time.time() >= float(expires_at):
                     return False
             except (TypeError, ValueError):
                 return False
         return True
 
     def _refresh_oauth_header(self):
+        root = getattr(self, 'root', None)
+        if root is not None:
+            timer = getattr(self, '_oauth_expiry_timer', None)
+            if timer:
+                root.after_cancel(timer)
+                self._oauth_expiry_timer = None
+            if not getattr(self, '_oauth_focus_bound', False):
+                root.bind('<FocusIn>', lambda event: self._refresh_oauth_header(), add='+')
+                self._oauth_focus_bound = True
+            expiry = (self.oauth_session or {}).get('expires_at')
+            if self._is_oauth_logged_in() and expiry is not None:
+                delay = max(1, min(2147483647, int((float(expiry) - time.time()) * 1000) + 1))
+                self._oauth_expiry_timer = root.after(delay, self._refresh_oauth_header)
         logged_in = self._is_oauth_logged_in()
         profile = self._oauth_profile() if logged_in else {}
         name = (profile.get('name') or profile.get('email') or '').strip()
@@ -1349,6 +1365,11 @@ class App:
             analytics.notify_login_success(key_applied=key_applied)
         except Exception:
             pass
+        self._oauth_had_session = True
+        import payment_ui
+        if payment_ui.resume_topup(self):
+            self.status.set(t('oauth_ok'))
+            return
         if key_applied:
             self.status.set(t('oauth_ok'))
             messagebox.showinfo(t('oauth_login'), t('oauth_ok'))
@@ -1406,7 +1427,7 @@ class App:
             messagebox.showinfo(t('official_site'), official_key_url())
 
     def open_billing(self, source='credits_chip'):
-        """Open the OAuth-gated in-app plan picker."""
+        """Open the in-app plan picker."""
         try:
             analytics.notify_billing_click(source)
         except Exception:

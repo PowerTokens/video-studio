@@ -106,6 +106,7 @@ def create(token, body):
             diagnostics.update(response_diagnostics(json.loads(exc.read(65536))))
         except Exception:
             pass
+        exc.error_code = 'AUTH' if exc.code in (401, 403) or diagnostics.get('api_status') in (401, 403) else 'UNKNOWN'
         _notify('failed', **props, **diagnostics, fail_stage='response',
                 error_code='AUTH' if exc.code in (401, 403) or diagnostics.get('api_status') in (401, 403) else 'UNKNOWN')
         raise
@@ -124,7 +125,9 @@ def create(token, body):
             (type(http_status) is int and not 200 <= http_status < 300)):
         _notify('failed', **props, **diagnostics, fail_stage='response',
                 error_code='AUTH' if http_status in (401, 403) or diagnostics.get('api_status') in (401, 403) else 'UNKNOWN')
-        raise ValueError('Could not start checkout.')
+        error = ValueError('Could not start checkout.')
+        error.error_code = 'AUTH' if http_status in (401, 403) or diagnostics.get('api_status') in (401, 403) else 'UNKNOWN'
+        raise error
     data = result.get('data')
     data = data if isinstance(data, dict) else {}
     diagnostics['has_payment_ref'] = bool(data.get('orderNo'))
