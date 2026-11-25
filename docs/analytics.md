@@ -176,10 +176,14 @@ and source/medium/campaign fall back to product defaults. Click IDs are excluded
 Payment funnel: payment_start, payment_checkout_opened (validated create redirect),
 payment_failed (normalized code), payment_success (confirmed paid polling status).
 `payment_package_select` records explicit card activations only, with `selection`
-(`preset-5`, `preset-20`, `preset-50`, `custom`) and `package_id` (33, 22, 23,
+(`preset-5`, `preset-20`, `preset-50`, `custom`) and `package_id` (35, 22, 23,
 33 respectively, serialized as catalog strings). `payment_channel_select` records
 explicit method activations with `channel` (`limeng` or `paypal`). Initial $5 and
 limeng defaults emit neither selection event.
+Live official package ids are 35/22/23 (fixed $5/$20/$50) and custom 33
+(amount_type 2, $5–$2000). Only the default fixed $5 card has the Recommended
+badge. Package 24 is historical only, not a current official package; the
+sanitizer continues to accept it.
 
 `payment_dialog_closed` records user dismissal/withdrawal with a real boolean
 `pending_checkout`. `payment_cancelled` records official status 2 from polling or

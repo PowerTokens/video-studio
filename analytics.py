@@ -294,7 +294,7 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
             if value is None:
                 continue
         elif key == 'package_id':
-            if type(value) not in (str, int) or str(value) not in {'22', '23', '24', '33'}:
+            if type(value) not in (str, int) or str(value) not in {'22', '23', '24', '33', '35'}:
                 continue
             value = str(value)
         elif key == 'channel':

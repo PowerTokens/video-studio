@@ -137,6 +137,8 @@ class FunnelAcceptance(unittest.TestCase):
             self.assertEqual(clean['package_id'], '22')
             self.assertEqual(clean['error_code'], 'UNKNOWN')
             self.assertFalse(set(clean) & analytics.FORBIDDEN_PROP_KEYS)
+            for package_id in (22, 23, 24, 33, 35):
+                self.assertEqual(analytics.sanitize_properties(event, dict(package_id=package_id))['package_id'], str(package_id))
             bad = analytics.sanitize_properties(event, dict(package_id=True, channel='other'))
             self.assertNotIn('package_id', bad)
             self.assertNotIn('channel', bad)
@@ -181,7 +183,7 @@ class FunnelAcceptance(unittest.TestCase):
         payment_ui.select_payment(variable, 'fixed_5', 'package')
         payment_ui.select_payment(variable, 'limeng', 'channel')
         self.assertEqual(self.client.pending(), [])
-        for key, selection, package in [('fixed_5', 'preset-5', '33'), ('fixed_20', 'preset-20', '22'), ('fixed_50', 'preset-50', '23'), ('custom', 'custom', '33')]:
+        for key, selection, package in [('fixed_5', 'preset-5', '35'), ('fixed_20', 'preset-20', '22'), ('fixed_50', 'preset-50', '23'), ('custom', 'custom', '33')]:
             payment_ui.select_payment(variable, key, 'package', explicit=True)
             props = self.client.pending()[-1]['properties']
             self.assertEqual((props['selection'], props['package_id']), (selection, package))
