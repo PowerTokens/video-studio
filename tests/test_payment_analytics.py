@@ -148,3 +148,31 @@ class FunnelAcceptance(unittest.TestCase):
         self.assertFalse(set(valid) & set(clean))
         for key, value in [('http_status', 99), ('http_status', 600), ('api_status', -1), ('api_status', 100000)]:
             self.assertNotIn(key, analytics.sanitize_properties('payment_failed', {key: value}))
+
+
+class ReconfirmHooks(unittest.TestCase):
+    def test_nested_reconfirm_callbacks(self):
+        import ast
+        from unittest.mock import Mock
+        tree = ast.parse(Path('payment_ui.py').read_text())
+        callbacks = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name in ('show_reconfirm', 'confirm_login')}
+        for returning in (False, True):
+            app = Mock()
+            app.oauth_session = {'profile': {}} if returning else None
+            app._oauth_had_session = False
+            win = Mock()
+            win.winfo_height.return_value = 1000
+            win.winfo_screenheight.return_value = 1200
+            body = Mock()
+            body.winfo_reqheight.return_value = 600
+            scope = dict(app=app, win=win, body=body, payment=payment, time=__import__('time'),
+                         current_selection=lambda: {}, RECONFIRM={'en': ['a','b','c','d']},
+                         get_language=lambda: 'en', notice_text=Mock(), confirm=Mock(), message=Mock(), buy=Mock(), notice=Mock())
+            for node in callbacks.values():
+                exec(compile(ast.fix_missing_locations(ast.Module(body=[node], type_ignores=[])), '<callback>', 'exec'), scope)
+            with patch.object(payment, '_notify') as track:
+                scope['show_reconfirm']()
+                track.assert_called_once_with('reconfirm_shown', reason='resume' if returning else 'signin')
+                scope['confirm_login']()
+                track.assert_called_with('reconfirm_continue')
+                app.start_oauth_login.assert_called_once_with('billing')

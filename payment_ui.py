@@ -265,6 +265,7 @@ def show(app, preselect=None):
     def current_selection():
         return dict(selection=choice.get(), channel=channel.get(), custom_amount=amount.get())
     def confirm_login():
+        payment._notify('reconfirm_continue')
         app._topup_intent = dict(current_selection(), at=time.monotonic())
         app.start_oauth_login('billing')
     notice = tk.Frame(body, bg=PALE, padx=12, pady=10)
@@ -275,6 +276,7 @@ def show(app, preselect=None):
     def show_reconfirm():
         copy = RECONFIRM.get(get_language(), RECONFIRM['en'])
         offset = 0 if app.oauth_session or getattr(app, '_oauth_had_session', False) else 2
+        payment._notify('reconfirm_shown', reason='resume' if offset == 0 else 'signin')
         notice_text.configure(text=copy[offset])
         confirm.configure(text=copy[offset + 1])
         message.set('')

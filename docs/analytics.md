@@ -220,3 +220,12 @@ order, checkout URL, account, or credential data is included. Tracking fails ope
 Every event includes device_class and os enums. Web also includes browser, is_pwa, is_in_app_browser. No raw user-agent is captured. Desktop has no example chips. `payment_success` retains its existing notification and deduplication flow.
 
 Desktop update checks emit update_check_start, update_available, update_download_start, update_download_success, update_download_failed. update_version accepts only a short numeric dotted version. Failures use safe error_code values.
+
+## Unshipped desktop captures
+
+| Event | Trigger | Properties |
+| --- | --- | --- |
+| `payment_reconfirm_shown` | Reconfirm notice displayed | `reason=resume` for returning session, otherwise `signin` |
+| `payment_reconfirm_continue` | Reconfirm CTA starts login | — |
+
+Captures fail open; forbidden fields remain rejected even if allowlisted.

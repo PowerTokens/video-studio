@@ -720,3 +720,17 @@ class FunnelPrivacyTests(unittest.TestCase):
             self.assertNotIn(key, bad)
         self.assertEqual(bad['device_class'], 'desktop')
         self.assertIn(bad['os'], ('macos', 'windows', 'linux', 'other'))
+
+
+class UnshippedAnalyticsTests(unittest.TestCase):
+    def test_new_event_sanitization(self):
+        cases = {'payment_reconfirm_shown': {'reason': 'resume'}, 'payment_reconfirm_continue': {}}
+        forbidden = {'email': 'private', 'prompt': 'private', 'amount': 1, 'credits': 1, 'balance': 1, 'checkout_url': 'private', 'account_id': 'private', 'order_number': 'private'}
+        with patch.object(analytics, 'ALLOWED_PROPS', analytics.ALLOWED_PROPS | forbidden.keys()):
+            for event, props in cases.items():
+                clean = analytics.sanitize_properties(event, dict(props, **forbidden))
+                for key, value in props.items():
+                    self.assertEqual(clean[key], value)
+                self.assertFalse(forbidden.keys() & clean.keys())
+        for event in cases:
+            self.assertNotIn('reason', analytics.sanitize_properties(event, {'reason': 'private'}))

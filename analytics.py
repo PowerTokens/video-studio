@@ -32,6 +32,7 @@ import utm_attr
 EVENTS = frozenset({
     'payment_package_select', 'payment_channel_select', 'payment_dialog_closed', 'payment_cancelled',
     'payment_start', 'payment_checkout_opened', 'payment_failed', 'payment_success',
+    'payment_reconfirm_shown', 'payment_reconfirm_continue',
     'ai_plan_click', 'ai_plan_applied',
     'example_click', 'prompt_edited', 'login_return_unsigned',
     'update_check_start', 'update_available', 'update_download_start', 'update_download_success', 'update_download_failed',
@@ -87,7 +88,7 @@ ALLOWED_PROPS = UTM_PROPS | frozenset({
     'test_run_id',
     'chat_id',
     'active_ms',
-    'source',
+    'source', 'reason',
     'language',
     'input_mode',
 })
@@ -322,6 +323,9 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
         elif key == 'input_mode':
             value = str(value or '').strip().lower()
             if value not in SAFE_INPUT_MODE:
+                continue
+        elif key == 'reason':
+            if event != 'payment_reconfirm_shown' or value not in ('resume', 'signin'):
                 continue
         elif key == 'source':
             value = str(value or '').strip().lower()
@@ -1291,3 +1295,11 @@ def notify_ai_plan_click() -> bool:
 
 def notify_ai_plan_applied(source='chat') -> bool:
     return bool(_call('notify_ai_plan_applied', source))
+
+
+def notify_payment_reconfirm_shown(reason=None):
+    return bool(_call('track', 'payment_reconfirm_shown', {'reason': reason}))
+
+
+def notify_payment_reconfirm_continue():
+    return bool(_call('track', 'payment_reconfirm_continue'))
