@@ -15,7 +15,7 @@ from studio_ui import PAGE, WHITE, INK, MUTED, LINE, ACCENT, PALE
 # UI identities are distinct even when cards share an official backend package.
 DEFAULT_SELECTION = 'fixed_5'
 CHECKOUT_CARDS = (
-    dict(key='fixed_5', package_id=33, amount=5, credits=5000, recommended=True),
+    dict(key='fixed_5', package_id=35, amount=5, credits=5000, recommended=True),
     dict(key='fixed_20', package_id=22, amount=20, credits=20000, recommended=False),
     dict(key='fixed_50', package_id=23, amount=50, credits=50000, recommended=False),
     dict(key='custom', package_id=33, amount=None, credits=None, recommended=False),

@@ -7,6 +7,7 @@ import re
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse
 PACKAGES = [
+    {'id': 35, 'amount_type': 1, 'package_name': '5元档', 'sales_price': 5, 'credits_amount': 5000, 'is_recommended': 1, 'status': 1, 'currency': 'USD'},
     {'id': 33, 'amount_type': 2, 'package_name': '15', 'sales_price': 0, 'min_recharge_amount': 5, 'max_recharge_amount': 2000, 'credits_amount': 0, 'is_recommended': 0, 'status': 1, 'currency': 'USD'},
     {'id': 22, 'amount_type': 1, 'package_name': '01', 'sales_price': 20, 'credits_amount': 20000, 'is_recommended': 0, 'status': 1, 'currency': 'USD'},
     {'id': 23, 'amount_type': 1, 'package_name': '02', 'sales_price': 50, 'credits_amount': 50000, 'is_recommended': 0, 'status': 1, 'currency': 'USD'},
