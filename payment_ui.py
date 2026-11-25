@@ -278,12 +278,15 @@ def show(app, preselect=None):
         notice_text.configure(text=copy[offset])
         confirm.configure(text=copy[offset + 1])
         message.set('')
-        notice.pack(fill='x', pady=(0, 12), before=buy)
+        if buy.winfo_manager():
+            notice.pack(fill='x', pady=(0, 12), before=buy)
+            buy.pack_forget()
     # Keep dialog controls accessible for keyboard/UI regression checks.
     app._payment_controls = dict(choice=choice, amount=amount, channel=channel,
                                  buy=buy_now, confirm=confirm_login, notice=notice)
     buy = ttk.Button(body, text=c[5], command=buy_now, style='Accent.TButton')
     buy.pack(fill='x', pady=(0, 12))
+    app._payment_controls['buy_button'] = buy
     def update_status(*args):
         if message.get(): status_label.pack(fill='x', pady=(0, 12), before=buy)
         else: status_label.pack_forget()

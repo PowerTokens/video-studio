@@ -93,8 +93,10 @@ class TkTests(TopupTests):
             with patch('payment.create') as create, patch('webbrowser.open') as browser:
                 ui.show(h, dict(selection='fixed_20', channel='paypal', custom_amount='37'))
                 controls = h._payment_controls
+                self.assertEqual(controls['buy_button'].winfo_manager(), 'pack')
                 controls['buy'](); self.root.update()
                 self.assertTrue(controls['notice'].winfo_manager())
+                self.assertFalse(controls['buy_button'].winfo_manager())
                 self.assertEqual(len(controls['notice'].winfo_children()), 2)
                 create.assert_not_called(); browser.assert_not_called()
                 controls['confirm']()
@@ -107,6 +109,7 @@ class TkTests(TopupTests):
                 self.assertEqual(h._payment_controls['amount'].get(), '37')
                 self.assertEqual(h._payment_state['token'], 'new')
                 self.assertFalse(h._payment_controls['notice'].winfo_manager())
+                self.assertEqual(h._payment_controls['buy_button'].winfo_manager(), 'pack')
                 h._payment_window.destroy()
 
     def test_missing_session_notice(self):
@@ -116,6 +119,8 @@ class TkTests(TopupTests):
             ui.show(h)
             h._payment_controls['buy']()
             notice = h._payment_controls['notice']
+            self.assertTrue(notice.winfo_manager())
+            self.assertFalse(h._payment_controls['buy_button'].winfo_manager())
             self.assertEqual(notice.children[0].options['text'], 'Sign in to pay. Your selected package will be kept.')
             self.assertEqual(notice.children[1].options['text'], 'Continue to sign in')
             create.assert_not_called(); browser.assert_not_called()
@@ -131,6 +136,7 @@ class TkTests(TopupTests):
             while not h._payment_controls['notice'].winfo_manager() and time.monotonic()<until:
                 self.root.update(); time.sleep(.02)
             self.assertTrue(h._payment_controls['notice'].winfo_manager())
+            self.assertFalse(h._payment_controls['buy_button'].winfo_manager())
             browser.assert_not_called()
 
     def test_header_live_expiry(self):
