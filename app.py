@@ -1,4 +1,5 @@
 """PowerTokens Video Studio; run with Python 3.9+ / tkinter."""
+import hashlib
 import ctypes
 import json
 import os
@@ -1324,6 +1325,11 @@ class App:
         if key:
             # OAuth userinfo key is already authenticated — apply without GET /v1/models
             # (matches web: no extra validate friction on the Sign-in path).
+            issued = getattr(self, '_login_only_keys', set())
+            # Untagged legacy keys may be pasted; never infer their source.
+            if key not in self.keys:
+                issued.add(hashlib.sha256(key.encode()).hexdigest())
+            self._login_only_keys = issued
             self.keys = list(dict.fromkeys([key] + list(self.keys)))
             # Beginner path: persist when this OS can store secrets
             # (DPAPI on Windows, login Keychain on macOS).
@@ -1373,6 +1379,11 @@ class App:
             analytics.notify_logout()
         except Exception:
             pass
+        issued = getattr(self, '_login_only_keys', set())
+        self.keys = [k for k in self.keys if hashlib.sha256(k.encode()).hexdigest() not in issued]
+        self._login_only_keys = set()
+        self.sync_keys()
+        self.save_keys()
         oauth_desktop.logout()
         self.oauth_session = None
         try:
@@ -1528,6 +1539,10 @@ class App:
                 pass
             messagebox.showerror(t('key_format_title'), str(exc))
             return
+        # A duplicate paste is still explicit manual ownership.
+        issued = getattr(self, '_login_only_keys', set())
+        self._login_only_keys = issued - {hashlib.sha256(k.encode()).hexdigest() for k in keys if k in self.keys}
+        self.save_keys()
         pending = [k for k in keys if k not in self.keys]
         if not pending:
             self.key_input.set('')
@@ -1565,6 +1580,7 @@ class App:
         except Exception:
             pass
         if ok_keys:
+            self._login_only_keys = getattr(self, '_login_only_keys', set()) - {hashlib.sha256(k.encode()).hexdigest() for k in ok_keys}
             self.keys = list(dict.fromkeys(list(self.keys) + ok_keys))
             self.key_input.set('')
             self.key_status_kind = 'ok'
@@ -1600,6 +1616,10 @@ class App:
     def save_keys(self):
         path = DATA_DIR / 'keys.json'
         try:
+            # Only fingerprints are stored beside the OS-protected key pool.
+            live = {hashlib.sha256(k.encode()).hexdigest() for k in self.keys}
+            self._login_only_keys = getattr(self, '_login_only_keys', set()) & live
+            (DATA_DIR / 'login-only-keys.json').write_text(json.dumps(sorted(self._login_only_keys)))
             if self.remember.get():
                 secret_store.write_remembered_keys(path, self.keys)
             else:
@@ -1609,6 +1629,10 @@ class App:
             messagebox.showerror(t('save_failed_title'), t('save_failed_body'))
 
     def load_keys(self):
+        try:
+            self._login_only_keys = set(json.loads((DATA_DIR / 'login-only-keys.json').read_text()))
+        except (OSError, ValueError, TypeError):
+            self._login_only_keys = set()
         path = DATA_DIR / 'keys.json'
         if path.exists():
             try:
