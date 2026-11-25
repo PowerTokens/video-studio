@@ -47,14 +47,15 @@ class GenerateLoginTests(unittest.TestCase):
 
     def test_login_copy_does_not_lead_with_paste(self):
         expected_login = {
-            'zh': '请先登录 PowerTokens，再生成视频。登录后 Key 会自动填入。',
-            'en': 'Sign in with PowerTokens before generating. Your API key fills in automatically.',
-            'es': 'Inicia sesión con PowerTokens antes de generar. La clave se rellena sola.',
-            'pt': 'Entre com PowerTokens antes de gerar. A chave preenche-se sozinha.',
+            'zh': '继续后将去登录或注册。草稿会保留，回来后请再次点击发送或生成。',
+            'en': 'Continue to sign in or register. Your draft stays; click Send or Generate again when you return.',
+            'es': 'Continúa para iniciar sesión o registrarte. Tu borrador se guarda; vuelve a pulsar Enviar o Generar al regresar.',
+            'pt': 'Continue para entrar ou se cadastrar. O rascunho fica salvo; clique em Enviar ou Gerar novamente quando voltar.',
         }
         for lang, text in expected_login.items():
             i18n.set_language(lang)
-            self.assertIn('PowerTokens', i18n.t('need_key'))
+            self.assertEqual(i18n.t('need_key'), text)
+            self.assertNotRegex(text.lower(), r'官网|official site|sitio oficial|site oficial|公式サイト|공식 사이트')
             lowered = i18n.t('need_key').lower()
             self.assertNotIn('paste', lowered)
             self.assertNotIn('粘贴', i18n.t('need_key'))

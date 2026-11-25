@@ -76,14 +76,15 @@ class ChatLoginGateTests(unittest.TestCase):
 
     def test_need_login_copy_matches_web(self):
         expected = {
-            'zh': '请先登录 PowerTokens，再开始对话。你写好的内容会保留，登录后可直接发送。',
-            'en': 'Sign in to PowerTokens before chatting. Your draft will stay here so you can send it after signing in.',
-            'es': 'Inicia sesión en PowerTokens antes de chatear. Tu borrador se mantendrá aquí para que puedas enviarlo después de iniciar sesión.',
-            'pt': 'Entre no PowerTokens antes de conversar. Seu rascunho ficará aqui para você enviar depois de entrar.',
+            'zh': '继续后将去登录或注册。草稿会保留，回来后请再次点击发送或生成。',
+            'en': 'Continue to sign in or register. Your draft stays; click Send or Generate again when you return.',
+            'es': 'Continúa para iniciar sesión o registrarte. Tu borrador se guarda; vuelve a pulsar Enviar o Generar al regresar.',
+            'pt': 'Continue para entrar ou se cadastrar. O rascunho fica salvo; clique em Enviar ou Gerar novamente quando voltar.',
         }
         for lang, text in expected.items():
             i18n.set_language(lang)
-            self.assertIn('PowerTokens', i18n.t('chat_need_login'))
+            self.assertEqual(i18n.t('chat_need_login'), text)
+            self.assertNotRegex(text.lower(), r'官网|official site|sitio oficial|site oficial|公式サイト|공식 사이트')
 
     def _assert_sent(self, tab, host, chat, text):
         chat.assert_called_once()
