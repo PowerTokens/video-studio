@@ -55,7 +55,7 @@ class TopupTests(unittest.TestCase):
             h = self.host(); h.oauth_session = session
             with patch.object(ui, 'show') as show, patch('webbrowser.open') as browser:
                 h.open_billing()
-                show.assert_called_once_with(h)
+                show.assert_called_once_with(h, suggested_amount=5)
                 browser.assert_not_called(); h.start_oauth_login.assert_not_called()
 
     def test_payload_and_validation(self):

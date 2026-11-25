@@ -97,9 +97,10 @@ class FunnelAcceptance(unittest.TestCase):
                         patch.object(payment, 'status', side_effect=[0, terminal]), \
                         patch.object(payment_ui.oauth_desktop, 'fetch_userinfo', side_effect=OSError()):
                     variable.return_value.get.return_value = 'fixed_5'
+                    app._is_oauth_logged_in.return_value = True
                     with patch.object(payment_ui, 'checkout_payload', return_value=payment.payload(33, 5, 'paypal')):
                         payment_ui.show(app)
-                        buttons[0]['command']()
+                        next(b['command'] for b in buttons if getattr(b.get('command'), '__name__', '') == 'buy_now')()
                         callbacks.pop(0)()  # create completes
                     payment_ui.close_payment_dialog(window.return_value, app._payment_state)
                     window.return_value.withdraw.assert_called_once()

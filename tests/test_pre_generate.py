@@ -137,7 +137,7 @@ class CreditAndPersistenceTests(unittest.TestCase):
         chat.frame = Mock()
         chat._append_bubble = Mock()
         chat.status_var = Value('')
-        with patch.object(app.analytics, 'notify_ui_event') as track, patch('chat_ui.messagebox.showinfo'):
+        with patch.object(app.analytics, 'notify_ui_event') as track, patch('chat_ui.messagebox.askokcancel', return_value=True):
             chat._prompt_chat_login()
             track.assert_called_once_with('chat_need_login_show', source='send')
             chat.app.start_oauth_login.assert_called_once_with('chat')

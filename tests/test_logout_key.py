@@ -30,7 +30,7 @@ class LogoutKeyTests(unittest.TestCase):
         self.assertTrue(host.ensure_submit_credentials())
         self.logout(host)
         self.assertFalse(host.keys)
-        with patch('app.messagebox.showinfo'):
+        with patch('app.messagebox.askokcancel', return_value=True), patch('app.messagebox.showinfo'):
             host.generate()
         host.launch.assert_not_called()
         self.assertEqual(host.login_calls, 1)
