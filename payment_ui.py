@@ -81,12 +81,29 @@ def close_payment_dialog(win, state):
 
 def cancel_pending_checkout(state):
     if state.get('order'):
-        payment._notify('cancelled', package_id=state.get('package_id'), channel=state.get('channel'))
+        payment.track_paid_status(state, 2)
         state['order'] = None
 
 
-def _track_paid_status(state, status):
+def poll_checkout(token, order):
+    # Profile refresh must never discard an official terminal status.
+    try:
+        status = payment.status(token, order)
+    except Exception:
+        status = None
+    try:
+        info = oauth_desktop.fetch_userinfo(token) if status != 2 else None
+    except Exception:
+        info = None
+    return status, info
+
+
+def apply_checkout_status(state, status):
     payment.track_paid_status(state, status)
+    if status in (1, 2):
+        state['order'] = None
+        return True
+    return False
 
 
 def show(app):
@@ -102,7 +119,7 @@ def show(app):
     token = app.oauth_session['access_token']
     state = getattr(app, '_payment_state', None)
     if not state or state['token'] != token:
-        state = dict(token=token, order=None, baseline=app._oauth_profile().get('credits'), busy=False)
+        state = dict(token=token, order=None, busy=False)
         app._payment_state = state
     win = tk.Toplevel(app.root)
     app._payment_window = win
@@ -174,7 +191,7 @@ def show(app):
     message = tk.StringVar(value=c[6] if state['order'] else '')
     status_label = ttk.Label(body, textvariable=message, wraplength=400)
     def alive():
-        return win.winfo_exists() and app._is_oauth_logged_in() and app.oauth_session['access_token'] == token
+        return app._is_oauth_logged_in() and app.oauth_session['access_token'] == token
     def run(work, done):
         if state['busy']: return
         state['busy'] = True
@@ -192,25 +209,22 @@ def show(app):
         threading.Thread(target=worker, daemon=True).start()
         app.root.after(100, finish)
     def check():
-        if not alive() or not state['order']: return
-        def work():
-            try: status = payment.status(token, state['order'])
-            except Exception: status = None
-            info = oauth_desktop.fetch_userinfo(token) if status != 2 else None
-            return status, info
+        if not alive() or not state['order'] or time.monotonic() >= state.get('deadline', 0): return
+        order = state['order']
         def done(result, error):
-            if not error:
+            if not error and state.get('order') == order:
                 status, info = result
-                if status == 2:
-                    cancel_pending_checkout(state); message.set(c[10]); buy.configure(state='normal'); return
-                credits = info.get('credits')
-                _track_paid_status(state, status)
-                if status == 1 or (isinstance(credits, (int, float)) and isinstance(state['baseline'], (int, float)) and credits > state['baseline']):
+                terminal = apply_checkout_status(state, status)
+                if info is not None:
                     app.oauth_session['profile'] = oauth_desktop.profile_from_userinfo(info)
                     app._refresh_oauth_header()
-                    state['order'] = None; message.set(c[9]); buy.configure(state='normal'); return
-            if time.monotonic() < state.get('deadline', 0): win.after(4000, check)
-        run(work, done)
+                if terminal:
+                    if win.winfo_exists():
+                        message.set(c[9] if status == 1 else c[10])
+                        buy.configure(state='normal')
+                    return
+            if time.monotonic() < state.get('deadline', 0): app.root.after(4000, check)
+        run(lambda: poll_checkout(token, order), done)
     def buy_now():
         try: data = checkout_payload(choice.get(), amount.get(), channel.get())
         except (ValueError, StopIteration): message.set(c[12]); return
@@ -218,10 +232,10 @@ def show(app):
         def done(result, error):
             if error:
                 message.set(c[11]); buy.configure(state='normal'); return
-            state.update(payment_success_tracked=False, package_id=data['package_id'], channel=data['payment_channel'], order=result['orderNo'], baseline=app._oauth_profile().get('credits'), deadline=time.monotonic()+300)
+            state.update(payment_success_tracked=False, payment_cancelled_tracked=False, package_id=data['package_id'], channel=data['payment_channel'], order=result['orderNo'], deadline=time.monotonic()+300)
             message.set(c[6])
             webbrowser.open(result['redirectUrl'])
-            win.after(2500, check)
+            app.root.after(2500, check)
         run(lambda: payment.create(token, data), done)
     buy = ttk.Button(body, text=c[5], command=buy_now, style='Accent.TButton')
     buy.pack(fill='x', pady=(0, 12))
@@ -237,4 +251,4 @@ def show(app):
     ttk.Button(links, text=c[14] + ': service@powertokens.ai', style='Link.TButton',
                command=lambda: webbrowser.open('mailto:service@powertokens.ai')).pack(side='left')
     if state['order']:
-        buy.configure(state='disabled'); state['deadline'] = time.monotonic()+300; check()
+        buy.configure(state='disabled'); check()
