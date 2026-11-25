@@ -350,7 +350,8 @@ class App:
             self.root.after_cancel(self.prompt_timer)
             self.prompt_timer = None
         self.shell.destroy()
-        for name in ('promo_label', 'cost'):  # Rebuilt below; update_cost() must not touch the old ones.
+        # Rebuilt below; update_cost() must not touch the old widgets after shell.destroy().
+        for name in ('promo_label', 'cost', 'generate_btn', 'credit_tip', 'credit_tip_text'):
             self.__dict__.pop(name, None)
         self.build_ui()
         self.restore_state(state)
@@ -648,6 +649,7 @@ class App:
         actions = Flow(params)
         actions.pack(fill='x', pady=(6, 0))
         self.generate_btn = ttk.Button(actions, text=t('generate_btn'), style='Accent.TButton', command=self.generate)
+        self.update_cost()
         for variable in (self.model_id, self.duration, self.resolution, self.ratio):
             variable.trace_add('write', lambda *args: self._save_generate_form())
         self.stop_btn = ttk.Button(actions, text=t('stop_btn'), command=self.stop_wait, state='disabled')
@@ -1170,6 +1172,11 @@ class App:
 
     def sync_generate_credits(self, need):
         if not hasattr(self, 'credit_tip') or not hasattr(self, 'generate_btn'):
+            return
+        try:
+            if not self.generate_btn.winfo_exists() or not self.credit_tip.winfo_exists():
+                return
+        except tk.TclError:
             return
         short = self._generate_shortfall(need) if need is not None else None
         self.generate_btn.configure(state='disabled' if self.busy or short else 'normal')
