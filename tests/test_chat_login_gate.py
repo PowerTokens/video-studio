@@ -59,11 +59,37 @@ class ChatLoginGateTests(unittest.TestCase):
         i18n.set_language('zh')
 
     def setUp(self):
+        import tempfile
+        from pathlib import Path
+        import conversation_store
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        storage = patch.object(conversation_store, 'DATA_DIR', Path(folder.name))
+        storage.start()
+        self.addCleanup(storage.stop)
         i18n.set_language('zh')
         self.frame = tk.Frame(self.root)
         self.frame.pack()
         self.addCleanup(self.frame.destroy)
         self.addCleanup(i18n.set_language, 'zh')
+
+    def test_persisted_thread_and_plan_restore_without_sending(self):
+        import json
+        host = _host(session=None, keys=[])
+        tab = self._tab(host)
+        plan = {'prompt': 'a cat on the roof', 'model': 'wan3.0-video', 'duration': 5, 'resolution': '720p', 'ratio': '16:9'}
+        tab.messages = [{'role': 'user', 'content': 'cat'}, {'role': 'assistant', 'content': json.dumps({'assistant_message': 'ready', 'ready': True, 'plan': plan})}]
+        tab.last_plan = plan
+        tab.persist_state()
+        restored = self._tab(host)
+        self.assertEqual(restored.messages, tab.messages)
+        self.assertEqual(restored.last_plan, plan)
+        self.assertIn('ready', restored.thread.get('1.0', 'end'))
+        self.assertEqual(host.login_calls, 0)
+        restored.clear()
+        empty = self._tab(host)
+        self.assertEqual(empty.messages, [])
+        self.assertIsNone(empty.last_plan)
 
     def _tab(self, host):
         tab = ChatTab(host, self.frame)
@@ -76,14 +102,15 @@ class ChatLoginGateTests(unittest.TestCase):
 
     def test_need_login_copy_matches_web(self):
         expected = {
-            'zh': '请先登录 PowerTokens，再开始对话。你写好的内容会保留，登录后可直接发送。',
-            'en': 'Sign in to PowerTokens before chatting. Your draft will stay here so you can send it after signing in.',
-            'es': 'Inicia sesión en PowerTokens antes de chatear. Tu borrador se mantendrá aquí para que puedas enviarlo después de iniciar sesión.',
-            'pt': 'Entre no PowerTokens antes de conversar. Seu rascunho ficará aqui para você enviar depois de entrar.',
+            'zh': '继续后将去登录或注册。草稿会保留，回来后请再次点击发送或生成。',
+            'en': 'Continue to sign in or register. Your draft stays; click Send or Generate again when you return.',
+            'es': 'Continúa para iniciar sesión o registrarte. Tu borrador se guarda; vuelve a pulsar Enviar o Generar al regresar.',
+            'pt': 'Continue para entrar ou se cadastrar. O rascunho fica salvo; clique em Enviar ou Gerar novamente quando voltar.',
         }
         for lang, text in expected.items():
             i18n.set_language(lang)
             self.assertEqual(i18n.t('chat_need_login'), text)
+            self.assertNotRegex(text.lower(), r'官网|official site|sitio oficial|site oficial|公式サイト|공식 사이트')
 
     def _assert_sent(self, tab, host, chat, text):
         chat.assert_called_once()
@@ -102,7 +129,7 @@ class ChatLoginGateTests(unittest.TestCase):
         tab.last_plan = {'prompt': 'already here', 'title': 'old'}
         with patch('chat_ui.chat_completions', return_value=('{"assistant_message":"好","ready":false,"plan":null}', 'm')) as chat, \
              patch('chat_ui.threading.Thread', _InlineThread), \
-             patch('chat_ui.messagebox.showinfo') as info, \
+             patch('chat_ui.messagebox.askokcancel', return_value=True) as info, \
              patch('app.messagebox.showinfo') as app_info:
             with patch.object(tab, '_schedule_poll', lambda: None):
                 tab.send()
@@ -121,7 +148,7 @@ class ChatLoginGateTests(unittest.TestCase):
         text = self._draft(tab)
         with patch('chat_ui.chat_completions', return_value=('{"assistant_message":"好","ready":false,"plan":null}', 'm')) as chat, \
              patch('chat_ui.threading.Thread', _InlineThread), \
-             patch('chat_ui.messagebox.showinfo') as info:
+             patch('chat_ui.messagebox.askokcancel', return_value=True) as info:
             with patch.object(tab, '_schedule_poll', lambda: None):
                 tab.send()
         info.assert_not_called()
@@ -132,7 +159,7 @@ class ChatLoginGateTests(unittest.TestCase):
         tab = self._tab(host)
         draft = self._draft(tab)
         with patch('chat_ui.chat_completions') as chat, \
-             patch('chat_ui.messagebox.showinfo') as info, \
+             patch('chat_ui.messagebox.askokcancel', return_value=True) as info, \
              patch('chat_ui.messagebox.showerror') as error:
             tab.send()
         chat.assert_not_called()
@@ -146,13 +173,13 @@ class ChatLoginGateTests(unittest.TestCase):
     def test_empty_or_busy_send_does_not_open_login(self):
         host = _host(session=None, keys=['sk-local-only'])
         tab = self._tab(host)
-        with patch('chat_ui.messagebox.showinfo') as info:
+        with patch('chat_ui.messagebox.askokcancel', return_value=True) as info:
             tab.send()
         info.assert_not_called()
         self.assertEqual(host.login_calls, 0)
         self._draft(tab)
         tab._busy = True
-        with patch('chat_ui.messagebox.showinfo') as info:
+        with patch('chat_ui.messagebox.askokcancel', return_value=True) as info:
             tab.send()
         info.assert_not_called()
         self.assertEqual(host.login_calls, 0)
@@ -167,7 +194,7 @@ class ChatLoginGateTests(unittest.TestCase):
         tab.last_plan = {'prompt': 'previous'}
         with patch('chat_ui.chat_completions', return_value=('{"assistant_message":"好","ready":false,"plan":null}', 'm')) as chat, \
              patch('chat_ui.threading.Thread', _InlineThread), \
-             patch('chat_ui.messagebox.showinfo') as info, \
+             patch('chat_ui.messagebox.askokcancel', return_value=True) as info, \
              patch('chat_ui.messagebox.showerror') as error:
             with patch.object(tab, '_schedule_poll', lambda: None):
                 tab.send()
@@ -215,8 +242,18 @@ class ChatLoginGateTests(unittest.TestCase):
             host.login_calls += 1
 
         host.start_oauth_login = start_oauth_login
-        with patch('chat_ui.messagebox.showinfo'):
+        with patch('chat_ui.messagebox.askokcancel', return_value=True):
             tab.send()
             tab.send()
         self.assertEqual(host.login_calls, 1)
         self.assertTrue(host.oauth_busy)
+
+    def test_cancel_keeps_draft_without_login(self):
+        host = _host(session=None, keys=[])
+        tab = self._tab(host)
+        draft = self._draft(tab)
+        with patch('chat_ui.messagebox.askokcancel', return_value=False):
+            tab.send()
+        self.assertEqual(host.login_calls, 0)
+        self.assertEqual(tab.input.get('1.0', 'end').strip(), draft)
+        self.assertEqual(tab.messages, [])

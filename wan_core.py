@@ -17,7 +17,7 @@ from pathlib import Path
 from i18n import t
 from platform_paths import user_data_dir
 
-APP_VERSION = '1.20'
+APP_VERSION = '1.21'
 USER_AGENT = 'PowerTokensVideoStudio/' + APP_VERSION
 DEFAULT_API_BASE = 'https://api.powertokens.ai'
 # In-app links (get-key button, price source) use medium=app; README links use medium=oss.
@@ -166,7 +166,7 @@ def api(method, url, key, payload=None, timeout=30):
     data = json.dumps(payload, ensure_ascii=False).encode() if payload is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers={
         'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json',
-        'User-Agent': USER_AGENT})
+        'User-Agent': USER_AGENT, 'X-Client': 'videostudio'})
     try:
         with OPENER.open(req, timeout=timeout) as response:
             code, raw = response.status, response.read(2 * 1024 * 1024)

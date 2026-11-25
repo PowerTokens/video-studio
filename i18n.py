@@ -218,7 +218,7 @@ ZH = {
     'save_failed_body': '无法保存或清除 Key 文件。当前 Key 仍可在本次运行使用；请检查数据目录权限。',
     'load_failed_title': '无法读取已保存 Key',
     'load_failed_body': '请在 API Key 页重新添加。加密 Key 只能由原 Windows 账户读取。',
-    'need_key': '请先登录 PowerTokens，再生成视频。登录后 Key 会自动填入。',
+    'need_key': '继续后将去登录或注册。草稿会保留，回来后请再次点击发送或生成。',
     'need_key_advanced': '已登录，但本机还没有可用的 Key。请到「API Key → 高级」粘贴。',
     'check_input': '请检查输入',
     'select_task_title': '选择任务',
@@ -303,7 +303,7 @@ ZH = {
     'chat_filled': '已填进生成表；可切回对话继续改。',
     'chat_need_plan': '请先聊到有可用的单条提示词方案。',
     'chat_need_outline': '请先在对话里写一些内容，再拆成批量。',
-    'chat_need_login': '请先登录 PowerTokens，再开始对话。你写好的内容会保留，登录后可直接发送。',
+    'chat_need_login': '继续后将去登录或注册。草稿会保留，回来后请再次点击发送或生成。',
     'chat_splitting': '正在拆成批量提示词…',
     'chat_split_ok': '已拆成 %d 条并载入批量预览。',
     'chat_bad_json': '助手回复格式异常，可换个说法再试。',
@@ -771,7 +771,7 @@ EN = {
     'save_failed_body': 'Could not save or clear the key file. Your keys still work for this session; please check permissions on the data folder.',
     'load_failed_title': 'Saved keys could not be read',
     'load_failed_body': 'Please add them again on the API Key tab. Encrypted keys can only be read by the Windows account that saved them.',
-    'need_key': 'Sign in with PowerTokens before generating. Your API key fills in automatically.',
+    'need_key': 'Continue to sign in or register. Your draft stays; click Send or Generate again when you return.',
     'need_key_advanced': 'Signed in, but this PC has no API key yet. Paste one under API Key → Advanced.',
     'check_input': 'Please check your input',
     'select_task_title': 'Select a task',
@@ -856,7 +856,7 @@ EN = {
     'chat_filled': 'Filled into Generate. You can come back and keep chatting.',
     'chat_need_plan': 'Chat until there is a usable single-clip plan first.',
     'chat_need_outline': 'Add some chat content before splitting to batch.',
-    'chat_need_login': 'Sign in to PowerTokens before chatting. Your draft will stay here so you can send it after signing in.',
+    'chat_need_login': 'Continue to sign in or register. Your draft stays; click Send or Generate again when you return.',
     'chat_splitting': 'Splitting into batch prompts…',
     'chat_split_ok': 'Split into %d rows and loaded Batch preview.',
     'chat_bad_json': 'The assistant reply was hard to parse. Try rephrasing.',
@@ -1151,7 +1151,7 @@ ES_OVERLAY = {
     'tab_compare': 'Comparar',
     'status_ready': 'Listo · Inicia sesión con PowerTokens',
     'feedback_email': 'Comentarios: service@powertokens.ai',
-    'need_key': 'Inicia sesión con PowerTokens antes de generar. La clave se rellena sola.',
+    'need_key': 'Continúa para iniciar sesión o registrarte. Tu borrador se guarda; vuelve a pulsar Enviar o Generar al regresar.',
     'need_key_advanced': 'Sesión iniciada, pero este equipo aún no tiene clave. Pégala en API Key → Avanzado.',
     'onboard_goto_keys': '¿Ya tienes una clave?',
     'status_idle': 'Listo',
@@ -1186,7 +1186,7 @@ ES_OVERLAY = {
     'add_btn': 'Verificar y guardar',
     'show_key': 'Mostrar',
     'paste_hint': 'Tras verificar, la clave solo permanece en este equipo; las inválidas no se guardan.',
-    'chat_need_login': 'Inicia sesión en PowerTokens antes de chatear. Tu borrador se mantendrá aquí para que puedas enviarlo después de iniciar sesión.',
+    'chat_need_login': 'Continúa para iniciar sesión o registrarte. Tu borrador se guarda; vuelve a pulsar Enviar o Generar al regresar.',
     'update_available': 'Hay una versión nueva, %s (ahora tienes %s). Te recomendamos actualizar para obtener las últimas funciones y correcciones.',
     'update_download': 'Descargar',
     'update_later': 'Más tarde',
@@ -1226,7 +1226,7 @@ PT_OVERLAY = {
     'tab_compare': 'Comparar modelos',
     'status_ready': 'Pronto · Entre com PowerTokens',
     'feedback_email': 'Feedback: service@powertokens.ai',
-    'need_key': 'Entre com PowerTokens antes de gerar. A chave preenche-se sozinha.',
+    'need_key': 'Continue para entrar ou se cadastrar. O rascunho fica salvo; clique em Enviar ou Gerar novamente quando voltar.',
     'need_key_advanced': 'Sessão iniciada, mas este equipamento ainda não tem chave. Cole em API Key → Avançado.',
     'onboard_goto_keys': 'Já tem uma chave?',
     'status_idle': 'Pronto',
@@ -1261,7 +1261,7 @@ PT_OVERLAY = {
     'add_btn': 'Verificar e guardar',
     'show_key': 'Mostrar',
     'paste_hint': 'Após verificar, a chave fica só neste equipamento; inválidas não são guardadas.',
-    'chat_need_login': 'Entre no PowerTokens antes de conversar. Seu rascunho ficará aqui para você enviar depois de entrar.',
+    'chat_need_login': 'Continue para entrar ou se cadastrar. O rascunho fica salvo; clique em Enviar ou Gerar novamente quando voltar.',
     'update_available': 'Está disponível a versão %s (tem a %s). Atualize para obter as funcionalidades e correções mais recentes.',
     'update_download': 'Descarregar',
     'update_later': 'Mais tarde',
@@ -1281,6 +1281,11 @@ ES = dict(EN)
 ES.update(ES_OVERLAY)
 PT = dict(EN)
 PT.update(PT_OVERLAY)
+
+ZH.update({'credits_insufficient': '积分不足 · 去充值', 'credits_insufficient_tip': '按本地价目（约 1000 积分 = $1）估算，本次约需 %s 积分，当前约 %s。这是估算，实际以账单为准。提示词会保留；充值后请再点一次生成，不会自动开始。', 'credits_insufficient_suggest': '建议选择 $%s 套餐（约 %s 积分）', 'prompt_clear': '清空'})
+EN.update({'credits_insufficient': 'Not enough credits · Top up', 'credits_insufficient_tip': 'Based on the local price list (about 1,000 credits = $1), this run is estimated at about %s credits; you currently have about %s. This is an estimate — the bill is authoritative. Your prompt is kept. After you top up, click Generate again; it will not start automatically.', 'credits_insufficient_suggest': 'Suggested package: $%s (about %s credits)', 'prompt_clear': 'Clear'})
+ES.update({'credits_insufficient': 'Créditos insuficientes · Recargar', 'credits_insufficient_tip': 'Según la lista de precios local (unas 1000 créditos = $1), esta generación se estima en unos %s créditos; ahora tienes unos %s. Es una estimación; la factura es la referencia. Se conserva el texto. Cuando vuelvas de recargar, pulsa Generar otra vez; no se iniciará solo.', 'credits_insufficient_suggest': 'Paquete sugerido: $%s (unos %s créditos)', 'prompt_clear': 'Vaciar'})
+PT.update({'credits_insufficient': 'Créditos insuficientes · Recarregar', 'credits_insufficient_tip': 'Segundo a lista de preços local (cerca de 1000 créditos = $1), esta geração está estimada em cerca de %s créditos; você tem atualmente cerca de %s. É uma estimativa; a fatura é que vale. O texto é guardado. Depois de recarregar, clique outra vez em Gerar; não começa automaticamente.', 'credits_insufficient_suggest': 'Pacote sugerido: $%s (cerca de %s créditos)', 'prompt_clear': 'Limpar'})
 
 STRINGS = {'zh': ZH, 'en': EN, 'es': ES, 'pt': PT}
 _current = None

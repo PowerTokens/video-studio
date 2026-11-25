@@ -32,6 +32,9 @@ import utm_attr
 EVENTS = frozenset({
     'payment_package_select', 'payment_channel_select', 'payment_dialog_closed', 'payment_cancelled',
     'payment_start', 'payment_checkout_opened', 'payment_failed', 'payment_success',
+    'payment_reconfirm_shown', 'payment_reconfirm_continue',
+    'credit_gate_shown', 'credit_gate_blocked', 'prompt_clear',
+    'chat_plan_ready', 'chat_need_login_show',
     'ai_plan_click', 'ai_plan_applied',
     'example_click', 'prompt_edited', 'login_return_unsigned',
     'update_check_start', 'update_available', 'update_download_start', 'update_download_success', 'update_download_failed',
@@ -79,7 +82,7 @@ ALLOWED_PROPS = UTM_PROPS | frozenset({
     'surface',
     'model',
     'duration_ms',
-    'error_code',
+    'error_code', 'auth_reason',
     'generation_id',
     'requested_duration_s',
     'key_applied',
@@ -87,7 +90,7 @@ ALLOWED_PROPS = UTM_PROPS | frozenset({
     'test_run_id',
     'chat_id',
     'active_ms',
-    'source',
+    'source', 'reason',
     'language',
     'input_mode',
 })
@@ -120,7 +123,7 @@ SAFE_SURFACES = frozenset({
 })
 SAFE_INPUT_MODE = frozenset({'t2v', 'i2v'})
 SAFE_LANGUAGES = frozenset({'zh', 'en', 'es', 'pt', 'ja', 'ko'})
-SAFE_BILLING_SOURCE = frozenset({'header', 'account', 'quota', 'credits_chip', 'chat', 'dialog'})
+SAFE_BILLING_SOURCE = frozenset({'header', 'account', 'quota', 'credits_chip', 'chat', 'dialog', 'generate_tip', 'quota_tip'})
 SESSION_MAX_MS = 12 * 60 * 60 * 1000
 
 # Official ingest hosts from https://posthog.com/docs/api/capture
@@ -262,6 +265,9 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
             low, high = (100, 599) if key == 'http_status' else (0, 99999)
             if type(value) is not int or not low <= value <= high:
                 continue
+        elif key == 'selection' and event == 'credit_gate_shown':
+            if value not in ('preset-5', 'preset-20', 'preset-50'):
+                continue
         elif key in PAYMENT_ENUMS:
             if not isinstance(value, str) or value not in PAYMENT_ENUMS[key]:
                 continue
@@ -294,11 +300,14 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
             if value is None:
                 continue
         elif key == 'package_id':
-            if type(value) not in (str, int) or str(value) not in {'22', '23', '24', '33'}:
+            if type(value) not in (str, int) or str(value) not in {'22', '23', '24', '33', '35'}:
                 continue
             value = str(value)
         elif key == 'channel':
             if value not in ('limeng', 'paypal'):
+                continue
+        elif key == 'auth_reason':
+            if event != 'login_failed' or value not in ['state_mismatch', 'missing_verifier', 'missing_code', 'token_exchange_failed', 'userinfo_failed', 'invalid_grant', 'invalid_request', 'unauthorized_client', 'pkce_unsupported', 'access_denied', 'network', 'timeout', 'unavailable']:
                 continue
         elif key == 'error_code':
             value = normalize_error_code(value)
@@ -323,9 +332,12 @@ def sanitize_properties(event: str, props: Optional[dict]) -> Optional[dict]:
             value = str(value or '').strip().lower()
             if value not in SAFE_INPUT_MODE:
                 continue
+        elif key == 'reason':
+            if not ((event == 'payment_reconfirm_shown' and value in ('resume', 'signin')) or (event == 'prompt_clear' and value == 'button')):
+                continue
         elif key == 'source':
             value = str(value or '').strip().lower()
-            if value not in SAFE_BILLING_SOURCE and not (event == 'login_start' and value in ('generate', 'billing', 'other')) and not (event in ('ai_plan_click', 'ai_plan_applied', 'generation_start', 'generation_success', 'generation_failed') and value in ('generate', 'chat', 'ai_plan')):
+            if value not in SAFE_BILLING_SOURCE and not (event == 'chat_need_login_show' and value == 'send') and not (event == 'login_start' and value in ('generate', 'billing', 'other')) and not (event in ('chat_plan_ready', 'ai_plan_click', 'ai_plan_applied', 'generation_start', 'generation_success', 'generation_failed') and value in ('generate', 'chat', 'ai_plan')):
                 continue
         elif key == 'requested_duration_s':
             try:
@@ -898,8 +910,8 @@ class Analytics:
     def notify_login_start(self, source='other') -> bool:
         return self.track('login_start', {'source': source})
 
-    def notify_login_failed(self, error_code: Any = None) -> bool:
-        return self.track('login_failed', {'error_code': normalize_error_code(error_code)})
+    def notify_login_failed(self, error_code: Any = None, auth_reason: Any = None) -> bool:
+        return self.track('login_failed', {'error_code': normalize_error_code(error_code), 'auth_reason': auth_reason})
 
     def notify_logout(self) -> bool:
         return self.track('logout', {})
@@ -1171,8 +1183,8 @@ def notify_login_start(source='other') -> bool:
     return bool(_call('notify_login_start', source))
 
 
-def notify_login_failed(error_code: Any = None) -> bool:
-    return bool(_call('notify_login_failed', error_code=error_code))
+def notify_login_failed(error_code: Any = None, auth_reason: Any = None) -> bool:
+    return bool(_call('notify_login_failed', error_code=error_code, auth_reason=auth_reason))
 
 
 def notify_logout() -> bool:
@@ -1291,3 +1303,15 @@ def notify_ai_plan_click() -> bool:
 
 def notify_ai_plan_applied(source='chat') -> bool:
     return bool(_call('notify_ai_plan_applied', source))
+
+
+def notify_payment_reconfirm_shown(reason=None):
+    return bool(_call('track', 'payment_reconfirm_shown', {'reason': reason}))
+
+
+def notify_payment_reconfirm_continue():
+    return bool(_call('track', 'payment_reconfirm_continue'))
+
+
+def notify_ui_event(event, **props) -> bool:
+    return bool(_call('track', event, props))

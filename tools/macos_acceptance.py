@@ -553,7 +553,12 @@ def phase_gui(out: Path) -> str:
                 def fake_info(*a, **k):
                     calls['info'].append(a)
 
+                def fake_confirm(*a, **k):
+                    # Login-auth uses askokcancel, not showinfo, before OAuth.
+                    return True
+
                 with patch.object(app_mod.App, 'start_oauth_login', fake_login), \
+                        patch.object(app_mod.messagebox, 'askokcancel', fake_confirm), \
                         patch.object(app_mod.messagebox, 'showinfo', fake_info), \
                         patch.object(app_mod.messagebox, 'showerror', lambda *a, **k: None):
                     gui.keys = []

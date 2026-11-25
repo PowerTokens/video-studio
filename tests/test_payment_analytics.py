@@ -63,12 +63,83 @@ class FunnelAcceptance(unittest.TestCase):
         self.assertEqual(events.count('payment_failed'), 3)
         self.assert_safe()
 
+    def test_closed_dialog_terminal_polling(self):
+        import payment_ui
+        from unittest.mock import Mock
+
+        for terminal, event in [(1, 'payment_success'), (2, 'payment_cancelled')]:
+            with self.subTest(status=terminal):
+                app = Mock()
+                app.oauth_session = {'access_token': 'synthetic'}
+                app._payment_window = None
+                app._payment_state = None
+                app._oauth_profile.return_value = {'credits': 0}
+                callbacks = []
+                app.root.after.side_effect = lambda delay, fn: callbacks.append(fn)
+                buttons = []
+                def button(*args, **kwargs):
+                    widget = Mock()
+                    buttons.append(kwargs)
+                    return widget
+                def thread(*args, **kwargs):
+                    worker = Mock()
+                    worker.start.side_effect = kwargs['target']
+                    return worker
+                with patch.object(payment_ui.tk, 'Toplevel') as window, \
+                        patch.object(payment_ui.tk, 'Frame'), patch.object(payment_ui.tk, 'Label'), \
+                        patch.object(payment_ui.tk, 'Canvas'), patch.object(payment_ui.tk, 'Radiobutton'), \
+                        patch.object(payment_ui.tk, 'StringVar') as variable, \
+                        patch.object(payment_ui.ttk, 'Label'), patch.object(payment_ui.ttk, 'Entry'), \
+                        patch.object(payment_ui.ttk, 'Button', side_effect=button), \
+                        patch.object(payment_ui.threading, 'Thread', side_effect=thread), \
+                        patch.object(payment_ui.webbrowser, 'open'), \
+                        patch.object(payment, 'create', return_value={'orderNo': 'synthetic', 'redirectUrl': 'synthetic'}), \
+                        patch.object(payment, 'status', side_effect=[0, terminal]), \
+                        patch.object(payment_ui.oauth_desktop, 'fetch_userinfo', side_effect=OSError()):
+                    variable.return_value.get.return_value = 'fixed_5'
+                    app._is_oauth_logged_in.return_value = True
+                    with patch.object(payment_ui, 'checkout_payload', return_value=payment.payload(33, 5, 'paypal')):
+                        payment_ui.show(app)
+                        next(b['command'] for b in buttons if getattr(b.get('command'), '__name__', '') == 'buy_now')()
+                        callbacks.pop(0)()  # create completes
+                    payment_ui.close_payment_dialog(window.return_value, app._payment_state)
+                    window.return_value.withdraw.assert_called_once()
+                    before = len([x for x in self.client.pending() if x['event'] == event])
+                    while callbacks:
+                        callbacks.pop(0)()
+                    self.assertIsNone(app._payment_state['order'])
+                    payment_ui.apply_checkout_status(app._payment_state, terminal)
+                    self.assertEqual(len([x for x in self.client.pending() if x['event'] == event]), before + 1)
+                    props = [x['properties'] for x in self.client.pending() if x['event'] == event][-1]
+                    self.assertEqual(props['package_id'], '33')
+                    self.assertEqual(props['channel'], 'paypal')
+                    self.assert_safe()
+
+    def test_terminal_event_properties_and_deduplication(self):
+        state = dict(package_id=22, channel='paypal', order='synthetic',
+                     amount=99, credits=99, token='synthetic')
+        with patch.object(payment, '_notify') as notify:
+            for status in (0, 1, 1, 2, 2):
+                payment.track_paid_status(state, status)
+        self.assertEqual(notify.call_args_list, [
+            unittest.mock.call('success', package_id=22, channel='paypal'),
+            unittest.mock.call('cancelled', package_id=22, channel='paypal')])
+
+    def test_pending_status_ignores_credit_changes(self):
+        import payment_ui
+        state = dict(order='synthetic', package_id=22, channel='paypal')
+        self.assertFalse(payment_ui.apply_checkout_status(state, 0))
+        self.assertEqual(state['order'], 'synthetic')
+        self.assertEqual(self.client.pending(), [])
+
     def test_event_allowlists_and_fail_open(self):
         for event in ('payment_start', 'payment_checkout_opened', 'payment_failed', 'payment_success'):
             clean = analytics.sanitize_properties(event, dict(package_id=22, channel='paypal', source='dialog', error_code='private', order_no='private', url='private', amount=99, credits=99))
             self.assertEqual(clean['package_id'], '22')
             self.assertEqual(clean['error_code'], 'UNKNOWN')
             self.assertFalse(set(clean) & analytics.FORBIDDEN_PROP_KEYS)
+            for package_id in (22, 23, 24, 33, 35):
+                self.assertEqual(analytics.sanitize_properties(event, dict(package_id=package_id))['package_id'], str(package_id))
             bad = analytics.sanitize_properties(event, dict(package_id=True, channel='other'))
             self.assertNotIn('package_id', bad)
             self.assertNotIn('channel', bad)
@@ -113,7 +184,7 @@ class FunnelAcceptance(unittest.TestCase):
         payment_ui.select_payment(variable, 'fixed_5', 'package')
         payment_ui.select_payment(variable, 'limeng', 'channel')
         self.assertEqual(self.client.pending(), [])
-        for key, selection, package in [('fixed_5', 'preset-5', '33'), ('fixed_20', 'preset-20', '22'), ('fixed_50', 'preset-50', '23'), ('custom', 'custom', '33')]:
+        for key, selection, package in [('fixed_5', 'preset-5', '35'), ('fixed_20', 'preset-20', '22'), ('fixed_50', 'preset-50', '23'), ('custom', 'custom', '33')]:
             payment_ui.select_payment(variable, key, 'package', explicit=True)
             props = self.client.pending()[-1]['properties']
             self.assertEqual((props['selection'], props['package_id']), (selection, package))
@@ -148,3 +219,31 @@ class FunnelAcceptance(unittest.TestCase):
         self.assertFalse(set(valid) & set(clean))
         for key, value in [('http_status', 99), ('http_status', 600), ('api_status', -1), ('api_status', 100000)]:
             self.assertNotIn(key, analytics.sanitize_properties('payment_failed', {key: value}))
+
+
+class ReconfirmHooks(unittest.TestCase):
+    def test_nested_reconfirm_callbacks(self):
+        import ast
+        from unittest.mock import Mock
+        tree = ast.parse(Path('payment_ui.py').read_text())
+        callbacks = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name in ('show_reconfirm', 'confirm_login')}
+        for returning in (False, True):
+            app = Mock()
+            app.oauth_session = {'profile': {}} if returning else None
+            app._oauth_had_session = False
+            win = Mock()
+            win.winfo_height.return_value = 1000
+            win.winfo_screenheight.return_value = 1200
+            body = Mock()
+            body.winfo_reqheight.return_value = 600
+            scope = dict(app=app, win=win, body=body, payment=payment, time=__import__('time'),
+                         current_selection=lambda: {}, RECONFIRM={'en': ['a','b','c','d']},
+                         get_language=lambda: 'en', notice_text=Mock(), confirm=Mock(), message=Mock(), buy=Mock(), notice=Mock())
+            for node in callbacks.values():
+                exec(compile(ast.fix_missing_locations(ast.Module(body=[node], type_ignores=[])), '<callback>', 'exec'), scope)
+            with patch.object(payment, '_notify') as track:
+                scope['show_reconfirm']()
+                track.assert_called_once_with('reconfirm_shown', reason='resume' if returning else 'signin')
+                scope['confirm_login']()
+                track.assert_called_with('reconfirm_continue')
+                app.start_oauth_login.assert_called_once_with('billing')

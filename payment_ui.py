@@ -7,7 +7,7 @@ from tkinter import ttk
 import webbrowser
 import payment
 import oauth_desktop
-from payment_copy import COPY
+from payment_copy import COPY, RECONFIRM
 from i18n import get_language
 from studio_ui import PAGE, WHITE, INK, MUTED, LINE, ACCENT, PALE
 
@@ -15,7 +15,7 @@ from studio_ui import PAGE, WHITE, INK, MUTED, LINE, ACCENT, PALE
 # UI identities are distinct even when cards share an official backend package.
 DEFAULT_SELECTION = 'fixed_5'
 CHECKOUT_CARDS = (
-    dict(key='fixed_5', package_id=33, amount=5, credits=5000, recommended=True),
+    dict(key='fixed_5', package_id=35, amount=5, credits=5000, recommended=True),
     dict(key='fixed_20', package_id=22, amount=20, credits=20000, recommended=False),
     dict(key='fixed_50', package_id=23, amount=50, credits=50000, recommended=False),
     dict(key='custom', package_id=33, amount=None, credits=None, recommended=False),
@@ -81,28 +81,73 @@ def close_payment_dialog(win, state):
 
 def cancel_pending_checkout(state):
     if state.get('order'):
-        payment._notify('cancelled', package_id=state.get('package_id'), channel=state.get('channel'))
+        payment.track_paid_status(state, 2)
         state['order'] = None
 
 
-def _track_paid_status(state, status):
+def poll_checkout(token, order):
+    # Profile refresh must never discard an official terminal status.
+    try:
+        status = payment.status(token, order)
+    except Exception:
+        status = None
+    try:
+        info = oauth_desktop.fetch_userinfo(token) if status != 2 else None
+    except Exception:
+        info = None
+    return status, info
+
+
+def apply_checkout_status(state, status):
     payment.track_paid_status(state, status)
+    if status in (1, 2):
+        state['order'] = None
+        return True
+    return False
 
 
-def show(app):
-    if not app._is_oauth_logged_in():
-        app.start_oauth_login('billing')
-        return
+INTENT_TTL = 15 * 60
+
+
+def validated_preselection(preselect=None):
+    data = preselect if isinstance(preselect, dict) else {}
+    selection = data.get('selection', DEFAULT_SELECTION)
+    if selection not in {card['key'] for card in CHECKOUT_CARDS}:
+        selection = DEFAULT_SELECTION
+    channel = data.get('channel', 'limeng')
+    if channel not in ('limeng', 'paypal'):
+        channel = 'limeng'
+    amount = data.get('custom_amount', '5')
+    try:
+        checkout_payload('custom', amount, channel)
+    except (ValueError, TypeError, OverflowError):
+        amount = '5'
+    return dict(selection=selection, channel=channel, custom_amount=str(amount))
+
+
+def resume_topup(app):
+    intent = getattr(app, '_topup_intent', None)
+    app._topup_intent = None
+    if intent and 0 <= time.monotonic() - intent['at'] < INTENT_TTL:
+        show(app, preselect=intent)
+        return True
+    return False
+
+
+def show(app, preselect=None, suggested_amount=None):
     old = getattr(app, '_payment_window', None)
+    if old and old.winfo_exists() and preselect is not None:
+        old.destroy()
+        old = None
     if old and old.winfo_exists():
         old.deiconify()
         old.lift()
         return
     c = COPY.get(get_language(), COPY['en'])
-    token = app.oauth_session['access_token']
+    token = (app.oauth_session or {}).get('access_token', '')
     state = getattr(app, '_payment_state', None)
     if not state or state['token'] != token:
-        state = dict(token=token, order=None, baseline=app._oauth_profile().get('credits'), busy=False)
+        state = dict(token=token, order=None, busy=False)
         app._payment_state = state
     win = tk.Toplevel(app.root)
     app._payment_window = win
@@ -113,9 +158,17 @@ def show(app):
     body = tk.Frame(win, bg=PAGE, padx=24, pady=20)
     body.pack(fill='both', expand=True)
     tk.Label(body, text='Video Studio · ' + c[0], font=('', 18, 'bold'), bg=PAGE, fg=INK).pack(anchor='w', pady=(0, 18))
-    choice = tk.StringVar(value=DEFAULT_SELECTION)
-    amount = tk.StringVar(value='5')
-    channel = tk.StringVar(value='limeng')
+    if preselect is None and suggested_amount is not None:
+        restored = dict(
+            selection={20: 'fixed_20', 50: 'fixed_50'}.get(suggested_amount, DEFAULT_SELECTION),
+            channel='limeng',
+            custom_amount='5',
+        )
+    else:
+        restored = validated_preselection(preselect)
+    choice = tk.StringVar(value=restored['selection'])
+    amount = tk.StringVar(value=restored['custom_amount'])
+    channel = tk.StringVar(value=restored['channel'])
     grid = tk.Frame(body, bg=PAGE)
     grid.pack(fill='x')
     grid.columnconfigure((0, 1), weight=1, uniform='cards')
@@ -170,11 +223,11 @@ def show(app):
         label.pack(side='left')
         for widget in (mark, label):
             widget.bind('<Button-1>', lambda event, v=value: select(channel, v, explicit=True))
-    select(choice, DEFAULT_SELECTION)
+    select(choice, restored['selection'])
     message = tk.StringVar(value=c[6] if state['order'] else '')
     status_label = ttk.Label(body, textvariable=message, wraplength=400)
     def alive():
-        return win.winfo_exists() and app._is_oauth_logged_in() and app.oauth_session['access_token'] == token
+        return app._is_oauth_logged_in() and app.oauth_session['access_token'] == token
     def run(work, done):
         if state['busy']: return
         state['busy'] = True
@@ -188,43 +241,81 @@ def show(app):
                 app.root.after(100, finish)
                 return
             state['busy'] = False
-            if alive(): done(result, error)
+            if win.winfo_exists() and (alive() or error is not None): done(result, error)
         threading.Thread(target=worker, daemon=True).start()
         app.root.after(100, finish)
     def check():
-        if not alive() or not state['order']: return
-        def work():
-            try: status = payment.status(token, state['order'])
-            except Exception: status = None
-            info = oauth_desktop.fetch_userinfo(token) if status != 2 else None
-            return status, info
+        if not alive() or not state['order'] or time.monotonic() >= state.get('deadline', 0): return
+        order = state['order']
         def done(result, error):
-            if not error:
+            if not error and state.get('order') == order:
                 status, info = result
-                if status == 2:
-                    cancel_pending_checkout(state); message.set(c[10]); buy.configure(state='normal'); return
-                credits = info.get('credits')
-                _track_paid_status(state, status)
-                if status == 1 or (isinstance(credits, (int, float)) and isinstance(state['baseline'], (int, float)) and credits > state['baseline']):
+                terminal = apply_checkout_status(state, status)
+                if info is not None:
                     app.oauth_session['profile'] = oauth_desktop.profile_from_userinfo(info)
                     app._refresh_oauth_header()
-                    state['order'] = None; message.set(c[9]); buy.configure(state='normal'); return
-            if time.monotonic() < state.get('deadline', 0): win.after(4000, check)
-        run(work, done)
+                if terminal:
+                    if win.winfo_exists():
+                        message.set(c[9] if status == 1 else c[10])
+                        buy.configure(state='normal')
+                    return
+            if time.monotonic() < state.get('deadline', 0): app.root.after(4000, check)
+        run(lambda: poll_checkout(token, order), done)
     def buy_now():
+        if not app._is_oauth_logged_in():
+            show_reconfirm()
+            return
+        if app.oauth_session['access_token'] != token:
+            show(app, preselect=current_selection())
+            return
         try: data = checkout_payload(choice.get(), amount.get(), channel.get())
         except (ValueError, StopIteration): message.set(c[12]); return
         buy.configure(state='disabled')
         def done(result, error):
             if error:
-                message.set(c[11]); buy.configure(state='normal'); return
-            state.update(payment_success_tracked=False, package_id=data['package_id'], channel=data['payment_channel'], order=result['orderNo'], baseline=app._oauth_profile().get('credits'), deadline=time.monotonic()+300)
+                if getattr(error, 'error_code', None) == 'AUTH' or getattr(error, 'code', None) in (401, 403):
+                    show_reconfirm()
+                else:
+                    message.set(c[11])
+                buy.configure(state='normal'); return
+            state.update(payment_success_tracked=False, payment_cancelled_tracked=False, package_id=data['package_id'], channel=data['payment_channel'], order=result['orderNo'], deadline=time.monotonic()+300)
             message.set(c[6])
             webbrowser.open(result['redirectUrl'])
-            win.after(2500, check)
+            app.root.after(2500, check)
         run(lambda: payment.create(token, data), done)
+    def current_selection():
+        return dict(selection=choice.get(), channel=channel.get(), custom_amount=amount.get())
+    def confirm_login():
+        payment._notify('reconfirm_continue')
+        app._topup_intent = dict(current_selection(), at=time.monotonic())
+        app.start_oauth_login('billing')
+    notice = tk.Frame(body, bg=PALE, padx=12, pady=10)
+    notice_text = tk.Label(notice, bg=PALE, fg=INK, wraplength=460, justify='left')
+    notice_text.pack(fill='x', pady=(0, 8))
+    confirm = ttk.Button(notice, command=confirm_login, style='Accent.TButton')
+    confirm.pack(fill='x')
+    def show_reconfirm():
+        copy = RECONFIRM.get(get_language(), RECONFIRM['en'])
+        offset = 0 if app.oauth_session or getattr(app, '_oauth_had_session', False) else 2
+        payment._notify('reconfirm_shown', reason='resume' if offset == 0 else 'signin')
+        notice_text.configure(text=copy[offset])
+        confirm.configure(text=copy[offset + 1])
+        message.set('')
+        if buy.winfo_manager():
+            notice.pack(fill='x', pady=(0, 12), before=buy)
+            buy.pack_forget()
+        win.update_idletasks()
+        height = win.winfo_height()
+        requested = body.winfo_reqheight() + 12
+        target = min(max(660, requested), max(660, win.winfo_screenheight() - 60))
+        if requested > height and target > height:
+            win.geometry('%dx%d' % (win.winfo_width(), target))
+    # Keep dialog controls accessible for keyboard/UI regression checks.
+    app._payment_controls = dict(choice=choice, amount=amount, channel=channel,
+                                 buy=buy_now, confirm=confirm_login, notice=notice)
     buy = ttk.Button(body, text=c[5], command=buy_now, style='Accent.TButton')
     buy.pack(fill='x', pady=(0, 12))
+    app._payment_controls['buy_button'] = buy
     def update_status(*args):
         if message.get(): status_label.pack(fill='x', pady=(0, 12), before=buy)
         else: status_label.pack_forget()
@@ -237,4 +328,4 @@ def show(app):
     ttk.Button(links, text=c[14] + ': service@powertokens.ai', style='Link.TButton',
                command=lambda: webbrowser.open('mailto:service@powertokens.ai')).pack(side='left')
     if state['order']:
-        buy.configure(state='disabled'); state['deadline'] = time.monotonic()+300; check()
+        buy.configure(state='disabled'); check()

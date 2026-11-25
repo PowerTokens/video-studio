@@ -80,7 +80,7 @@ ends an unterminated previous session (crash recovery) before `app_open`.
 | `login_success` | Once per session after a successful OAuth sign-in, not on session restore | `key_applied` (boolean only) |
 | `login_failed` | OAuth/login finished unsuccessfully | safe `error_code` only |
 | `logout` | User confirmed Sign out | — |
-| `billing_click` | User clicked through to the official credits/billing page. Not a completed payment | `source`: `header`, `account`, `quota`, `credits_chip`, or `chat` |
+| `billing_click` | User clicked through to the official credits/billing page. Not a completed payment | `source`: `header`, `account`, `quota`, `credits_chip`, `chat`, `dialog`, `generate_tip`, or `quota_tip` |
 | `surface_open` | Once per surface per session when the user actually opens that tab | `surface`: `generate`, `chat`, `compare`, `batch`, `history`, `keys` |
 | `key_verified` | Advanced Key-pool verify-and-save succeeded | — |
 | `key_verify_failed` | That same verify-and-save failed | safe `error_code` only |
@@ -97,7 +97,7 @@ ends an unterminated previous session (crash recovery) before `app_open`.
 
 
 Compare/batch: each model or job is its own `generation_start` / terminal pair
-(the correct per-generation denominator). Chat-pilot events are not sent.
+(the correct per-generation denominator). Only the documented user-facing chat guidance events are sent.
 
 `model` must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`. Prompts, sentences,
 URLs, and unknown property names are dropped.
@@ -176,10 +176,14 @@ and source/medium/campaign fall back to product defaults. Click IDs are excluded
 Payment funnel: payment_start, payment_checkout_opened (validated create redirect),
 payment_failed (normalized code), payment_success (confirmed paid polling status).
 `payment_package_select` records explicit card activations only, with `selection`
-(`preset-5`, `preset-20`, `preset-50`, `custom`) and `package_id` (33, 22, 23,
+(`preset-5`, `preset-20`, `preset-50`, `custom`) and `package_id` (35, 22, 23,
 33 respectively, serialized as catalog strings). `payment_channel_select` records
 explicit method activations with `channel` (`limeng` or `paypal`). Initial $5 and
 limeng defaults emit neither selection event.
+Live official package ids are 35/22/23 (fixed $5/$20/$50) and custom 33
+(amount_type 2, $5–$2000). Only the default fixed $5 card has the Recommended
+badge. Package 24 is historical only, not a current official package; the
+sanitizer continues to accept it.
 
 `payment_dialog_closed` records user dismissal/withdrawal with a real boolean
 `pending_checkout`. `payment_cancelled` records official status 2 from polling or
@@ -220,3 +224,17 @@ order, checkout URL, account, or credential data is included. Tracking fails ope
 Every event includes device_class and os enums. Web also includes browser, is_pwa, is_in_app_browser. No raw user-agent is captured. Desktop has no example chips. `payment_success` retains its existing notification and deduplication flow.
 
 Desktop update checks emit update_check_start, update_available, update_download_start, update_download_success, update_download_failed. update_version accepts only a short numeric dotted version. Failures use safe error_code values.
+
+## Unshipped desktop captures
+
+| Event | Trigger | Properties |
+| --- | --- | --- |
+| `payment_reconfirm_shown` | Reconfirm notice displayed | `reason=resume` for returning session, otherwise `signin` |
+| `payment_reconfirm_continue` | Reconfirm CTA starts login | — |
+| `credit_gate_shown` | Generate tip hidden → visible; deduped until hidden | `surface=generate`, optional `selection=preset-5/preset-20/preset-50` |
+| `credit_gate_blocked` | Existing submit shortfall return | `surface=generate` |
+| `prompt_clear` | Existing Generate or Chat Clear button | `surface=generate/chat`, `reason=button` |
+| `chat_plan_ready` | Completed reply first exposes a ready plan | `surface=chat` |
+| `chat_need_login_show` | In-chat login gate shown | `source=send` |
+
+Captures fail open; forbidden fields remain rejected even if allowlisted.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import queue
+import conversation_store
 import threading
 import uuid
 import tkinter as tk
@@ -45,6 +46,7 @@ class ChatTab:
         self._pending = queue.Queue()
         self._poll_scheduled = False
         self._build()
+        self.restore_state(conversation_store.read('chat_history'))
 
     def _build(self):
         heading(self.frame, t('chat_title'), t('chat_desc'))
@@ -58,6 +60,7 @@ class ChatTab:
         composer = card(self.frame, t('chat_composer_card'))
         self.input = text_area(composer, height=4, undo=True)
         self.input.pack(fill='x', pady=(0, 8))
+        self.input.bind('<KeyRelease>', lambda event: self.persist_state(), add='+')
         bind_command_or_control(self.input, 'Return', lambda *_: self.send())
 
         tools = ttk.Frame(composer)
@@ -123,6 +126,7 @@ class ChatTab:
 
     def _set_busy(self, busy):
         self._busy = bool(busy)
+        self.persist_state()
         try:
             self.send_btn.configure(state='disabled' if self._busy else 'normal')
             self.clear_btn.configure(state='disabled' if self._busy else 'normal')
@@ -158,12 +162,13 @@ class ChatTab:
             return False
 
     def _prompt_chat_login(self):
-        """Empty pool and logged out: need-login tip, then desktop OAuth.
+        """Empty pool and logged out: need-login tip, then explicit confirmation.
 
         Leaves the draft, transcript history, and any plan untouched.
         A saved key never reaches this path. If a login is already in
         progress, start_oauth_login keeps that flow.
         """
+        self._track_guidance('chat_need_login_show', source='send')
         tip = t('chat_need_login')
         try:
             self._append_bubble('assistant', tip)
@@ -185,14 +190,24 @@ class ChatTab:
             parent = self.frame.winfo_toplevel()
         except tk.TclError:
             parent = None
+        confirmed = False
         try:
-            messagebox.showinfo(t('chat_title'), tip, parent=parent)
+            confirmed = messagebox.askokcancel(t('chat_title'), tip, parent=parent)
         except tk.TclError:
             pass
+        if not confirmed:
+            return
         starter = getattr(self.app, 'start_oauth_login', None)
         if callable(starter):
             starter('chat')
 
+
+    def _track_guidance(self, event, **props):
+        try:
+            import analytics
+            analytics.notify_ui_event(event, **props)
+        except Exception:
+            pass
 
     def _analytics_chat_submit(self, model='', text=''):
         try:
@@ -309,6 +324,7 @@ class ChatTab:
         if parsed.get('ready') and parsed.get('plan'):
             self.last_plan = parsed['plan']
             self.status_var.set(t('chat_plan_ready'))
+            self._track_guidance('chat_plan_ready', surface='chat')
         else:
             self.last_plan = None
             self.status_var.set('')
@@ -324,8 +340,10 @@ class ChatTab:
     def clear(self):
         if self._busy:
             return
+        self._track_guidance('prompt_clear', surface='chat', reason='button')
         self.messages = []
         self.last_plan = None
+        conversation_store.clear('chat_history')
         self.thread.configure(state='normal')
         self.thread.delete('1.0', 'end')
         self.thread.configure(state='disabled')
@@ -375,6 +393,14 @@ class ChatTab:
                 self._pending.put(('err', str(exc)))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def persist_state(self):
+        state = self.export_state()
+        state['messages'] = [dict(role=m['role'], content=str(m.get('content', ''))[:20000]) for m in state['messages'][-80:] if m.get('role') in ('user', 'assistant')]
+        import json
+        while len(json.dumps(state, ensure_ascii=False).encode('utf-8')) > 480000 and state['messages']:
+            state['messages'].pop(0)
+        conversation_store.write('chat_history', state)
 
     def export_state(self):
         draft = ''

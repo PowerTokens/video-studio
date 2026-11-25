@@ -7,6 +7,7 @@ import re
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse
 PACKAGES = [
+    {'id': 35, 'amount_type': 1, 'package_name': '5元档', 'sales_price': 5, 'credits_amount': 5000, 'is_recommended': 1, 'status': 1, 'currency': 'USD'},
     {'id': 33, 'amount_type': 2, 'package_name': '15', 'sales_price': 0, 'min_recharge_amount': 5, 'max_recharge_amount': 2000, 'credits_amount': 0, 'is_recommended': 0, 'status': 1, 'currency': 'USD'},
     {'id': 22, 'amount_type': 1, 'package_name': '01', 'sales_price': 20, 'credits_amount': 20000, 'is_recommended': 0, 'status': 1, 'currency': 'USD'},
     {'id': 23, 'amount_type': 1, 'package_name': '02', 'sales_price': 50, 'credits_amount': 50000, 'is_recommended': 0, 'status': 1, 'currency': 'USD'},
@@ -52,10 +53,11 @@ def _notify(event, **props):
 
 
 def track_paid_status(state, status):
-    # Only confirmed paid status qualifies; a balance change alone does not.
-    if status == 1 and not state.get('payment_success_tracked'):
-        _notify('success', package_id=state.get('package_id'), channel=state.get('channel'))
-        state['payment_success_tracked'] = True
+    # Terminal events contain only checkout dimensions, never payment details.
+    event = {1: 'success', 2: 'cancelled'}.get(status)
+    if event and not state.get('payment_' + event + '_tracked'):
+        _notify(event, package_id=state.get('package_id'), channel=state.get('channel'))
+        state['payment_' + event + '_tracked'] = True
 
 
 class CreateResponse:
@@ -104,6 +106,7 @@ def create(token, body):
             diagnostics.update(response_diagnostics(json.loads(exc.read(65536))))
         except Exception:
             pass
+        exc.error_code = 'AUTH' if exc.code in (401, 403) or diagnostics.get('api_status') in (401, 403) else 'UNKNOWN'
         _notify('failed', **props, **diagnostics, fail_stage='response',
                 error_code='AUTH' if exc.code in (401, 403) or diagnostics.get('api_status') in (401, 403) else 'UNKNOWN')
         raise
@@ -122,7 +125,9 @@ def create(token, body):
             (type(http_status) is int and not 200 <= http_status < 300)):
         _notify('failed', **props, **diagnostics, fail_stage='response',
                 error_code='AUTH' if http_status in (401, 403) or diagnostics.get('api_status') in (401, 403) else 'UNKNOWN')
-        raise ValueError('Could not start checkout.')
+        error = ValueError('Could not start checkout.')
+        error.error_code = 'AUTH' if http_status in (401, 403) or diagnostics.get('api_status') in (401, 403) else 'UNKNOWN'
+        raise error
     data = result.get('data')
     data = data if isinstance(data, dict) else {}
     diagnostics['has_payment_ref'] = bool(data.get('orderNo'))

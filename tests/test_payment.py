@@ -7,19 +7,23 @@ import payment_ui
 
 class PaymentTests(unittest.TestCase):
     def test_packages_and_validation(self):
-        self.assertEqual([p['id'] for p in payment.PACKAGES], [33,22,23])
+        self.assertEqual([p['id'] for p in payment.PACKAGES], [35,33,22,23])
         self.assertEqual(payment.payload(22, 5, 'limeng'), dict(amount=20,package_id=22,payment_channel='limeng'))
         for amount in (4,2001,5.5,'bad'):
             with self.assertRaises(ValueError): payment.payload(33, amount, 'paypal')
-        for package_id, amount in ((22,20),(23,50)):
+        for package_id, amount in ((35,5),(22,20),(23,50)):
             self.assertEqual(payment.payload(package_id,5,'paypal')['amount'],amount)
         self.assertEqual(payment.payload(33, 5, 'limeng'),
                          dict(amount=5, package_id=33, payment_channel='limeng'))
         self.assertEqual(payment.payload(33,2000,'paypal')['amount'],2000)
     def test_official_package_metadata(self):
         packages = {p['id']: p for p in payment.PACKAGES}
-        self.assertEqual(set(packages), {22, 23, 33})
+        self.assertEqual(set(packages), {22, 23, 33, 35})
         self.assertNotIn(24, packages)
+        self.assertEqual(packages[35]['amount_type'], 1)
+        self.assertEqual(packages[35]['sales_price'], 5)
+        self.assertEqual(packages[35]['credits_amount'], 5000)
+        self.assertEqual(packages[35]['is_recommended'], 1)
         self.assertEqual(packages[33]['amount_type'], 2)
         self.assertEqual(packages[33]['min_recharge_amount'], 5)
         self.assertEqual(packages[33]['max_recharge_amount'], 2000)
@@ -30,7 +34,7 @@ class PaymentTests(unittest.TestCase):
         cards = payment_ui.CHECKOUT_CARDS
         self.assertEqual(len(cards), 4)
         self.assertEqual(len({c['key'] for c in cards}), 4)
-        self.assertEqual({c['package_id'] for c in cards}, {22, 23, 33})
+        self.assertEqual({c['package_id'] for c in cards}, {22, 23, 33, 35})
         self.assertNotIn(24, {c['package_id'] for c in cards})
         self.assertEqual([c['amount'] for c in cards], [5, 20, 50, None])
         self.assertEqual([c['credits'] for c in cards], [5000, 20000, 50000, None])
@@ -38,17 +42,17 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual([c['key'] for c in cards if c['recommended']], ['fixed_5'])
         self.assertFalse(payment_ui.custom_input_visible())
         self.assertEqual(payment_ui.checkout_payload(),
-                         dict(package_id=33, amount=5, payment_channel='limeng'))
+                         dict(package_id=35, amount=5, payment_channel='limeng'))
 
     def test_ui_selection_visibility_and_payload(self):
         for selection, package_id, amount in (
-                ('fixed_5', 33, 5), ('fixed_20', 22, 20), ('fixed_50', 23, 50)):
+                ('fixed_5', 35, 5), ('fixed_20', 22, 20), ('fixed_50', 23, 50)):
             self.assertFalse(payment_ui.custom_input_visible(selection))
             for leftover in ('80', 'bad'):
                 self.assertEqual(payment_ui.checkout_payload(selection, leftover, 'paypal'),
                                  dict(package_id=package_id, amount=amount, payment_channel='paypal'))
         self.assertTrue(payment_ui.custom_input_visible('custom'))
-        for amount in ('80', '2000'):
+        for amount in ('5', '80', '2000'):
             self.assertEqual(payment_ui.checkout_payload('custom', amount),
                              dict(package_id=33, amount=int(amount), payment_channel='limeng'))
             self.assertEqual(payment_ui.checkout_payload('fixed_5', amount)['amount'], 5)
@@ -81,6 +85,9 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual(payment.create('mock-token',payment.payload(22,20,'limeng'))['orderNo'],'mock-order')
         request = network.call_args.args[0]
         self.assertEqual(request.full_url, payment.BASE + '/v1/payment/create')
+        self.assertIsNone(request.get_header('X-client'))
+        self.assertEqual(dict(request.header_items()), {
+            'Authorization': 'Bearer mock-token', 'Content-type': 'application/json'})
         self.assertEqual(request.get_header('Authorization'),'Bearer mock-token')
         self.assertEqual(json.loads(request.data),dict(amount=20,package_id=22,payment_channel='limeng'))
     @patch('payment.post')
@@ -119,5 +126,8 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual(payment.status(' Bearer bearer mock-token ', 'mock-order'), 1)
         request = network.call_args.args[0]
         self.assertEqual(request.full_url, payment.BASE + '/finance/get-order-info')
+        self.assertIsNone(request.get_header('X-client'))
+        self.assertEqual(dict(request.header_items()), {
+            'Authorization': 'Bearer mock-token', 'Content-type': 'application/json'})
         self.assertEqual(request.get_header('Authorization'), 'Bearer mock-token')
         self.assertEqual(json.loads(request.data), {'order_no':'mock-order'})

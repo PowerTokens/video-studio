@@ -1,4 +1,5 @@
 """PowerTokens Video Studio; run with Python 3.9+ / tkinter."""
+import hashlib
 import ctypes
 import json
 import os
@@ -6,6 +7,7 @@ from pathlib import Path
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import uuid
@@ -33,6 +35,8 @@ import oauth_desktop
 import analytics
 from difflib import SequenceMatcher
 import update_check
+import conversation_store
+import time
 
 OFFICIAL_KEY_URL = 'https://powertokens.ai/zh-Hans/api-keys?' + UTM
 OFFICIAL_KEY_URL_EN = 'https://powertokens.ai/api-keys?' + UTM
@@ -154,6 +158,7 @@ class App:
         self.build_ui()
         self.load_keys()
         self._load_oauth_session()
+        self._restore_generate_form()
         self.refresh_history()
         self._boot_analytics()
         root.after(150, self.drain)
@@ -345,7 +350,8 @@ class App:
             self.root.after_cancel(self.prompt_timer)
             self.prompt_timer = None
         self.shell.destroy()
-        for name in ('promo_label', 'cost'):  # Rebuilt below; update_cost() must not touch the old ones.
+        # Rebuilt below; update_cost() must not touch the old widgets after shell.destroy().
+        for name in ('promo_label', 'cost', 'generate_btn', 'credit_tip', 'credit_tip_text'):
             self.__dict__.pop(name, None)
         self.build_ui()
         self.restore_state(state)
@@ -492,7 +498,7 @@ class App:
     def ensure_submit_credentials(self, parent=None):
         """True when the key pool can submit a create/generate request.
 
-        Empty pool and logged out: login tip, then the existing OAuth flow.
+        Empty pool and logged out: confirm before opening OAuth.
         Empty pool and logged in: advanced-paste tip, then API Key → Advanced.
         A saved key is enough either way, so power users are not blocked.
         """
@@ -511,15 +517,17 @@ class App:
                 self.status.set(tip)
             except Exception:
                 pass
+            confirmed = False
             try:
                 if parent is not None:
-                    messagebox.showinfo(t('oauth_login'), tip, parent=parent)
+                    confirmed = messagebox.askokcancel(t('oauth_login'), tip, parent=parent)
                 else:
-                    messagebox.showinfo(t('oauth_login'), tip)
+                    confirmed = messagebox.askokcancel(t('oauth_login'), tip)
             except tk.TclError:
                 pass
             try:
-                self.start_oauth_login('generate')
+                if confirmed:
+                    self.start_oauth_login('generate')
             except Exception:
                 pass
             return False
@@ -553,6 +561,7 @@ class App:
         prompt_box = card(columns.left, t('prompt_card'))
         self.prompt = text_area(prompt_box, height=2, undo=True)
         self.prompt.pack(fill='x', pady=(0, 4))
+        ttk.Button(prompt_box, text=t('prompt_clear'), command=self.clear_generate_prompt).pack(anchor='e', pady=(0, 8))
         self.ai_plan_help_btn = ttk.Button(prompt_box, text=t('ai_plan_help'),
                                            style='Link.TButton', command=self.start_ai_plan)
         self.ai_plan_help_btn.pack(anchor='w', fill='x', pady=(0, 6))
@@ -631,9 +640,18 @@ class App:
         self.update_cost()
         self.ai_plan_notice = ttk.Label(params, text=t('ai_plan_ready'), style='Badge.TLabel', wraplength=300)
         params.bind('<Configure>', lambda event: self.ai_plan_notice.configure(wraplength=max(100, event.width - 32)), add='+')
+        self.credit_tip = tk.Frame(params, bg='#fff8eb', padx=12, pady=12, highlightbackground='#d8b579', highlightthickness=1)
+        self.credit_tip_text = tk.StringVar()
+        tip_label = ttk.Label(self.credit_tip, textvariable=self.credit_tip_text, wraplength=320, justify='left', background='#fff8eb', foreground='#513d20')
+        tip_label.pack(fill='x')
+        params.bind('<Configure>', lambda e: tip_label.configure(wraplength=max(100, e.width - 56)), add='+')
+        ttk.Button(self.credit_tip, text=t('credits_insufficient'), command=self.open_generate_topup).pack(anchor='w', pady=(8, 0))
         actions = Flow(params)
         actions.pack(fill='x', pady=(6, 0))
         self.generate_btn = ttk.Button(actions, text=t('generate_btn'), style='Accent.TButton', command=self.generate)
+        self.update_cost()
+        for variable in (self.model_id, self.duration, self.resolution, self.ratio):
+            variable.trace_add('write', lambda *args: self._save_generate_form())
         self.stop_btn = ttk.Button(actions, text=t('stop_btn'), command=self.stop_wait, state='disabled')
         actions.schedule()
         self.bar = ttk.Progressbar(params, mode='indeterminate')
@@ -984,6 +1002,7 @@ class App:
             return
         self.prompt.edit_modified(False)
         self._clear_ai_field('prompt')
+        self._save_generate_form()
         current_prompt = self.prompt.get('1.0', 'end-1c').strip()
         ai_prompt = getattr(self, '_ai_filled_prompt', '')
         if not current_prompt or (ai_prompt and SequenceMatcher(None, ai_prompt, current_prompt).ratio() < 0.25):
@@ -1130,9 +1149,79 @@ class App:
             if resolution in regular:
                 text += t('cost_regular', regular[resolution])
             self.cost.set(text + t('cost_tail'))
+            self.sync_generate_credits(conversation_store.estimate_credits(value))
         except (ValueError, KeyError, TaskError):
             self.cost.set(t('cost_invalid'))
+            self.sync_generate_credits(None)
 
+
+    def _generate_shortfall(self, need=None):
+        if not getattr(self, 'oauth_session', None) or not self._is_oauth_logged_in():
+            return None
+        have = self._oauth_profile().get('credits')
+        if isinstance(have, bool) or not isinstance(have, (int, float)):
+            return None
+        try:
+            if need is None:
+                need = conversation_store.estimate_credits(estimate_cost(self.duration.get(), self.resolution.get(), model_id=self.model_id.get()))
+            if need > have:
+                return need, have
+        except (ValueError, KeyError, TaskError, TypeError):
+            pass
+        return None
+
+    def sync_generate_credits(self, need):
+        if not hasattr(self, 'credit_tip') or not hasattr(self, 'generate_btn'):
+            return
+        try:
+            if not self.generate_btn.winfo_exists() or not self.credit_tip.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        short = self._generate_shortfall(need) if need is not None else None
+        self.generate_btn.configure(state='disabled' if self.busy or short else 'normal')
+        if short:
+            required, have = short
+            amount = conversation_store.suggested_amount(required, have)
+            self.credit_tip_text.set(t('credits_insufficient_tip', f'{required:,}', f'{have:,}') + '\n\n' + t('credits_insufficient_suggest', amount, f'{amount * 1000:,}'))
+            self.credit_tip.pack(fill='x', pady=(8, 6), before=self.generate_btn.master)
+            if not getattr(self, '_credit_gate_visible', False):
+                analytics.notify_ui_event('credit_gate_shown', surface='generate', selection={5: 'preset-5', 20: 'preset-20', 50: 'preset-50'}.get(amount))
+            self._credit_gate_visible = True
+        else:
+            self.credit_tip.pack_forget()
+            self._credit_gate_visible = False
+
+    def _generate_form(self):
+        return dict(prompt=self.prompt.get('1.0', 'end-1c'), model=self.model_id.get(), duration=self.duration.get(), resolution=self.resolution.get(), ratio=self.ratio.get())
+
+    def _save_generate_form(self):
+        form = self._generate_form()
+        conversation_store.write('generate_form', form)
+        if conversation_store.intended() is not None:
+            conversation_store.write('intended_generate', dict(at=time.time(), form=form))
+
+    def _restore_generate_form(self):
+        form = conversation_store.intended() or conversation_store.read('generate_form')
+        if not isinstance(form, dict):
+            return
+        self.prompt.delete('1.0', 'end')
+        self.prompt.insert('1.0', form.get('prompt', ''))
+        for field in ('model', 'duration', 'resolution', 'ratio'):
+            if field in form:
+                getattr(self, 'model_id' if field == 'model' else field).set(form[field])
+        self._sync_model_widgets()
+        self.update_cost()
+
+    def clear_generate_prompt(self):
+        analytics.notify_ui_event('prompt_clear', surface='generate', reason='button')
+        self.prompt.delete('1.0', 'end')
+        self._clear_ai_review()
+        self._save_generate_form()
+
+    def open_generate_topup(self):
+        conversation_store.write('intended_generate', dict(at=time.time(), form=self._generate_form()))
+        self.open_billing('generate_tip')
 
     def _toggle_keys_advanced(self):
         if not hasattr(self, 'keys_advanced_body'):
@@ -1148,7 +1237,9 @@ class App:
 
     def _load_oauth_session(self):
         """Restore a non-expired OAuth session (token + display profile, no API key)."""
+        self._oauth_had_session = oauth_desktop.session_path().is_file()
         self.oauth_session = oauth_desktop.load_session()
+        self._oauth_had_session = self._oauth_had_session or bool(self.oauth_session)
         self._refresh_oauth_header()
 
     def _oauth_profile(self):
@@ -1164,13 +1255,26 @@ class App:
         if expires_at is not None:
             try:
                 import time as _time
-                if _time.time() > float(expires_at):
+                if _time.time() >= float(expires_at):
                     return False
             except (TypeError, ValueError):
                 return False
         return True
 
     def _refresh_oauth_header(self):
+        root = getattr(self, 'root', None)
+        if root is not None:
+            timer = getattr(self, '_oauth_expiry_timer', None)
+            if timer:
+                root.after_cancel(timer)
+                self._oauth_expiry_timer = None
+            if not getattr(self, '_oauth_focus_bound', False):
+                root.bind('<FocusIn>', lambda event: self._refresh_oauth_header(), add='+')
+                self._oauth_focus_bound = True
+            expiry = (self.oauth_session or {}).get('expires_at')
+            if self._is_oauth_logged_in() and expiry is not None:
+                delay = max(1, min(2147483647, int((float(expiry) - time.time()) * 1000) + 1))
+                self._oauth_expiry_timer = root.after(delay, self._refresh_oauth_header)
         logged_in = self._is_oauth_logged_in()
         profile = self._oauth_profile() if logged_in else {}
         name = (profile.get('name') or profile.get('email') or '').strip()
@@ -1264,6 +1368,8 @@ class App:
         if hasattr(self, '_refresh_key_status'):
             self._refresh_key_status()
 
+        self.update_cost()
+
     def _boot_analytics(self):
         """Start the anonymous session once per process. Never on tab switches."""
         if getattr(self, '_analytics_booted', False):
@@ -1324,6 +1430,11 @@ class App:
         if key:
             # OAuth userinfo key is already authenticated — apply without GET /v1/models
             # (matches web: no extra validate friction on the Sign-in path).
+            issued = getattr(self, '_login_only_keys', set())
+            # Untagged legacy keys may be pasted; never infer their source.
+            if key not in self.keys:
+                issued.add(hashlib.sha256(key.encode()).hexdigest())
+            self._login_only_keys = issued
             self.keys = list(dict.fromkeys([key] + list(self.keys)))
             # Beginner path: persist when this OS can store secrets
             # (DPAPI on Windows, login Keychain on macOS).
@@ -1341,6 +1452,11 @@ class App:
             analytics.notify_login_success(key_applied=key_applied)
         except Exception:
             pass
+        self._oauth_had_session = True
+        import payment_ui
+        if payment_ui.resume_topup(self):
+            self.status.set(t('oauth_ok'))
+            return
         if key_applied:
             self.status.set(t('oauth_ok'))
             messagebox.showinfo(t('oauth_login'), t('oauth_ok'))
@@ -1359,7 +1475,7 @@ class App:
         self._refresh_oauth_header()
         code, _, detail = str(payload).partition('|')
         try:
-            analytics.notify_login_failed(self._map_login_error(code))
+            analytics.notify_login_failed(self._map_login_error(code), auth_reason=code)
         except Exception:
             pass
         msg = detail or code
@@ -1373,6 +1489,11 @@ class App:
             analytics.notify_logout()
         except Exception:
             pass
+        issued = getattr(self, '_login_only_keys', set())
+        self.keys = [k for k in self.keys if hashlib.sha256(k.encode()).hexdigest() not in issued]
+        self._login_only_keys = set()
+        self.sync_keys()
+        self.save_keys()
         oauth_desktop.logout()
         self.oauth_session = None
         try:
@@ -1393,13 +1514,15 @@ class App:
             messagebox.showinfo(t('official_site'), official_key_url())
 
     def open_billing(self, source='credits_chip'):
-        """Open the OAuth-gated in-app plan picker."""
+        """Open the in-app plan picker."""
         try:
             analytics.notify_billing_click(source)
         except Exception:
             pass
         import payment_ui
-        payment_ui.show(self)
+        short = self._generate_shortfall() if source == 'generate_tip' else None
+        amount = conversation_store.suggested_amount(*short) if short else 5
+        payment_ui.show(self, suggested_amount=amount)
 
     def choose_folder(self):
         folder = filedialog.askdirectory()
@@ -1528,6 +1651,10 @@ class App:
                 pass
             messagebox.showerror(t('key_format_title'), str(exc))
             return
+        # A duplicate paste is still explicit manual ownership.
+        issued = getattr(self, '_login_only_keys', set())
+        self._login_only_keys = issued - {hashlib.sha256(k.encode()).hexdigest() for k in keys if k in self.keys}
+        self.save_keys()
         pending = [k for k in keys if k not in self.keys]
         if not pending:
             self.key_input.set('')
@@ -1565,6 +1692,7 @@ class App:
         except Exception:
             pass
         if ok_keys:
+            self._login_only_keys = getattr(self, '_login_only_keys', set()) - {hashlib.sha256(k.encode()).hexdigest() for k in ok_keys}
             self.keys = list(dict.fromkeys(list(self.keys) + ok_keys))
             self.key_input.set('')
             self.key_status_kind = 'ok'
@@ -1600,6 +1728,10 @@ class App:
     def save_keys(self):
         path = DATA_DIR / 'keys.json'
         try:
+            # Only fingerprints are stored beside the OS-protected key pool.
+            live = {hashlib.sha256(k.encode()).hexdigest() for k in self.keys}
+            self._login_only_keys = getattr(self, '_login_only_keys', set()) & live
+            (DATA_DIR / 'login-only-keys.json').write_text(json.dumps(sorted(self._login_only_keys)))
             if self.remember.get():
                 secret_store.write_remembered_keys(path, self.keys)
             else:
@@ -1609,6 +1741,10 @@ class App:
             messagebox.showerror(t('save_failed_title'), t('save_failed_body'))
 
     def load_keys(self):
+        try:
+            self._login_only_keys = set(json.loads((DATA_DIR / 'login-only-keys.json').read_text()))
+        except (OSError, ValueError, TypeError):
+            self._login_only_keys = set()
         path = DATA_DIR / 'keys.json'
         if path.exists():
             try:
@@ -1714,12 +1850,20 @@ class App:
 
     def generate(self):
         self._clear_ai_review()
+        if self._generate_shortfall():
+            analytics.notify_ui_event('credit_gate_blocked', surface='generate')
+            self.update_cost()
+            return
         if self.busy:
             return
         if not self.ensure_submit_credentials():
             return
         try:
             recognized = self.apply_prompt()
+            if self._generate_shortfall():
+                analytics.notify_ui_event('credit_gate_blocked', surface='generate')
+                self.update_cost()
+                return
             if recognized['warnings']:
                 raise TaskError(t('warning_sep').join(recognized['warnings']))
             media = self._collect_generate_media()
@@ -1734,6 +1878,7 @@ class App:
         except Exception as exc:
             messagebox.showerror(t('check_input'), str(exc))
             return
+        conversation_store.clear('intended_generate')
         keys = list(self.keys)
         self.launch(lambda client: client.submit(keys, request, output))
 
@@ -2110,6 +2255,8 @@ class App:
             self._update_fail('launch')
             return
         try:
+            self._save_generate_form()
+            self.chat.persist_state()
             self.root.destroy()
         except tk.TclError:
             pass
@@ -2192,6 +2339,7 @@ class App:
                     self.bar.pack_forget()
                     for button in (self.generate_btn, self.resume_btn, self.manual_btn, self.link_btn):
                         button.configure(state='normal')
+                    self.update_cost()
                     self.stop_btn.configure(state='disabled')
                     self.status.set(text)
                 self.refresh_history()
@@ -2267,6 +2415,8 @@ class App:
             analytics.end_session()
         except Exception:
             pass
+        self._save_generate_form()
+        self.chat.persist_state()
         self.root.destroy()
 
 
