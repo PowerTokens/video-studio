@@ -392,7 +392,7 @@ def save_session(token_result: dict, data_dir: Optional[Path] = None) -> Path:
 
 
 def load_session(data_dir: Optional[Path] = None) -> Optional[dict]:
-    """Return a valid session, retaining expired files as OAuth provenance."""
+    """Return a valid session; replace expired credentials with a secret-free marker."""
     path = session_path(data_dir)
     if not path.is_file():
         return None
@@ -403,12 +403,22 @@ def load_session(data_dir: Optional[Path] = None) -> Optional[dict]:
     if not isinstance(data, dict) or not data.get('access_token'):
         return None
     expires_at = data.get('expires_at')
+    expired = bool(data.get('expired'))
     if expires_at is not None:
         try:
-            if time.time() > float(expires_at):
-                return None
+            expired = expired or time.time() > float(expires_at)
         except (TypeError, ValueError):
-            return None
+            expired = True
+    if expired:
+        # Allowlist only provenance. Never carry tokens, profile PII or unknown fields.
+        marker = {'expired': True, 'expires_at': expires_at}
+        try:
+            path.write_text(json.dumps(marker), encoding='utf-8')
+            path.chmod(0o600)
+        except OSError:
+            # If sanitizing fails, remove the credential-bearing file.
+            path.unlink(missing_ok=True)
+        return None
     profile = data.get('profile') if isinstance(data.get('profile'), dict) else {}
     # Defensive: never keep a leaked key in the session file.
     profile.pop('key', None)

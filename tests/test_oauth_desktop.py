@@ -287,6 +287,10 @@ class SessionTests(unittest.TestCase):
         path.write_text(json.dumps(raw), encoding='utf-8')
         self.assertIsNone(oauth_desktop.load_session(data_dir=self.folder))
         self.assertTrue(path.exists())
+        self.assertEqual(json.loads(path.read_text()), {'expired': True, 'expires_at': raw['expires_at']})
+        self.assertIsNone(oauth_desktop.load_session(data_dir=self.folder))
+        oauth_desktop.logout(data_dir=self.folder, revoke=False)
+        self.assertFalse(path.exists())
 
     def test_normalize_api_key_strips_bearer(self):
         self.assertEqual(oauth_desktop.normalize_api_key('Bearer abc.def'), 'abc.def')

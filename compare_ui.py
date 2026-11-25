@@ -243,7 +243,7 @@ class CompareTab:
     def start_compare(self):
         if self.app.busy:
             return
-        if not self.app.ensure_submit_credentials():
+        if not self.app.ensure_submit_credentials(surface="compare"):
             return
         try:
             selected = self.selected_models()

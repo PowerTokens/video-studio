@@ -144,3 +144,25 @@ class GenerateLoginTests(unittest.TestCase):
             host.generate()
         self.assertEqual(host.login_calls, 0)
         host.launch.assert_not_called()
+
+    def test_resume_expired_oauth_polls_existing_task(self):
+        host = bare(keys=['fake-key'], session={'access_token': 'fake', 'expires_at': 1})
+        host.task_id = Mock(get=Mock(return_value='existing-task'))
+        host.selected_key = Mock(return_value='fake-key')
+        host.new_output = Mock(return_value='out.mp4')
+        client = Mock()
+        host.launch = lambda operation: operation(client)
+        with patch('app.messagebox.askokcancel') as confirm:
+            host.resume_manual()
+        confirm.assert_not_called()
+        client.resume.assert_called_once_with('fake-key', 'existing-task', 'out.mp4')
+
+    def test_paid_surfaces_expired_confirm_and_cancel(self):
+        for surface in ('batch', 'storyboard', 'compare', 'chat_batch'):
+            for confirmed in (False, True):
+                host = bare(keys=['fake-key'], session={'access_token': 'fake', 'expires_at': 1})
+                with patch('app.messagebox.askokcancel', return_value=confirmed) as confirm:
+                    self.assertFalse(host.ensure_submit_credentials(surface=surface))
+                self.assertEqual(confirm.call_args.args[1], i18n.t('credits_relogin_neutral'))
+                self.assertEqual(host.login_calls, int(confirmed))
+                host.launch.assert_not_called()

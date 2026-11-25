@@ -495,15 +495,24 @@ class App:
             except tk.TclError:
                 pass
 
-    def ensure_submit_credentials(self, parent=None):
+    def ensure_submit_credentials(self, parent=None, *, surface="generate", check_credits=True):
         """True when the key pool can submit a create/generate request.
 
         Empty pool and logged out: confirm before opening OAuth.
         Empty pool and logged in: advanced-paste tip, then API Key → Advanced.
         Pasted-key users can submit; OAuth users need known credits.
         """
-        if self.keys and self._oauth_credits_unknown():
-            self._show_credit_relogin()
+        if check_credits and self.keys and self._oauth_credits_unknown():
+            if surface == "generate":
+                self._show_credit_relogin()
+            else:
+                tip = t("credits_relogin_neutral")
+                self.status.set(tip)
+                options = {"parent": parent or getattr(self, "root", None)}
+                if options["parent"] is None:
+                    options = {}
+                if messagebox.askokcancel(t("oauth_login"), tip, **options):
+                    self.start_oauth_login(surface)
             return False
         if self.keys:
             return True
@@ -1964,7 +1973,7 @@ class App:
     def resume_manual(self):
         if self.busy:
             return
-        if not self.ensure_submit_credentials():
+        if not self.ensure_submit_credentials(check_credits=False):
             return
         try:
             from wan_core import task_url

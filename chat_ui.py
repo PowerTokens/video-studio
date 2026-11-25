@@ -366,7 +366,7 @@ class ChatTab:
         if not outline:
             messagebox.showinfo(t('chat_title'), t('chat_need_outline'))
             return
-        if not self.app.ensure_submit_credentials():
+        if not self.app.ensure_submit_credentials(surface="chat_batch"):
             return
         try:
             key = self.app.selected_key()

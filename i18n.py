@@ -1483,3 +1483,9 @@ def t(key, *args, count=None, platform=None):
         if key == 'select_rows_body' and value.count('%s') == 1:
             return value % (mod_key(platform),)
     return value % args if args else value
+
+# Retry wording shared by paid surfaces outside Generate.
+ZH["credits_relogin_neutral"] = '登录已过期，请重新登录以确认积分。草稿已保留；登录后请重试。'
+EN["credits_relogin_neutral"] = 'Please sign in again to check your credits. Your draft has been saved; try again after signing in.'
+ES["credits_relogin_neutral"] = 'Inicia sesión de nuevo para consultar tus créditos. Tu borrador se ha guardado; vuelve a intentarlo después de iniciar sesión.'
+PT["credits_relogin_neutral"] = 'Entre novamente para verificar seus créditos. Seu rascunho foi salvo; tente novamente após entrar.'
