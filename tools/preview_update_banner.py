@@ -394,7 +394,7 @@ def capture(lang, out, width, height, states):
     except Exception:
         pass
     gui.status.set(i18n.t('status_idle'))
-    offer = update_check.fixture_release(platform='win32', version='1.21.0')
+    offer = update_check.fixture_release(platform='win32', version='1.22.0')
     gui._update_dismissed_session = False
     gui._update_dest = None
     gui._update_phase = None
@@ -424,7 +424,7 @@ def capture(lang, out, width, height, states):
         gui._refresh_update_banner_copy()
         shoot('downloading')
     if 'ready-win' in states:
-        dest = data / 'Downloads' / 'PowerTokensVideoStudio-1.21.0.exe'
+        dest = data / 'Downloads' / 'PowerTokensVideoStudio-1.22.0.exe'
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(b'preview')
         with patch.object(appmod.sys, 'platform', 'win32'):

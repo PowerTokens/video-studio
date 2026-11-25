@@ -4,6 +4,17 @@ All notable changes to PowerTokens Video Studio. Versions before 1.10 were relea
 
 ## Unreleased
 
+## [1.21](https://github.com/PowerTokens/video-studio/releases/tag/v1.21.0) - 2026-11-25
+
+- **Generate credit gate.** Generate stays disabled when the estimated cost exceeds the signed-in balance, with a tip that can open in-app top-up. The prompt can be cleared, and Chat history is persisted.
+- **Top-up sign-in reconfirm.** The plan picker opens first; if sign-in is needed, the dialog asks for confirmation before login and can resume the intended package after return.
+- **Official $5 package id 35.** The fixed $5 plan uses official package 35. Custom amounts, including 5, stay on package 33. The payment body is still `{amount, package_id, payment_channel}`.
+- **Payment outcomes and model attribution.** Paid or cancelled checkout is recorded even after the dialog closes. Model-invocation requests send `X-Client`; payment APIs do not.
+- **Login key ownership and confirmation.** Logout removes login-issued API keys. Chat and Generate login gates ask for confirmation first and classify auth failures more clearly.
+- Analytics cover the credit gate, prompt Clear (including Chat 清空对话), chat plan-ready and need-login, and top-up reconfirm, without prompts, balances, order numbers, or checkout URLs.
+- The Apple Silicon Mac app remains an unsigned Beta.
+
+
 ## [1.20](https://github.com/PowerTokens/video-studio/releases/tag/v1.20.0) - 2026-11-19
 
 - **Official PayPal checkout.** In-app top-up can open the official PayPal checkout page.
