@@ -89,7 +89,7 @@ def _track_paid_status(state, status):
     payment.track_paid_status(state, status)
 
 
-def show(app):
+def show(app, suggested_amount=5):
     if not app._is_oauth_logged_in():
         app.start_oauth_login('billing')
         return
@@ -113,7 +113,7 @@ def show(app):
     body = tk.Frame(win, bg=PAGE, padx=24, pady=20)
     body.pack(fill='both', expand=True)
     tk.Label(body, text='Video Studio · ' + c[0], font=('', 18, 'bold'), bg=PAGE, fg=INK).pack(anchor='w', pady=(0, 18))
-    choice = tk.StringVar(value=DEFAULT_SELECTION)
+    choice = tk.StringVar(value={20: 'fixed_20', 50: 'fixed_50'}.get(suggested_amount, DEFAULT_SELECTION))
     amount = tk.StringVar(value='5')
     channel = tk.StringVar(value='limeng')
     grid = tk.Frame(body, bg=PAGE)

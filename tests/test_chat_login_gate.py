@@ -59,11 +59,37 @@ class ChatLoginGateTests(unittest.TestCase):
         i18n.set_language('zh')
 
     def setUp(self):
+        import tempfile
+        from pathlib import Path
+        import conversation_store
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        storage = patch.object(conversation_store, 'DATA_DIR', Path(folder.name))
+        storage.start()
+        self.addCleanup(storage.stop)
         i18n.set_language('zh')
         self.frame = tk.Frame(self.root)
         self.frame.pack()
         self.addCleanup(self.frame.destroy)
         self.addCleanup(i18n.set_language, 'zh')
+
+    def test_persisted_thread_and_plan_restore_without_sending(self):
+        import json
+        host = _host(session=None, keys=[])
+        tab = self._tab(host)
+        plan = {'prompt': 'a cat on the roof', 'model': 'wan3.0-video', 'duration': 5, 'resolution': '720p', 'ratio': '16:9'}
+        tab.messages = [{'role': 'user', 'content': 'cat'}, {'role': 'assistant', 'content': json.dumps({'assistant_message': 'ready', 'ready': True, 'plan': plan})}]
+        tab.last_plan = plan
+        tab.persist_state()
+        restored = self._tab(host)
+        self.assertEqual(restored.messages, tab.messages)
+        self.assertEqual(restored.last_plan, plan)
+        self.assertIn('ready', restored.thread.get('1.0', 'end'))
+        self.assertEqual(host.login_calls, 0)
+        restored.clear()
+        empty = self._tab(host)
+        self.assertEqual(empty.messages, [])
+        self.assertIsNone(empty.last_plan)
 
     def _tab(self, host):
         tab = ChatTab(host, self.frame)

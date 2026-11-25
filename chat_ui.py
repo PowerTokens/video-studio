@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import queue
+import conversation_store
 import threading
 import uuid
 import tkinter as tk
@@ -45,6 +46,7 @@ class ChatTab:
         self._pending = queue.Queue()
         self._poll_scheduled = False
         self._build()
+        self.restore_state(conversation_store.read('chat_history'))
 
     def _build(self):
         heading(self.frame, t('chat_title'), t('chat_desc'))
@@ -58,6 +60,7 @@ class ChatTab:
         composer = card(self.frame, t('chat_composer_card'))
         self.input = text_area(composer, height=4, undo=True)
         self.input.pack(fill='x', pady=(0, 8))
+        self.input.bind('<KeyRelease>', lambda event: self.persist_state(), add='+')
         bind_command_or_control(self.input, 'Return', lambda *_: self.send())
 
         tools = ttk.Frame(composer)
@@ -123,6 +126,7 @@ class ChatTab:
 
     def _set_busy(self, busy):
         self._busy = bool(busy)
+        self.persist_state()
         try:
             self.send_btn.configure(state='disabled' if self._busy else 'normal')
             self.clear_btn.configure(state='disabled' if self._busy else 'normal')
@@ -326,6 +330,7 @@ class ChatTab:
             return
         self.messages = []
         self.last_plan = None
+        conversation_store.clear('chat_history')
         self.thread.configure(state='normal')
         self.thread.delete('1.0', 'end')
         self.thread.configure(state='disabled')
@@ -375,6 +380,14 @@ class ChatTab:
                 self._pending.put(('err', str(exc)))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def persist_state(self):
+        state = self.export_state()
+        state['messages'] = [dict(role=m['role'], content=str(m.get('content', ''))[:20000]) for m in state['messages'][-80:] if m.get('role') in ('user', 'assistant')]
+        import json
+        while len(json.dumps(state, ensure_ascii=False).encode('utf-8')) > 480000 and state['messages']:
+            state['messages'].pop(0)
+        conversation_store.write('chat_history', state)
 
     def export_state(self):
         draft = ''
