@@ -26,6 +26,10 @@ class Widget:
     def winfo_manager(self): return self.manager
     def winfo_exists(self): return self.exists
     def winfo_children(self): return self.children
+    def winfo_height(self): return 660
+    def winfo_width(self): return 560
+    def winfo_reqheight(self): return 720
+    def winfo_screenheight(self): return 1080
     def destroy(self): self.exists = False
     def after(self, delay, cb):
         key = object(); self.timers[key] = (time.monotonic()+delay/1000, cb); return key
@@ -125,6 +129,32 @@ class TkTests(TopupTests):
             self.assertEqual(notice.children[1].options['text'], 'Continue to sign in')
             create.assert_not_called(); browser.assert_not_called()
             h.start_oauth_login.assert_not_called()
+
+    def test_notice_grows_window_with_screen_limit(self):
+        for current, requested, screen, expected in (
+                (660, 720, 1080, '560x732'),
+                (660, 1200, 900, '560x840'),
+                (800, 720, 1080, None),
+                (660, 720, 700, None)):
+            with self.subTest(current=current, requested=requested, screen=screen):
+                h = self.host(); h.root = self.root
+                ui.show(h)
+                win = h._payment_window
+                body = win.children[0]
+                win.geometry = Mock()
+                win.winfo_height = Mock(return_value=current)
+                win.winfo_screenheight = Mock(return_value=screen)
+                body.winfo_reqheight = Mock(return_value=requested)
+                def check_layout():
+                    self.assertTrue(h._payment_controls['notice'].winfo_manager())
+                    self.assertFalse(h._payment_controls['buy_button'].winfo_manager())
+                win.update_idletasks = Mock(side_effect=check_layout)
+                h._payment_controls['buy']()
+                win.update_idletasks.assert_called_once_with()
+                if expected:
+                    win.geometry.assert_called_once_with(expected)
+                else:
+                    win.geometry.assert_not_called()
 
     def test_auth_failure(self):
         h = self.host(); h.root = self.root

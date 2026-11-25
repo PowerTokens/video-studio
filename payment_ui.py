@@ -281,6 +281,12 @@ def show(app, preselect=None):
         if buy.winfo_manager():
             notice.pack(fill='x', pady=(0, 12), before=buy)
             buy.pack_forget()
+        win.update_idletasks()
+        height = win.winfo_height()
+        requested = body.winfo_reqheight() + 12
+        target = min(max(660, requested), max(660, win.winfo_screenheight() - 60))
+        if requested > height and target > height:
+            win.geometry('%dx%d' % (win.winfo_width(), target))
     # Keep dialog controls accessible for keyboard/UI regression checks.
     app._payment_controls = dict(choice=choice, amount=amount, channel=channel,
                                  buy=buy_now, confirm=confirm_login, notice=notice)
