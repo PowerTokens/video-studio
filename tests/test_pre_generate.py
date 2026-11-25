@@ -89,3 +89,55 @@ class CreditAndPersistenceTests(unittest.TestCase):
         host=self.host()
         with patch.object(app,'estimate_cost',side_effect=ValueError):
             self.assertIsNone(host._generate_shortfall())
+
+
+    def test_gate_captures_transitions_and_actual_block(self):
+        host = self.host()
+        host._clear_ai_review = Mock()
+        with patch.object(app.analytics, 'notify_ui_event') as track:
+            host.sync_generate_credits(500)
+            host.sync_generate_credits(500)
+            host.sync_generate_credits(None)
+            host.sync_generate_credits(500)
+            self.assertEqual(track.call_count, 2)
+            track.assert_called_with('credit_gate_shown', surface='generate', selection='preset-5')
+            host.update_cost = Mock()
+            host.generate()
+            track.assert_called_with('credit_gate_blocked', surface='generate')
+
+    def test_generate_clear_capture(self):
+        host = self.host()
+        host._clear_ai_review = Mock()
+        host._save_generate_form = Mock()
+        with patch.object(app.analytics, 'notify_ui_event') as track:
+            host.clear_generate_prompt()
+            track.assert_called_once_with('prompt_clear', surface='generate', reason='button')
+
+    def test_chat_ready_and_clear_captures(self):
+        chat = ChatTab.__new__(ChatTab)
+        chat._analytics_chat_finish = Mock()
+        chat._append_bubble = Mock()
+        chat._set_busy = Mock()
+        chat.status_var = Value('')
+        chat.messages = []
+        chat._busy = False
+        chat.thread = Mock()
+        chat._append_system_hint = Mock()
+        chat._sync_exit_buttons = Mock()
+        with patch.object(app.analytics, 'notify_ui_event') as track:
+            chat._on_reply('{"assistant_message":"ready","ready":true,"plan":{"prompt":"private"}}')
+            track.assert_called_once_with('chat_plan_ready', surface='chat')
+            with patch.object(store, 'clear'):
+                chat.clear()
+            track.assert_called_with('prompt_clear', surface='chat', reason='button')
+
+    def test_chat_login_gate_capture(self):
+        chat = ChatTab.__new__(ChatTab)
+        chat.app = Mock()
+        chat.frame = Mock()
+        chat._append_bubble = Mock()
+        chat.status_var = Value('')
+        with patch.object(app.analytics, 'notify_ui_event') as track, patch('chat_ui.messagebox.showinfo'):
+            chat._prompt_chat_login()
+            track.assert_called_once_with('chat_need_login_show', source='send')
+            chat.app.start_oauth_login.assert_called_once_with('chat')

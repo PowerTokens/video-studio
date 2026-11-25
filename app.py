@@ -1174,8 +1174,12 @@ class App:
             amount = conversation_store.suggested_amount(required, have)
             self.credit_tip_text.set(t('credits_insufficient_tip', f'{required:,}', f'{have:,}') + '\n\n' + t('credits_insufficient_suggest', amount, f'{amount * 1000:,}'))
             self.credit_tip.pack(fill='x', pady=(8, 6), before=self.generate_btn.master)
+            if not getattr(self, '_credit_gate_visible', False):
+                analytics.notify_ui_event('credit_gate_shown', surface='generate', selection={5: 'preset-5', 20: 'preset-20', 50: 'preset-50'}.get(amount))
+            self._credit_gate_visible = True
         else:
             self.credit_tip.pack_forget()
+            self._credit_gate_visible = False
 
     def _generate_form(self):
         return dict(prompt=self.prompt.get('1.0', 'end-1c'), model=self.model_id.get(), duration=self.duration.get(), resolution=self.resolution.get(), ratio=self.ratio.get())
@@ -1199,6 +1203,7 @@ class App:
         self.update_cost()
 
     def clear_generate_prompt(self):
+        analytics.notify_ui_event('prompt_clear', surface='generate', reason='button')
         self.prompt.delete('1.0', 'end')
         self._clear_ai_review()
         self._save_generate_form()
@@ -1792,6 +1797,7 @@ class App:
     def generate(self):
         self._clear_ai_review()
         if self._generate_shortfall():
+            analytics.notify_ui_event('credit_gate_blocked', surface='generate')
             self.update_cost()
             return
         if self.busy:
@@ -1801,6 +1807,7 @@ class App:
         try:
             recognized = self.apply_prompt()
             if self._generate_shortfall():
+                analytics.notify_ui_event('credit_gate_blocked', surface='generate')
                 self.update_cost()
                 return
             if recognized['warnings']:

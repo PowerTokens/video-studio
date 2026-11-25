@@ -168,6 +168,7 @@ class ChatTab:
         A saved key never reaches this path. If a login is already in
         progress, start_oauth_login keeps that flow.
         """
+        self._track_guidance('chat_need_login_show', source='send')
         tip = t('chat_need_login')
         try:
             self._append_bubble('assistant', tip)
@@ -197,6 +198,13 @@ class ChatTab:
         if callable(starter):
             starter('chat')
 
+
+    def _track_guidance(self, event, **props):
+        try:
+            import analytics
+            analytics.notify_ui_event(event, **props)
+        except Exception:
+            pass
 
     def _analytics_chat_submit(self, model='', text=''):
         try:
@@ -313,6 +321,7 @@ class ChatTab:
         if parsed.get('ready') and parsed.get('plan'):
             self.last_plan = parsed['plan']
             self.status_var.set(t('chat_plan_ready'))
+            self._track_guidance('chat_plan_ready', surface='chat')
         else:
             self.last_plan = None
             self.status_var.set('')
@@ -328,6 +337,7 @@ class ChatTab:
     def clear(self):
         if self._busy:
             return
+        self._track_guidance('prompt_clear', surface='chat', reason='button')
         self.messages = []
         self.last_plan = None
         conversation_store.clear('chat_history')
