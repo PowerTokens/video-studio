@@ -7,6 +7,7 @@ from compare_core import (
     MAX_COMPARE_MODELS, MIN_COMPARE_MODELS, plan_compare, run_compare,
 )
 from i18n import t
+from conversation_store import estimate_credits
 from models import DEFAULT_MODEL_ID, list_models, snap_params, format_adjust_notice, get_model
 from platform_paths import default_output_dir, reveal_path
 from studio_ui import Columns, Flow, card, heading, label, text_area
@@ -170,7 +171,7 @@ class CompareTab:
             ttk.Label(row, text=item['label']).grid(row=0, column=0, sticky='w', padx=4)
             params = '%ss · %s · %s' % (item['duration'], item['resolution'], item['ratio'])
             ttk.Label(row, text=params).grid(row=0, column=1, sticky='w', padx=4)
-            ttk.Label(row, text='$%.2f' % item['cost']).grid(row=0, column=2, sticky='w', padx=4)
+            ttk.Label(row, text=t('cost_estimate', f"{estimate_credits(item['cost']):,}")).grid(row=0, column=2, sticky='w', padx=4)
             status_var = tk.StringVar(value=t('compare_status_idle'))
             ttk.Label(row, textvariable=status_var).grid(row=0, column=3, sticky='w', padx=4)
             actions = ttk.Frame(row)
@@ -242,7 +243,7 @@ class CompareTab:
     def start_compare(self):
         if self.app.busy:
             return
-        if not self.app.ensure_submit_credentials():
+        if not self.app.ensure_submit_credentials(surface="compare"):
             return
         try:
             selected = self.selected_models()

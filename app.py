@@ -27,7 +27,7 @@ from compare_ui import CompareTab
 from models import (DEFAULT_MODEL_ID, list_models, get_model, resolve_model_id, snap_params,
                    format_adjust_notice, model_allows_first_frame, allowed_media_types)
 from frame_util import encode_local_image_as_data_url
-from wan_core import (Client, DATA_DIR, PRICE_CHECKED_DATE, UTM, current_prices, list_prices,
+from wan_core import (Client, DATA_DIR, UTM,
                       TaskError, estimate_cost, fingerprint, payload, verify_key)
 from platform_paths import default_output_dir, reveal_path
 import secret_store
@@ -351,7 +351,7 @@ class App:
             self.prompt_timer = None
         self.shell.destroy()
         # Rebuilt below; update_cost() must not touch the old widgets after shell.destroy().
-        for name in ('promo_label', 'cost', 'generate_btn', 'credit_tip', 'credit_tip_text'):
+        for name in ('promo_label', 'cost', 'generate_btn', 'credit_tip', 'credit_tip_text', 'credit_tip_suggest', 'credit_tip_button', 'credit_tip_title'):
             self.__dict__.pop(name, None)
         self.build_ui()
         self.restore_state(state)
@@ -495,13 +495,25 @@ class App:
             except tk.TclError:
                 pass
 
-    def ensure_submit_credentials(self, parent=None):
+    def ensure_submit_credentials(self, parent=None, *, surface="generate", check_credits=True):
         """True when the key pool can submit a create/generate request.
 
         Empty pool and logged out: confirm before opening OAuth.
         Empty pool and logged in: advanced-paste tip, then API Key → Advanced.
-        A saved key is enough either way, so power users are not blocked.
+        Pasted-key users can submit; OAuth users need known credits.
         """
+        if check_credits and self.keys and self._oauth_credits_unknown():
+            if surface == "generate":
+                self._show_credit_relogin()
+            else:
+                tip = t("credits_relogin_neutral")
+                self.status.set(tip)
+                options = {"parent": parent or getattr(self, "root", None)}
+                if options["parent"] is None:
+                    options = {}
+                if messagebox.askokcancel(t("oauth_login"), tip, **options):
+                    self.start_oauth_login(surface)
+            return False
         if self.keys:
             return True
         logged_in = False
@@ -640,12 +652,19 @@ class App:
         self.update_cost()
         self.ai_plan_notice = ttk.Label(params, text=t('ai_plan_ready'), style='Badge.TLabel', wraplength=300)
         params.bind('<Configure>', lambda event: self.ai_plan_notice.configure(wraplength=max(100, event.width - 32)), add='+')
+        from studio_ui import FONT
         self.credit_tip = tk.Frame(params, bg='#fff8eb', padx=12, pady=12, highlightbackground='#d8b579', highlightthickness=1)
+        self.credit_tip_title = tk.StringVar(value=t('credits_insufficient'))
+        ttk.Label(self.credit_tip, textvariable=self.credit_tip_title, font=(FONT, 10, 'bold'), background='#fff8eb', foreground='#513d20').pack(anchor='w', pady=(0, 4))
         self.credit_tip_text = tk.StringVar()
         tip_label = ttk.Label(self.credit_tip, textvariable=self.credit_tip_text, wraplength=320, justify='left', background='#fff8eb', foreground='#513d20')
         tip_label.pack(fill='x')
-        params.bind('<Configure>', lambda e: tip_label.configure(wraplength=max(100, e.width - 56)), add='+')
-        ttk.Button(self.credit_tip, text=t('credits_insufficient'), command=self.open_generate_topup).pack(anchor='w', pady=(8, 0))
+        self.credit_tip_suggest = tk.StringVar()
+        suggest_label = ttk.Label(self.credit_tip, textvariable=self.credit_tip_suggest, font=(FONT, 10, 'bold'), wraplength=320, justify='left', background='#fff8eb', foreground='#3f2e15')
+        suggest_label.pack(fill='x', pady=(6, 0))
+        params.bind('<Configure>', lambda e: (tip_label.configure(wraplength=max(100, e.width - 56)), suggest_label.configure(wraplength=max(100, e.width - 56))), add='+')
+        self.credit_tip_button = ttk.Button(self.credit_tip, text=t('topup_btn'), style='Accent.TButton', command=self.open_generate_topup)
+        self.credit_tip_button.pack(anchor='center', pady=(10, 0))
         actions = Flow(params)
         actions.pack(fill='x', pady=(6, 0))
         self.generate_btn = ttk.Button(actions, text=t('generate_btn'), style='Accent.TButton', command=self.generate)
@@ -866,6 +885,7 @@ class App:
     def build_history(self, frame):
         heading(frame, t('history_title'), t('history_desc'))
         table_card = card(frame, t('history_card'), t('history_card_desc'))
+        self.history_table_card = table_card.master
         table = ttk.Frame(table_card)
         table.pack(fill='both', expand=True)
         table.rowconfigure(0, weight=1)
@@ -890,6 +910,15 @@ class App:
         ttk.Button(row, text=t('copy_all_ids'), command=self.copy_all_task_ids)
         ttk.Button(row, text=t('open_folder'), command=self.open_folder)
         row.schedule()
+        self.history_credit_card = tk.Frame(frame, bg='#fff8eb', padx=12, pady=12, highlightbackground='#d8b579', highlightthickness=1)
+        from studio_ui import FONT
+        self.history_credit_text = tk.StringVar()
+        self.history_credit_suggest = tk.StringVar()
+        ttk.Label(self.history_credit_card, text=t('credits_insufficient'), font=(FONT, 10, 'bold'), foreground='#513d20', background='#fff8eb').pack(anchor='w')
+        ttk.Label(self.history_credit_card, textvariable=self.history_credit_text, background='#fff8eb', wraplength=700).pack(fill='x', pady=6)
+        ttk.Label(self.history_credit_card, textvariable=self.history_credit_suggest, font=(FONT, 10, 'bold'), background='#fff8eb', foreground='#3f2e15').pack(fill='x', pady=(0, 10))
+        ttk.Button(self.history_credit_card, text=t('topup_btn'), style='Accent.TButton', command=lambda: self.open_generate_topup(self._history_credit_shortfall)).pack()
+        self.tree.bind('<<TreeviewSelect>>', self._show_history_credit)
         box = card(frame, t('manual_card'), t('manual_card_desc'))
         row = ttk.Frame(box)
         row.pack(fill='x')
@@ -1143,17 +1172,38 @@ class App:
             mid = self.model_id.get() if hasattr(self, 'model_id') else DEFAULT_MODEL_ID
             resolution = self.resolution.get()
             value = estimate_cost(self.duration.get(), resolution, model_id=mid)
-            prices = current_prices(model_id=mid)
-            text = t('cost_estimate', PRICE_CHECKED_DATE, value, prices[resolution])
-            regular = list_prices(model_id=mid)
-            if resolution in regular:
-                text += t('cost_regular', regular[resolution])
-            self.cost.set(text + t('cost_tail'))
-            self.sync_generate_credits(conversation_store.estimate_credits(value))
+            credits = conversation_store.estimate_credits(value)
+            self.cost.set(t('cost_estimate', f'{credits:,}'))
+            self.sync_generate_credits(credits)
         except (ValueError, KeyError, TaskError):
             self.cost.set(t('cost_invalid'))
             self.sync_generate_credits(None)
 
+
+    def _oauth_credits_unknown(self):
+        session = getattr(self, 'oauth_session', None)
+        if not (session or getattr(self, '_oauth_had_session', False) or getattr(self, '_login_only_keys', set())):
+            return False
+        credits = self._oauth_profile().get('credits')
+        return (not self._is_oauth_logged_in() or isinstance(credits, bool)
+                or not isinstance(credits, (int, float)))
+
+    def _show_credit_relogin(self):
+        conversation_store.write('intended_generate', dict(at=time.time(), form=self._generate_form()))
+        self._credit_relogin_requested = True
+        self.update_cost()
+        self.status.set(t('credits_relogin'))
+        # A valid token can still query userinfo; never auto-submit its result.
+        if self._is_oauth_logged_in() and not getattr(self, '_credit_profile_busy', False):
+            self._credit_profile_busy = True
+            token = self.oauth_session['access_token']
+            def refresh():
+                try:
+                    profile = oauth_desktop.profile_from_userinfo(oauth_desktop.fetch_userinfo(token))
+                except Exception:
+                    profile = None
+                self.events.put(('credit_profile', (token, profile)))
+            threading.Thread(target=refresh, daemon=True).start()
 
     def _generate_shortfall(self, need=None):
         if not getattr(self, 'oauth_session', None) or not self._is_oauth_logged_in():
@@ -1180,10 +1230,23 @@ class App:
             return
         short = self._generate_shortfall(need) if need is not None else None
         self.generate_btn.configure(state='disabled' if self.busy or short else 'normal')
+        if getattr(self, '_credit_relogin_requested', False) and self._oauth_credits_unknown():
+            self.credit_tip_title.set(t('oauth_login'))
+            self.credit_tip_text.set(t('credits_relogin'))
+            self.credit_tip_suggest.set('')
+            self.credit_tip_button.configure(text=t('oauth_login'), command=lambda: self.start_oauth_login('generate'))
+            self.credit_tip.pack(fill='x', pady=(8, 6), before=self.generate_btn.master)
+            return
+        if hasattr(self, 'credit_tip_button'):
+            self.credit_tip_button.configure(text=t('topup_btn'), command=self.open_generate_topup)
+        if hasattr(self, 'credit_tip_title'):
+            self.credit_tip_title.set(t('credits_insufficient'))
         if short:
             required, have = short
             amount = conversation_store.suggested_amount(required, have)
-            self.credit_tip_text.set(t('credits_insufficient_tip', f'{required:,}', f'{have:,}') + '\n\n' + t('credits_insufficient_suggest', amount, f'{amount * 1000:,}'))
+            self.credit_tip_text.set(t('credits_insufficient_tip', f'{have:,}', f'{required:,}'))
+            if hasattr(self, 'credit_tip_suggest'):
+                self.credit_tip_suggest.set(t('credits_insufficient_suggest', amount, f'{amount * 1000:,}'))
             self.credit_tip.pack(fill='x', pady=(8, 6), before=self.generate_btn.master)
             if not getattr(self, '_credit_gate_visible', False):
                 analytics.notify_ui_event('credit_gate_shown', surface='generate', selection={5: 'preset-5', 20: 'preset-20', 50: 'preset-50'}.get(amount))
@@ -1219,9 +1282,12 @@ class App:
         self._clear_ai_review()
         self._save_generate_form()
 
-    def open_generate_topup(self):
+    def open_generate_topup(self, shortfall=None):
         conversation_store.write('intended_generate', dict(at=time.time(), form=self._generate_form()))
-        self.open_billing('generate_tip')
+        if shortfall is None:
+            self.open_billing('generate_tip')
+        else:
+            self.open_billing('generate_tip', shortfall=shortfall)
 
     def _toggle_keys_advanced(self):
         if not hasattr(self, 'keys_advanced_body'):
@@ -1248,7 +1314,7 @@ class App:
         return profile if isinstance(profile, dict) else {}
 
     def _is_oauth_logged_in(self):
-        session = self.oauth_session
+        session = getattr(self, 'oauth_session', None)
         if not session or not session.get('access_token'):
             return False
         expires_at = session.get('expires_at')
@@ -1496,6 +1562,7 @@ class App:
         self.save_keys()
         oauth_desktop.logout()
         self.oauth_session = None
+        self._oauth_had_session = False
         try:
             analytics.clear_account()
         except Exception:
@@ -1513,14 +1580,14 @@ class App:
         except OSError:
             messagebox.showinfo(t('official_site'), official_key_url())
 
-    def open_billing(self, source='credits_chip'):
+    def open_billing(self, source='credits_chip', shortfall=None):
         """Open the in-app plan picker."""
         try:
             analytics.notify_billing_click(source)
         except Exception:
             pass
         import payment_ui
-        short = self._generate_shortfall() if source == 'generate_tip' else None
+        short = shortfall or (self._generate_shortfall() if source == 'generate_tip' else None)
         amount = conversation_store.suggested_amount(*short) if short else 5
         payment_ui.show(self, suggested_amount=amount)
 
@@ -1906,7 +1973,7 @@ class App:
     def resume_manual(self):
         if self.busy:
             return
-        if not self.ensure_submit_credentials():
+        if not self.ensure_submit_credentials(check_credits=False):
             return
         try:
             from wan_core import task_url
@@ -2310,6 +2377,13 @@ class App:
                     continue
                 if isinstance(kind, str) and kind.startswith('update_'):
                     continue
+                if kind == 'credit_profile':
+                    self._credit_profile_busy = False
+                    token, profile = text
+                    if profile and (self.oauth_session or {}).get('access_token') == token:
+                        self.oauth_session['profile'] = profile
+                    self._refresh_oauth_header()
+                    continue
                 if kind == 'oauth_ok':
                     self._apply_oauth_result(text)
                     continue
@@ -2322,6 +2396,8 @@ class App:
                 if kind == 'batch_update':
                     self.batch.update_job(text)
                     continue
+                if 'pre-consume quota' in str(text).lower():
+                    text = t('credits_insufficient')
                 self.log.configure(state='normal')
                 self.log.insert('end', text + '\n')
                 self.log.see('end')
@@ -2359,12 +2435,29 @@ class App:
                 task_label = row.get('task_id') or t('no_task_id')
                 if row.get('compare_id'):
                     task_label = t('compare_group_tag', row['compare_id'][:6]) + ' · ' + task_label
-                self.tree.insert('', 'end', iid=path.stem, values=(row['created'], task_label, row['state'], row.get('key_hint', '')))
+                self.tree.insert('', 'end', iid=path.stem, values=(row['created'], task_label, t('credits_insufficient') if row.get('credit_rejected') or 'QUOTA' in row['state'] or 'pre-consume quota' in row['state'].lower() else row['state'], row.get('key_hint', '')))
             except (OSError, ValueError, KeyError):
                 continue
         retained = [item for item in selection if item in self.records]
         if retained:
             self.tree.selection_set(*retained)
+
+    def _show_history_credit(self, event=None):
+        selected = self.tree.selection()
+        row = self.records.get(selected[0], {}) if selected else {}
+        if row.get('credit_rejected') or 'QUOTA' in row.get('state', '') or 'pre-consume quota' in row.get('state', '').lower():
+            cost = row.get('cost')
+            need = conversation_store.estimate_credits(cost) if isinstance(cost, (int, float)) else None
+            have = self._oauth_profile().get('credits') if self._is_oauth_logged_in() else None
+            have_text = f'{have:,}' if isinstance(have, (int, float)) else t('credits_unknown')
+            need_text = f'{need:,}' if need is not None else t('credits_unknown')
+            self._history_credit_shortfall = (need or 0, have or 0)
+            amount = conversation_store.suggested_amount(*self._history_credit_shortfall)
+            self.history_credit_text.set(t('credits_insufficient_tip', have_text, need_text))
+            self.history_credit_suggest.set(t('credits_insufficient_suggest', amount, f'{amount * 1000:,}'))
+            self.history_credit_card.pack(fill='x', pady=8, before=self.history_table_card)
+        else:
+            self.history_credit_card.pack_forget()
 
     def select_all_task_rows(self, event=None):
         rows = self.tree.get_children()

@@ -601,7 +601,7 @@ class Client:
         # Prefer the caller's order, but skip keys already exhausted in this run.
         candidates = [k for k in keys if not pool.is_exhausted(k)]
         if not candidates:
-            raise TaskError(t('all_keys_exhausted'), 'POOL_EXHAUSTED')
+            raise TaskError(t('credits_insufficient') if (self.record or {}).get('credit_rejected') else t('all_keys_exhausted'), 'POOL_EXHAUSTED')
 
         def sleep_interruptible(seconds):
             end = time.monotonic() + max(0.0, seconds)
@@ -653,13 +653,13 @@ class Client:
                 # Real exhaustion (quota / expired / not allowed) — try the next key.
                 if kind in KEY_EXHAUST_KINDS:
                     pool.mark_exhausted(key, kind)
-                    self.save(state=t('state_rejected') + kind)
-                    self.report(t('key_exhausted_log', key[-4:], kind))
+                    self.save(state=t('credits_insufficient') if kind == 'QUOTA' else t('state_rejected') + kind, credit_rejected=kind == 'QUOTA')
+                    self.report(t('credits_insufficient') if kind == 'QUOTA' else t('key_exhausted_log', key[-4:], kind))
                     break
                 self.save(state=t('state_unknown'))
                 raise TaskError(t('submit_uncertain', code), 'UNCERTAIN')
         if pool.all_exhausted():
-            raise TaskError(t('all_keys_exhausted'), 'POOL_EXHAUSTED')
+            raise TaskError(t('credits_insufficient') if (self.record or {}).get('credit_rejected') else t('all_keys_exhausted'), 'POOL_EXHAUSTED')
         raise TaskError(t('all_rejected'), 'REJECTED')
 
     def resume(self, key, task_id, out_path, record=None):

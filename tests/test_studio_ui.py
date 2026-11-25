@@ -96,15 +96,16 @@ class StudioUITests(unittest.TestCase):
             self.root.update()
 
     def test_promo_badge_and_list_price_follow_end_date(self):
+        self.gui.model_id.set('wan3.0-video')
         self.gui.duration.set('10')
         self.gui.resolution.set('720p')
         self.gui.update_cost()
         self.assertTrue(self.gui.promo_label.winfo_manager())
-        self.assertIn('$0.04/秒，原价 $0.10/秒', self.gui.cost.get())
+        self.assertEqual('预计约 400 积分', self.gui.cost.get())
         with patch.object(wan_core, 'local_today', return_value=datetime.date(2026, 10, 8)):
             self.gui.update_cost()
             self.assertEqual(self.gui.promo_label.winfo_manager(), '')
-            self.assertIn('约 $1.00（$0.10/秒）', self.gui.cost.get())
+            self.assertEqual('预计约 1,000 积分', self.gui.cost.get())
             self.assertNotIn('原价', self.gui.cost.get())
         self.gui.update_cost()
         self.assertTrue(self.gui.promo_label.winfo_manager())
@@ -153,7 +154,7 @@ class StudioUITests(unittest.TestCase):
         for widget in self.widgets(self.root):
             if isinstance(widget, (ttk.Label, ttk.Button)):
                 texts.append(str(widget.cget('text')))
-        self.assertIn('任务仍在云端继续，可在任务记录里找回', texts)
+        self.assertIn('任务在云端运行，可在「任务记录」找回。', texts)
         self.assertIn('尾帧、参考素材与随机种子。链接需公网可访问；不需要可留空。', texts)
         self.assertIn('校验通过后 Key 只保存在本机；无效 Key 不会写入。', texts)
         self.assertIn('校验并保存', texts)
@@ -331,6 +332,7 @@ class LanguageSwitchTests(unittest.TestCase):
                 self.root.update()
                 if self.gui.keys == ['sk-test-only-one'] and not getattr(self.gui, 'key_verify_busy', False):
                     break
+        self.gui.model_id.set('wan3.0-video')
         self.gui.prompt.insert('1.0', 'Total length 12s, 9:16 vertical. 0-4s: hook; 4-12s: chase')
         self.gui.apply_prompt()
         self.gui.seed.set('42')
@@ -347,7 +349,7 @@ class LanguageSwitchTests(unittest.TestCase):
         self.assertIn('Total length 12s', self.gui.prompt.get('1.0', 'end'))
         self.assertEqual((self.gui.duration.get(), self.gui.ratio.get(), self.gui.seed.get()), ('12', '9:16', '42'))
         self.assertEqual(self.gui.prompt_hint.get(), 'Detected: 12 s · 9:16')
-        self.assertIn('$0.04/s, regular $0.10/s', self.gui.cost.get())
+        self.assertEqual('Estimated: about 480 credits', self.gui.cost.get())
         texts = self.texts()
         self.assertIn('Multi-model AI video generation', texts)
         self.assertIn('Wan 3.0 limited-time discount until Oct 7', texts)
@@ -358,7 +360,7 @@ class LanguageSwitchTests(unittest.TestCase):
         self.gui.switch_language('zh')
         self.root.update()
         self.assertEqual(self.tab_names(), ['生成视频', '对话', '模型对比', '批量导入', '任务记录 / 恢复', 'API Key'])
-        self.assertIn('任务仍在云端继续，可在任务记录里找回', self.texts())
+        self.assertIn('任务在云端运行，可在「任务记录」找回。', self.texts())
         self.assertEqual(self.gui.key_count.get(), '共 1 个 Key')
         self.assertEqual(self.gui.prompt_hint.get(), '已识别：12 秒 · 9:16')
         self.assertEqual(i18n.load_settings()['language'], 'zh')
