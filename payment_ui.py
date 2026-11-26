@@ -1,4 +1,4 @@
-"""Non-modal checkout; order survives closing the picker for this app session."""
+"""Non-modal checkout with app-scoped, durable outcome recovery."""
 import queue
 import threading
 import time
@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk
 import webbrowser
 import payment
+import payment_recovery
 import oauth_desktop
 from payment_copy import COPY, RECONFIRM
 from i18n import get_language
@@ -81,7 +82,15 @@ def close_payment_dialog(win, state):
 
 def cancel_pending_checkout(state):
     if state.get('order'):
-        payment.track_paid_status(state, 2)
+        cancel = state.get('_cancel_pending')
+        if callable(cancel):
+            cancel()
+        else:
+            payment.track_paid_status(state, 2)
+            try:
+                payment.analytics.flush()
+            except Exception:
+                pass
         state['order'] = None
 
 
@@ -99,11 +108,72 @@ def poll_checkout(token, order):
 
 
 def apply_checkout_status(state, status):
+    if not state.get('order'):
+        return False
     payment.track_paid_status(state, status)
     if status in (1, 2):
         state['order'] = None
         return True
     return False
+
+
+
+def recovery_store(app):
+    store = getattr(app, '_pending_payments', None)
+    if not isinstance(store, payment_recovery.PendingOrders):
+        store = payment_recovery.PendingOrders()
+        app._pending_payments = store
+    return store
+
+
+def resume_pending(app):
+    """Resume independently of any checkout Toplevel, using current credentials."""
+    store = recovery_store(app)
+    store.prune()
+    if getattr(app, '_payment_recovery_busy', False) is True:
+        return
+    timer = getattr(app, '_payment_recovery_timer', None)
+    if timer:
+        app.root.after_cancel(timer)
+        app._payment_recovery_timer = None
+    session = app.oauth_session or {}
+    account = payment_recovery.owner(session)
+    if not app._is_oauth_logged_in() or not account:
+        return
+    records = [(key, dict(record)) for key, record in store.pending.items()
+               if record['owner'] == account]
+    if not records:
+        return
+    token = session.get('access_token', '')
+    app._payment_recovery_busy = True
+    results = queue.Queue()
+    def worker():
+        results.put([(key, poll_checkout(token, record['order'])) for key, record in records])
+    def finish():
+        try:
+            outcomes = results.get_nowait()
+        except queue.Empty:
+            app.root.after(100, finish)
+            return
+        app._payment_recovery_busy = False
+        # A result from a previous login must not affect a different account.
+        if payment_recovery.owner(app.oauth_session) == account:
+            for key, (status, info) in outcomes:
+                terminal = store.apply(key, status, info)
+                state = getattr(app, '_payment_state', None)
+                record = dict(records).get(key)
+                if terminal and isinstance(state, dict) and state.get('order') == record['order']:
+                    state['order'] = None
+                    callback = getattr(app, '_payment_outcome', None)
+                    if callable(callback):
+                        callback(status)
+                if info is not None and app.oauth_session:
+                    app.oauth_session['profile'] = oauth_desktop.profile_from_userinfo(info)
+            app._refresh_oauth_header()
+        if store.pending:
+            app._payment_recovery_timer = app.root.after(4000, lambda: resume_pending(app))
+    threading.Thread(target=worker, daemon=True).start()
+    app.root.after(100, finish)
 
 
 INTENT_TTL = 15 * 60
@@ -146,7 +216,7 @@ def show(app, preselect=None, suggested_amount=None):
     c = COPY.get(get_language(), COPY['en'])
     token = (app.oauth_session or {}).get('access_token', '')
     state = getattr(app, '_payment_state', None)
-    if not state or state['token'] != token:
+    if not isinstance(state, dict):
         state = dict(token=token, order=None, busy=False)
         app._payment_state = state
     win = tk.Toplevel(app.root)
@@ -227,7 +297,7 @@ def show(app, preselect=None, suggested_amount=None):
     message = tk.StringVar(value=c[6] if state['order'] else '')
     status_label = ttk.Label(body, textvariable=message, wraplength=400)
     def alive():
-        return app._is_oauth_logged_in() and app.oauth_session['access_token'] == token
+        return app._is_oauth_logged_in()
     def run(work, done):
         if state['busy']: return
         state['busy'] = True
@@ -241,35 +311,25 @@ def show(app, preselect=None, suggested_amount=None):
                 app.root.after(100, finish)
                 return
             state['busy'] = False
-            if win.winfo_exists() and (alive() or error is not None): done(result, error)
+            done(result, error)
         threading.Thread(target=worker, daemon=True).start()
         app.root.after(100, finish)
+    def outcome(status):
+        if win.winfo_exists():
+            message.set(c[10] if status == 2 else c[9])
+            buy.configure(state='normal')
+    app._payment_outcome = outcome
     def check():
-        if not alive() or not state['order'] or time.monotonic() >= state.get('deadline', 0): return
-        order = state['order']
-        def done(result, error):
-            if not error and state.get('order') == order:
-                status, info = result
-                terminal = apply_checkout_status(state, status)
-                if info is not None:
-                    app.oauth_session['profile'] = oauth_desktop.profile_from_userinfo(info)
-                    app._refresh_oauth_header()
-                if terminal:
-                    if win.winfo_exists():
-                        message.set(c[9] if status == 1 else c[10])
-                        buy.configure(state='normal')
-                    return
-            if time.monotonic() < state.get('deadline', 0): app.root.after(4000, check)
-        run(lambda: poll_checkout(token, order), done)
+        resume_pending(app)
     def buy_now():
         if not app._is_oauth_logged_in():
             show_reconfirm()
             return
-        if app.oauth_session['access_token'] != token:
-            show(app, preselect=current_selection())
-            return
         try: data = checkout_payload(choice.get(), amount.get(), channel.get())
         except (ValueError, StopIteration): message.set(c[12]); return
+        current_token = app.oauth_session['access_token']
+        account = payment_recovery.owner(app.oauth_session)
+        baseline = payment_recovery.credits((app.oauth_session or {}).get('profile'))
         buy.configure(state='disabled')
         def done(result, error):
             if error:
@@ -278,11 +338,14 @@ def show(app, preselect=None, suggested_amount=None):
                 else:
                     message.set(c[11])
                 buy.configure(state='normal'); return
-            state.update(payment_success_tracked=False, payment_cancelled_tracked=False, package_id=data['package_id'], channel=data['payment_channel'], order=result['orderNo'], deadline=time.monotonic()+300)
+            state.update(payment_success_tracked=False, payment_cancelled_tracked=False, package_id=data['package_id'], channel=data['payment_channel'], order=result['orderNo'])
+            store = recovery_store(app)
+            key = store.add(account, result['orderNo'], baseline, data['package_id'], data['payment_channel'])
+            state['_cancel_pending'] = lambda: store.apply(key, 2, None)
             message.set(c[6])
             webbrowser.open(result['redirectUrl'])
             app.root.after(2500, check)
-        run(lambda: payment.create(token, data), done)
+        run(lambda: payment.create(current_token, data), done)
     def current_selection():
         return dict(selection=choice.get(), channel=channel.get(), custom_amount=amount.get())
     def confirm_login():

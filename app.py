@@ -1307,6 +1307,8 @@ class App:
         self.oauth_session = oauth_desktop.load_session()
         self._oauth_had_session = self._oauth_had_session or bool(self.oauth_session)
         self._refresh_oauth_header()
+        import payment_ui
+        self.root.after(0, lambda: payment_ui.resume_pending(self))
 
     def _oauth_profile(self):
         session = self.oauth_session or {}
@@ -1335,7 +1337,11 @@ class App:
                 root.after_cancel(timer)
                 self._oauth_expiry_timer = None
             if not getattr(self, '_oauth_focus_bound', False):
-                root.bind('<FocusIn>', lambda event: self._refresh_oauth_header(), add='+')
+                def resume_payment_on_focus(event):
+                    import payment_ui
+                    self._refresh_oauth_header()
+                    payment_ui.resume_pending(self)
+                root.bind('<FocusIn>', resume_payment_on_focus, add='+')
                 self._oauth_focus_bound = True
             expiry = (self.oauth_session or {}).get('expires_at')
             if self._is_oauth_logged_in() and expiry is not None:
@@ -1520,6 +1526,7 @@ class App:
             pass
         self._oauth_had_session = True
         import payment_ui
+        payment_ui.resume_pending(self)
         if payment_ui.resume_topup(self):
             self.status.set(t('oauth_ok'))
             return
