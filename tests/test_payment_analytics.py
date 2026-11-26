@@ -14,6 +14,13 @@ class FunnelAcceptance(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.client = analytics.Analytics(Path(self.tmp.name), transport=lambda item: None)
         self.client._schedule_flush = lambda: None
+        import payment_recovery
+        self.path_patcher = patch.object(payment_recovery, 'user_data_dir', return_value=Path(self.tmp.name))
+        self.path_patcher.start()
+        self.addCleanup(self.path_patcher.stop)
+        self.flush_patcher = patch.object(analytics, 'flush')
+        self.flush_patcher.start()
+        self.addCleanup(self.flush_patcher.stop)
         self.patcher = patch.object(analytics, '_client', self.client)
         self.patcher.start()
         self.addCleanup(self.patcher.stop)
@@ -70,7 +77,7 @@ class FunnelAcceptance(unittest.TestCase):
         for terminal, event in [(1, 'payment_success'), (2, 'payment_cancelled')]:
             with self.subTest(status=terminal):
                 app = Mock()
-                app.oauth_session = {'access_token': 'synthetic'}
+                app.oauth_session = {'access_token': 'FAKE_TOKEN', 'profile': {'sub': 'TEST_ACCOUNT', 'credits': 0}}
                 app._payment_window = None
                 app._payment_state = None
                 app._oauth_profile.return_value = {'credits': 0}
@@ -93,7 +100,7 @@ class FunnelAcceptance(unittest.TestCase):
                         patch.object(payment_ui.ttk, 'Button', side_effect=button), \
                         patch.object(payment_ui.threading, 'Thread', side_effect=thread), \
                         patch.object(payment_ui.webbrowser, 'open'), \
-                        patch.object(payment, 'create', return_value={'orderNo': 'synthetic', 'redirectUrl': 'synthetic'}), \
+                        patch.object(payment, 'create', return_value={'orderNo': 'ORDER_TEST_' + str(terminal), 'redirectUrl': 'synthetic'}), \
                         patch.object(payment, 'status', side_effect=[0, terminal]), \
                         patch.object(payment_ui.oauth_desktop, 'fetch_userinfo', side_effect=OSError()):
                     variable.return_value.get.return_value = 'fixed_5'
@@ -125,7 +132,7 @@ class FunnelAcceptance(unittest.TestCase):
             unittest.mock.call('success', package_id=22, channel='paypal'),
             unittest.mock.call('cancelled', package_id=22, channel='paypal')])
 
-    def test_pending_status_ignores_credit_changes(self):
+    def test_pending_status_without_baseline_remains_pending(self):
         import payment_ui
         state = dict(order='synthetic', package_id=22, channel='paypal')
         self.assertFalse(payment_ui.apply_checkout_status(state, 0))
