@@ -219,6 +219,9 @@ def show(app, preselect=None, suggested_amount=None):
     if not isinstance(state, dict):
         state = dict(token=token, order=None, busy=False)
         app._payment_state = state
+    else:
+        # Keep any pending order; only refresh the current token field.
+        state['token'] = token
     win = tk.Toplevel(app.root)
     app._payment_window = win
     win.title('Video Studio · ' + c[0])
